@@ -1,80 +1,119 @@
-"""patch0100_14 costs USD enterprise-grade (immutable at persist time)
+"""patch0100_14 costs USD enterprise-grade (immutable at persist time) - idempotent safe
 
 Revision ID: 0014_patch0100_14_costs_usd_persisted
 Revises: 0013_patch0100_14_thread_acl
 Create Date: 2026-02-18
+
+AO68G notes:
+- This migration must not use sa.Column(..., None), because that generates
+  SQLAlchemy NullType and crashes before SQL reaches PostgreSQL.
+- Use PostgreSQL-native DDL with IF NOT EXISTS to avoid DuplicateColumn.
+- Keep all operations idempotent and transaction-safe.
 """
 
 from alembic import op
-import sqlalchemy as sa
 from sqlalchemy import text as sa_text
 
-revision = '0014_patch0100_14_costs_usd_persisted'
-down_revision = '0013_patch0100_14_thread_acl'
+
+revision = "0014_patch0100_14_costs_usd_persisted"
+down_revision = "0013_patch0100_14_thread_acl"
 branch_labels = None
 depends_on = None
 
 
-def _col_exists(conn, table, column):
-    """Check if a column exists (PostgreSQL)."""
-    try:
-        result = conn.execute(sa_text(
-            "SELECT 1 FROM information_schema.columns "
-            "WHERE table_name = :tbl AND column_name = :col LIMIT 1"
-        ), {"tbl": table, "col": column}).fetchone()
-        return result is not None
-    except Exception:
-        return False
+def _table_exists(conn, table_name: str) -> bool:
+    row = conn.execute(
+        sa_text(
+            """
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = current_schema()
+              AND table_name = :table_name
+            LIMIT 1
+            """
+        ),
+        {"table_name": table_name},
+    ).fetchone()
+    return row is not None
 
 
-def upgrade():
+def upgrade() -> None:
     conn = op.get_bind()
 
-    # Add new columns to cost_events if they don't exist
-    new_cols = [
-        ("input_cost_usd", "NUMERIC(12,6) NOT NULL DEFAULT 0"),
-        ("output_cost_usd", "NUMERIC(12,6) NOT NULL DEFAULT 0"),
-        ("total_cost_usd", "NUMERIC(12,6) NOT NULL DEFAULT 0"),
-        ("pricing_version", "VARCHAR(64) NOT NULL DEFAULT '2026-02-18'"),
-        ("pricing_snapshot", "TEXT"),
-    ]
+    # Defensive guard. In the intended chain, cost_events is created earlier.
+    # If it is not present, do not create a partial incompatible table here.
+    if not _table_exists(conn, "cost_events"):
+        return
 
-    for col_name, col_type in new_cols:
-        if not _col_exists(conn, "cost_events", col_name):
-            op.add_column("cost_events", sa.Column(col_name, sa.Text() if col_type == "TEXT" else None))
-            # Use raw SQL for precise type control
-            try:
-                conn.execute(sa_text(f"ALTER TABLE cost_events ADD COLUMN {col_name} {col_type}"))
-            except Exception:
-                pass  # Column may have been added by the op.add_column above
+    # PostgreSQL-native idempotent DDL. Avoid Alembic op.add_column with a
+    # dynamic/None type, because that emits NullType and fails at compile time.
+    conn.execute(
+        sa_text(
+            """
+            ALTER TABLE cost_events
+              ADD COLUMN IF NOT EXISTS input_cost_usd NUMERIC(12,6) NOT NULL DEFAULT 0,
+              ADD COLUMN IF NOT EXISTS output_cost_usd NUMERIC(12,6) NOT NULL DEFAULT 0,
+              ADD COLUMN IF NOT EXISTS total_cost_usd NUMERIC(12,6) NOT NULL DEFAULT 0,
+              ADD COLUMN IF NOT EXISTS pricing_version VARCHAR(64) NOT NULL DEFAULT '2026-02-18',
+              ADD COLUMN IF NOT EXISTS pricing_snapshot TEXT
+            """
+        )
+    )
 
-    # Create composite index for admin queries
-    try:
-        op.create_index('ix_cost_events_org_created', 'cost_events', ['org_slug', 'created_at'])
-    except Exception:
-        pass
+    conn.execute(
+        sa_text(
+            """
+            CREATE INDEX IF NOT EXISTS ix_cost_events_org_created
+            ON cost_events (org_slug, created_at)
+            """
+        )
+    )
 
-    # Backfill: compute total_cost_usd from existing cost_usd where total_cost_usd = 0
-    try:
-        conn.execute(sa_text("""
-            UPDATE cost_events
-            SET total_cost_usd = cost_usd,
-                input_cost_usd = 0,
-                output_cost_usd = cost_usd
-            WHERE total_cost_usd = 0 AND cost_usd > 0
-        """))
-    except Exception:
-        import logging
-        logging.getLogger("alembic").warning("COST_BACKFILL_PARTIAL")
+    # Best-effort backfill. Guard each source column because consolidated DBs
+    # may have partial historical schemas.
+    conn.execute(
+        sa_text(
+            """
+            DO $$
+            BEGIN
+              IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'cost_events'
+                  AND column_name = 'cost_usd'
+              ) THEN
+                UPDATE cost_events
+                   SET total_cost_usd = COALESCE(NULLIF(total_cost_usd, 0), cost_usd),
+                       input_cost_usd = COALESCE(input_cost_usd, 0),
+                       output_cost_usd = CASE
+                         WHEN COALESCE(output_cost_usd, 0) = 0
+                         THEN COALESCE(cost_usd, 0)
+                         ELSE output_cost_usd
+                       END
+                 WHERE COALESCE(total_cost_usd, 0) = 0
+                   AND COALESCE(cost_usd, 0) > 0;
+              END IF;
+            END $$;
+            """
+        )
+    )
 
 
-def downgrade():
-    try:
-        op.drop_index('ix_cost_events_org_created', table_name='cost_events')
-    except Exception:
-        pass
-    for col in ['input_cost_usd', 'output_cost_usd', 'total_cost_usd', 'pricing_version', 'pricing_snapshot']:
-        try:
-            op.drop_column('cost_events', col)
-        except Exception:
-            pass
+def downgrade() -> None:
+    conn = op.get_bind()
+
+    conn.execute(sa_text("DROP INDEX IF EXISTS ix_cost_events_org_created"))
+
+    if _table_exists(conn, "cost_events"):
+        conn.execute(
+            sa_text(
+                """
+                ALTER TABLE cost_events
+                  DROP COLUMN IF EXISTS pricing_snapshot,
+                  DROP COLUMN IF EXISTS pricing_version,
+                  DROP COLUMN IF EXISTS total_cost_usd,
+                  DROP COLUMN IF EXISTS output_cost_usd,
+                  DROP COLUMN IF EXISTS input_cost_usd
+                """
+            )
+        )
