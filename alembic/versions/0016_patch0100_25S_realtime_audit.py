@@ -1,64 +1,163 @@
 """PATCH0100_25S — Realtime sessions + events (auditability for WebRTC voice)
 
-Revision ID: 0016
-Revises: 0015
+Revision ID: 0016_patch0100_25S_realtime_audit
+Revises: 0015_patch0100_23_composite_indexes
 Create Date: 2026-02-26
 
-Adds:
-  - realtime_sessions
-  - realtime_events
-  - indexes for org_slug/session_id/thread_id
-"""
-from alembic import op
-import sqlalchemy as sa
+AO68H idempotent-safe version.
 
-revision = '0016_patch0100_25S_realtime_audit'
-down_revision = '0015_patch0100_23_composite_indexes'
+Operational goal:
+- Avoid DuplicateTable when realtime_sessions / realtime_events were already
+  created by schema boot/reconcile or a previous partial migration attempt.
+- Avoid Alembic op.create_table() transaction aborts on PostgreSQL.
+- Keep migration explicit and safe without importing app runtime.
+"""
+
+from alembic import op
+
+
+revision = "0016_patch0100_25S_realtime_audit"
+down_revision = "0015_patch0100_23_composite_indexes"
 branch_labels = None
 depends_on = None
 
 
-def upgrade():
-    op.create_table(
-        'realtime_sessions',
-        sa.Column('id', sa.String(), primary_key=True),
-        sa.Column('org_slug', sa.String(), nullable=False, index=True),
-        sa.Column('thread_id', sa.String(), nullable=False, index=True),
-        sa.Column('agent_id', sa.String(), nullable=True),
-        sa.Column('agent_name', sa.String(), nullable=True),
-        sa.Column('user_id', sa.String(), nullable=True),
-        sa.Column('user_name', sa.String(), nullable=True),
-        sa.Column('model', sa.String(), nullable=True),
-        sa.Column('voice', sa.String(), nullable=True),
-        sa.Column('started_at', sa.BigInteger(), nullable=False),
-        sa.Column('ended_at', sa.BigInteger(), nullable=True),
-        sa.Column('meta', sa.Text(), nullable=True),
+def upgrade() -> None:
+    # Tables first. CREATE TABLE IF NOT EXISTS prevents PostgreSQL transaction abort
+    # when the table already exists.
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS realtime_sessions (
+            id VARCHAR PRIMARY KEY,
+            org_slug VARCHAR NOT NULL,
+            thread_id VARCHAR NOT NULL,
+            agent_id VARCHAR,
+            agent_name VARCHAR,
+            user_id VARCHAR,
+            user_name VARCHAR,
+            model VARCHAR,
+            voice VARCHAR,
+            started_at BIGINT NOT NULL,
+            ended_at BIGINT,
+            meta TEXT
+        );
+        """
     )
 
-    op.create_table(
-        'realtime_events',
-        sa.Column('id', sa.String(), primary_key=True),
-        sa.Column('org_slug', sa.String(), nullable=False, index=True),
-        sa.Column('session_id', sa.String(), nullable=False, index=True),
-        sa.Column('thread_id', sa.String(), nullable=False, index=True),
-        sa.Column('role', sa.String(), nullable=False),
-        sa.Column('agent_id', sa.String(), nullable=True),
-        sa.Column('agent_name', sa.String(), nullable=True),
-        sa.Column('event_type', sa.String(), nullable=False),
-        sa.Column('content', sa.Text(), nullable=True),
-        sa.Column('created_at', sa.BigInteger(), nullable=False),
-        sa.Column('meta', sa.Text(), nullable=True),
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS realtime_events (
+            id VARCHAR PRIMARY KEY,
+            org_slug VARCHAR NOT NULL,
+            session_id VARCHAR NOT NULL,
+            thread_id VARCHAR NOT NULL,
+            role VARCHAR NOT NULL,
+            agent_id VARCHAR,
+            agent_name VARCHAR,
+            event_type VARCHAR NOT NULL,
+            content TEXT,
+            created_at BIGINT NOT NULL,
+            meta TEXT
+        );
+        """
     )
 
-    # Composite indexes for common queries
-    op.create_index('ix_rt_events_org_session', 'realtime_events', ['org_slug', 'session_id'])
-    op.create_index('ix_rt_events_org_thread', 'realtime_events', ['org_slug', 'thread_id'])
-    op.create_index('ix_rt_sessions_org_thread', 'realtime_sessions', ['org_slug', 'thread_id'])
+    # Column reconciliation for partially-created tables.
+    op.execute(
+        """
+        ALTER TABLE realtime_sessions
+            ADD COLUMN IF NOT EXISTS org_slug VARCHAR,
+            ADD COLUMN IF NOT EXISTS thread_id VARCHAR,
+            ADD COLUMN IF NOT EXISTS agent_id VARCHAR,
+            ADD COLUMN IF NOT EXISTS agent_name VARCHAR,
+            ADD COLUMN IF NOT EXISTS user_id VARCHAR,
+            ADD COLUMN IF NOT EXISTS user_name VARCHAR,
+            ADD COLUMN IF NOT EXISTS model VARCHAR,
+            ADD COLUMN IF NOT EXISTS voice VARCHAR,
+            ADD COLUMN IF NOT EXISTS started_at BIGINT,
+            ADD COLUMN IF NOT EXISTS ended_at BIGINT,
+            ADD COLUMN IF NOT EXISTS meta TEXT;
+        """
+    )
+
+    op.execute(
+        """
+        ALTER TABLE realtime_events
+            ADD COLUMN IF NOT EXISTS org_slug VARCHAR,
+            ADD COLUMN IF NOT EXISTS session_id VARCHAR,
+            ADD COLUMN IF NOT EXISTS thread_id VARCHAR,
+            ADD COLUMN IF NOT EXISTS role VARCHAR,
+            ADD COLUMN IF NOT EXISTS agent_id VARCHAR,
+            ADD COLUMN IF NOT EXISTS agent_name VARCHAR,
+            ADD COLUMN IF NOT EXISTS event_type VARCHAR,
+            ADD COLUMN IF NOT EXISTS content TEXT,
+            ADD COLUMN IF NOT EXISTS created_at BIGINT,
+            ADD COLUMN IF NOT EXISTS meta TEXT;
+        """
+    )
+
+    # Primary keys: only try to add if a PK is missing. This is best-effort and
+    # intentionally does not validate data uniqueness if the table was created
+    # externally with inconsistent rows.
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conrelid = 'realtime_sessions'::regclass
+                  AND contype = 'p'
+            ) THEN
+                ALTER TABLE realtime_sessions ADD CONSTRAINT realtime_sessions_pkey PRIMARY KEY (id);
+            END IF;
+        EXCEPTION WHEN duplicate_object THEN
+            NULL;
+        END $$;
+        """
+    )
+
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conrelid = 'realtime_events'::regclass
+                  AND contype = 'p'
+            ) THEN
+                ALTER TABLE realtime_events ADD CONSTRAINT realtime_events_pkey PRIMARY KEY (id);
+            END IF;
+        EXCEPTION WHEN duplicate_object THEN
+            NULL;
+        END $$;
+        """
+    )
+
+    # Indexes. Includes indexes equivalent to SQLAlchemy index=True plus the
+    # composite indexes from the original migration.
+    op.execute("CREATE INDEX IF NOT EXISTS ix_realtime_sessions_org_slug ON realtime_sessions (org_slug);")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_realtime_sessions_thread_id ON realtime_sessions (thread_id);")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_rt_sessions_org_thread ON realtime_sessions (org_slug, thread_id);")
+
+    op.execute("CREATE INDEX IF NOT EXISTS ix_realtime_events_org_slug ON realtime_events (org_slug);")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_realtime_events_session_id ON realtime_events (session_id);")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_realtime_events_thread_id ON realtime_events (thread_id);")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_rt_events_org_session ON realtime_events (org_slug, session_id);")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_rt_events_org_thread ON realtime_events (org_slug, thread_id);")
 
 
-def downgrade():
-    op.drop_index('ix_rt_sessions_org_thread', table_name='realtime_sessions')
-    op.drop_index('ix_rt_events_org_thread', table_name='realtime_events')
-    op.drop_index('ix_rt_events_org_session', table_name='realtime_events')
-    op.drop_table('realtime_events')
-    op.drop_table('realtime_sessions')
+def downgrade() -> None:
+    # Conservative rollback: remove indexes created by this migration, but avoid
+    # dropping realtime audit tables automatically because they may contain
+    # operational audit data or may have been created by schema reconciliation.
+    op.execute("DROP INDEX IF EXISTS ix_rt_events_org_thread;")
+    op.execute("DROP INDEX IF EXISTS ix_rt_events_org_session;")
+    op.execute("DROP INDEX IF EXISTS ix_realtime_events_thread_id;")
+    op.execute("DROP INDEX IF EXISTS ix_realtime_events_session_id;")
+    op.execute("DROP INDEX IF EXISTS ix_realtime_events_org_slug;")
+
+    op.execute("DROP INDEX IF EXISTS ix_rt_sessions_org_thread;")
+    op.execute("DROP INDEX IF EXISTS ix_realtime_sessions_thread_id;")
+    op.execute("DROP INDEX IF EXISTS ix_realtime_sessions_org_slug;")
