@@ -1,9 +1,4 @@
-"""Patch Irresistivel v2 planner analytics
-
-Revision ID: 0023_patch_irresistivel_v2_planner_analytics
-Revises: 0022_patch_irresistivel_v1_runtime_memory
-Create Date: 2026-04-02 00:30:00.000000
-"""
+"""Patch Irresistivel v2 planner analytics (idempotent safe)"""
 from alembic import op
 import sqlalchemy as sa
 
@@ -12,19 +7,26 @@ down_revision = "0022_patch_irresistivel_v1_runtime_memory"
 branch_labels = None
 depends_on = None
 
+
 def upgrade():
-    op.create_table(
-        "trial_events",
-        sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("org_slug", sa.String(), nullable=False),
-        sa.Column("user_id", sa.String(), nullable=False),
-        sa.Column("thread_id", sa.String(), nullable=True),
-        sa.Column("event_name", sa.String(), nullable=False),
-        sa.Column("payload_json", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.BigInteger(), nullable=False),
-    )
-    op.create_index("ix_trial_events_org_user_created", "trial_events", ["org_slug", "user_id", "created_at"], unique=False)
+    bind = op.get_bind()
+    bind.execute(sa.text("""
+        CREATE TABLE IF NOT EXISTS trial_events (
+            id VARCHAR PRIMARY KEY,
+            org_slug VARCHAR NOT NULL,
+            user_id VARCHAR NOT NULL,
+            thread_id VARCHAR,
+            event_name VARCHAR NOT NULL,
+            payload_json TEXT,
+            created_at BIGINT NOT NULL
+        )
+    """))
+    bind.execute(sa.text("""
+        CREATE INDEX IF NOT EXISTS ix_trial_events_org_user_created
+        ON trial_events (org_slug, user_id, created_at)
+    """))
+
 
 def downgrade():
-    op.drop_index("ix_trial_events_org_user_created", table_name="trial_events")
-    op.drop_table("trial_events")
+    bind = op.get_bind()
+    bind.execute(sa.text("DROP INDEX IF EXISTS ix_trial_events_org_user_created"))
