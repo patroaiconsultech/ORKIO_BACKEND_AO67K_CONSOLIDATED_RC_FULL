@@ -1,5 +1,5 @@
 # AO67F — Chat Stream Decision Gateway
-# Destino real: app/runtime/chat_stream_decision_gateway.py
+# Destino real: runtime/chat_stream_decision_gateway.py
 # Modo: PATCH_PREMIUM / minimal wiring-ready
 #
 # Objetivo:
@@ -17,6 +17,45 @@ from typing import Any, Dict, Iterable, Optional
 
 CHAT_STREAM_DECISION_GATEWAY_VERSION = "AO67F_CHAT_STREAM_DECISION_GATEWAY_V2"
 PUBLIC_SPEAKER = "Orkio"
+
+
+def _admin_chat_gateway_override(
+    *,
+    message: Any,
+    user: Any = None,
+    org_slug: Optional[str] = None,
+    user_id: Optional[str] = None,
+    thread_id: Optional[str] = None,
+    visible_agent: Any = None,
+    target_agent_slug: Any = None,
+    dest_mode: Any = None,
+    route_plan: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    """AO68M: admin-only bypass for the public internal-agent block.
+
+    This is deliberately fail-open. If the hook is absent or errors, the existing
+    public gateway behavior remains unchanged.
+    """
+    try:
+        try:
+            from app.runtime.admin_chat_orchestration_hooks import build_admin_chat_gateway_override
+        except Exception:
+            from runtime.admin_chat_orchestration_hooks import build_admin_chat_gateway_override
+
+        return build_admin_chat_gateway_override(
+            message=message,
+            user=user,
+            org_slug=org_slug,
+            visible_agent=visible_agent,
+            target_agent_slug=target_agent_slug,
+            dest_mode=dest_mode,
+            route_plan=route_plan,
+            thread_id=thread_id,
+            user_id=user_id,
+        )
+    except Exception:
+        return None
+
 
 
 def _env_bool(name: str, default: bool = True) -> bool:
@@ -184,6 +223,30 @@ def build_public_chat_gateway_decision(
         if commit_memory is None
         else bool(commit_memory)
     )
+
+    admin_override = _admin_chat_gateway_override(
+        message=message,
+        user=user,
+        org_slug=final_org_slug,
+        user_id=final_user_id,
+        thread_id=final_thread_id,
+        visible_agent=visible_agent,
+        target_agent_slug=target_agent_slug,
+        dest_mode=dest_mode,
+        route_plan=route_plan,
+    )
+    if admin_override:
+        memory_update = _update_journey_memory_if_requested(
+            db,
+            message=message,
+            org_slug=final_org_slug,
+            user_id=final_user_id,
+            thread_id=final_thread_id,
+            commit_memory=should_commit_memory,
+        )
+        admin_override["journey_memory_update"] = memory_update
+        admin_override["commit_memory"] = should_commit_memory
+        return admin_override
 
     prior_memory = _load_prior_journey_memory(
         db,
