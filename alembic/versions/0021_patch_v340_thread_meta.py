@@ -1,9 +1,4 @@
-"""patch v3.4.0 thread meta for board/memory context
-
-Revision ID: 0021_patch_v340_thread_meta
-Revises: 0020_patch_v331a_onboarding_profile
-Create Date: 2026-03-27 00:00:00.000000
-"""
+"""PATCH v3.4.0 — thread meta (idempotent safe)"""
 from alembic import op
 import sqlalchemy as sa
 
@@ -12,10 +7,18 @@ down_revision = "0020_patch_v331a_onboarding_profile"
 branch_labels = None
 depends_on = None
 
+
 def upgrade():
-    with op.batch_alter_table("threads") as batch_op:
-        batch_op.add_column(sa.Column("meta", sa.Text(), nullable=True))
+    bind = op.get_bind()
+    bind.execute(sa.text("""
+        ALTER TABLE threads
+        ADD COLUMN IF NOT EXISTS meta TEXT
+    """))
+
 
 def downgrade():
-    with op.batch_alter_table("threads") as batch_op:
-        batch_op.drop_column("meta")
+    bind = op.get_bind()
+    bind.execute(sa.text("""
+        ALTER TABLE threads
+        DROP COLUMN IF EXISTS meta
+    """))
