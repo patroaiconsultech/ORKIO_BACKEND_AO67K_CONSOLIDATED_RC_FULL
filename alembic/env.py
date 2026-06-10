@@ -1,16 +1,24 @@
 """Alembic migration environment for Orkio API.
 
-AO68A BOOT NAMESPACE FIX
-- The AO67K consolidated repository is checked out at /app in Railway.
-- Runtime code imports modules as `app.*` and uses package-relative imports.
-- When Alembic executes from /app, Python's default sys.path points at /app,
-  so `import app.db` looks for /app/app/db.py and fails.
-- We insert the parent directory of the project root into sys.path so /app can
-  be resolved as the `app` namespace package.
+AO68F CASCADE ROOT GUARD
+========================
 
-This file intentionally keeps the app-package import contract:
-    from app.db import Base
-    from app import models
+Operational goal:
+- Run Alembic migrations without importing the runtime application package.
+- Avoid triggering boot-time schema reconcilers before Alembic.
+- Keep /app importability for migrations that explicitly need it, but do not
+  import app.db, app.models, app.main, services, runtime, or other side-effect
+  modules from env.py.
+
+Why this matters:
+- The previous env.py imported `from app import models`.
+- In the AO67K consolidated runtime, importing runtime/model modules can trigger
+  boot schema reconciliation before Alembic runs.
+- That creates tables/columns first, then migrations try to create them again,
+  causing DuplicateTable/DuplicateColumn cascades.
+
+This env.py is migration-only and intentionally sets target_metadata=None.
+Alembic upgrade does not require ORM metadata to apply explicit migration files.
 """
 
 from __future__ import annotations
@@ -25,21 +33,15 @@ from sqlalchemy import engine_from_config, pool
 
 
 # ---------------------------------------------------------------------------
-# AO68A namespace bootstrap
+# Namespace bootstrap without importing the runtime app.
 # ---------------------------------------------------------------------------
-# /app/alembic/env.py -> project_root=/app -> parent=/
-# With "/" on sys.path, Python can import /app as the namespace package `app`.
 _THIS_FILE = Path(__file__).resolve()
-_PROJECT_ROOT = _THIS_FILE.parents[1]
-_PROJECT_PARENT = _PROJECT_ROOT.parent
+_PROJECT_ROOT = _THIS_FILE.parents[1]      # /app
+_PROJECT_PARENT = _PROJECT_ROOT.parent     # /
 
-_project_parent_str = str(_PROJECT_PARENT)
-if _project_parent_str not in sys.path:
-    sys.path.insert(0, _project_parent_str)
-
-
-from app.db import Base  # noqa: E402
-from app import models  # noqa: F401,E402 - import registers ORM models on Base.metadata
+for _path in (str(_PROJECT_PARENT), str(_PROJECT_ROOT)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 
 config = context.config
@@ -47,7 +49,10 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-target_metadata = Base.metadata
+
+# Deliberately do not import app.db/Base/models here.
+# Explicit migration scripts are the source of truth for `alembic upgrade`.
+target_metadata = None
 
 
 def _clean_database_url(raw: str | None) -> str:
@@ -60,10 +65,8 @@ def _clean_database_url(raw: str | None) -> str:
     if not url:
         return ""
 
-    # Defensive normalization for Railway copy/paste casing mistakes.
     url = url.replace("Postgres.railway.internal", "postgres.railway.internal")
 
-    # SQLAlchemy prefers postgresql:// over postgres://.
     if url.startswith("postgres://"):
         url = "postgresql://" + url[len("postgres://") :]
 
@@ -71,17 +74,16 @@ def _clean_database_url(raw: str | None) -> str:
 
 
 def _runtime_database_url() -> str:
-    """Resolve the DB URL from runtime env, preferring public URL for Alembic.
+    """Resolve DB URL from runtime env.
 
-    In Railway runtime, DATABASE_URL usually points to the internal network.
-    DATABASE_PUBLIC_URL / DATABASE_URL_PUBLIC are useful for external/diagnostic
-    execution. The fallback order below preserves the previous contract.
+    Prefer DATABASE_URL inside Railway. Keep public aliases as fallback for
+    local/diagnostic execution.
     """
 
     return (
-        _clean_database_url(os.getenv("DATABASE_PUBLIC_URL"))
+        _clean_database_url(os.getenv("DATABASE_URL"))
+        or _clean_database_url(os.getenv("DATABASE_PUBLIC_URL"))
         or _clean_database_url(os.getenv("DATABASE_URL_PUBLIC"))
-        or _clean_database_url(os.getenv("DATABASE_URL"))
     )
 
 
@@ -96,6 +98,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         compare_type=True,
         dialect_opts={"paramstyle": "named"},
+        transaction_per_migration=True,
     )
 
     with context.begin_transaction():
@@ -124,6 +127,7 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
+            transaction_per_migration=True,
         )
 
         with context.begin_transaction():
