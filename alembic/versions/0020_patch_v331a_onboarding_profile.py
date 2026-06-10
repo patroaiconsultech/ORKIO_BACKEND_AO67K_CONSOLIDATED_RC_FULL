@@ -1,9 +1,4 @@
-"""patch v3.3.1a strategic onboarding profile
-
-Revision ID: 0020_patch_v331a_onboarding_profile
-Revises: 0019_patch0100_28_3_idempotency
-Create Date: 2026-03-18 00:00:00.000000
-"""
+"""PATCH v3.3.1a — onboarding profile fields (idempotent safe)"""
 from alembic import op
 import sqlalchemy as sa
 
@@ -12,21 +7,29 @@ down_revision = "0019"
 branch_labels = None
 depends_on = None
 
+
 def upgrade():
-    with op.batch_alter_table("users") as batch_op:
-        batch_op.add_column(sa.Column("company", sa.String(), nullable=True))
-        batch_op.add_column(sa.Column("profile_role", sa.String(), nullable=True))
-        batch_op.add_column(sa.Column("user_type", sa.String(), nullable=True))
-        batch_op.add_column(sa.Column("intent", sa.String(), nullable=True))
-        batch_op.add_column(sa.Column("notes", sa.Text(), nullable=True))
-        batch_op.add_column(sa.Column("onboarding_completed", sa.Boolean(), nullable=False, server_default=sa.false()))
-    op.execute("UPDATE users SET onboarding_completed = FALSE WHERE onboarding_completed IS NULL")
+    bind = op.get_bind()
+    bind.execute(sa.text("""
+        ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS company VARCHAR,
+        ADD COLUMN IF NOT EXISTS profile_role VARCHAR,
+        ADD COLUMN IF NOT EXISTS user_type VARCHAR,
+        ADD COLUMN IF NOT EXISTS intent VARCHAR,
+        ADD COLUMN IF NOT EXISTS notes TEXT,
+        ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN NOT NULL DEFAULT false
+    """))
+    bind.execute(sa.text("UPDATE users SET onboarding_completed = false WHERE onboarding_completed IS NULL"))
+
 
 def downgrade():
-    with op.batch_alter_table("users") as batch_op:
-        batch_op.drop_column("onboarding_completed")
-        batch_op.drop_column("notes")
-        batch_op.drop_column("intent")
-        batch_op.drop_column("user_type")
-        batch_op.drop_column("profile_role")
-        batch_op.drop_column("company")
+    bind = op.get_bind()
+    bind.execute(sa.text("""
+        ALTER TABLE users
+        DROP COLUMN IF EXISTS onboarding_completed,
+        DROP COLUMN IF EXISTS notes,
+        DROP COLUMN IF EXISTS intent,
+        DROP COLUMN IF EXISTS user_type,
+        DROP COLUMN IF EXISTS profile_role,
+        DROP COLUMN IF EXISTS company
+    """))
