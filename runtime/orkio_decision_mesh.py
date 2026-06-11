@@ -83,7 +83,7 @@ except Exception:  # pragma: no cover
         return {"handled": False, "reason": "amcham_policy_unavailable"}
 
 
-ORKIO_DECISION_MESH_VERSION = "AO67B_ORKIO_DECISION_MESH_V1"
+ORKIO_DECISION_MESH_VERSION = "AO68G_PATROAI_IDENTITY_AMCHAM_ON_DEMAND_V1"
 
 
 def _env_bool(name: str, default: bool = True) -> bool:
@@ -165,7 +165,43 @@ def _technical_governance_public_answer() -> str:
     )
 
 
-def _fallback_public_journey_answer(intent: str, memory_snapshot: Dict[str, Any]) -> str:
+def _message_mentions_amcham(value: Any) -> bool:
+    normalized = str(value or "").lower()
+    # Local lightweight normalization without importing extra dependencies.
+    for src, dst in (("ã", "a"), ("á", "a"), ("à", "a"), ("â", "a"), ("é", "e"), ("ê", "e"), ("í", "i"), ("ó", "o"), ("ô", "o"), ("ú", "u"), ("ç", "c")):
+        normalized = normalized.replace(src, dst)
+    return any(marker in normalized for marker in ("amcham", "associado amcham", "associados amcham", "amcham rs"))
+
+
+def _patroai_identity_answer() -> str:
+    return (
+        "A Patroai Consultech é a empresa criadora, mantenedora e detentora da tecnologia Orkio. "
+        "Sua atuação une inteligência artificial aplicada, agentes personalizados, diagnóstico consultivo, governança e clareza executiva "
+        "para ajudar pessoas e empresas a transformar ideias, problemas e objetivos em próximos passos concretos.\n\n"
+        "A Patroai nasce com uma visão de tecnologia com propósito: servir com responsabilidade, proteger a confiança do usuário, "
+        "organizar conhecimento e ampliar a capacidade humana de decidir, criar e executar.\n\n"
+        "Daniel Graebin é o founder e CEO da Patroai Consultech."
+    )
+
+
+def _amcham_identity_answer() -> str:
+    return (
+        "A Patroai Consultech é empresa membro da AMCHAM RS e tem como missão levar disrupção digital aos associados por meio da tecnologia Orkio, "
+        "unindo IA aplicada, agentes personalizados, diagnóstico consultivo e governança.\n\n"
+        "O Orkio pode ser testado pelo chat em situações reais: desenvolvimento profissional, mapeamento de skills, liderança, inovação dentro da empresa, "
+        "projetos de IA, diagnóstico de ideias e criação de novos negócios."
+    )
+
+
+def _fallback_public_journey_answer(intent: str, memory_snapshot: Dict[str, Any], *, current_message: Any = None) -> str:
+    # Identity answers must not be polluted by continuity snippets such as
+    # "na última interação..." because these are institutional facts, not journey
+    # continuation prompts.
+    if intent == "institutional_amcham_patroai":
+        if _message_mentions_amcham(current_message):
+            return _amcham_identity_answer()
+        return _patroai_identity_answer()
+
     continuity = str(memory_snapshot.get("continuity_prompt") or "").strip()
     if intent == "open_conversation":
         return (
@@ -182,10 +218,6 @@ def _fallback_public_journey_answer(intent: str, memory_snapshot: Dict[str, Any]
         "ai_project": "Vamos transformar a ideia de IA em um primeiro projeto claro e testável.",
         "entrepreneurship": "Vamos estruturar o novo negócio começando por problema, público e proposta de valor.",
         "business_or_project_diagnostic": "Vamos organizar o diagnóstico em contexto, risco, oportunidade e próximo passo.",
-        "institutional_amcham_patroai": (
-            "A PATROAI Consultech é a empresa responsável pela tecnologia Orkio. "
-            "A AMCHAM pode testar o Orkio pelo chat, explorando desenvolvimento profissional, skills, networking, liderança, inovação, IA aplicada e novos negócios."
-        ),
         "platform_exploration": "Posso te conduzir por uma exploração guiada da plataforma.",
     }.get(intent, "Posso organizar sua necessidade em uma trilha simples.")
 
@@ -289,7 +321,7 @@ def build_orkio_decision_mesh_decision(
         return _base_decision(
             handled=True,
             reason=f"decision_mesh_public_journey_{intent}",
-            answer=_fallback_public_journey_answer(intent, memory_snapshot),
+            answer=_fallback_public_journey_answer(intent, memory_snapshot, current_message=message),
             route=route,
             memory_snapshot=memory_snapshot,
             selected_hooks=selected_hooks,
