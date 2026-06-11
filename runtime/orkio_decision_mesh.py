@@ -95,7 +95,7 @@ except Exception:  # pragma: no cover
         return {"handled": False, "reason": "public_orkio_policy_unavailable"}
 
 
-ORKIO_DECISION_MESH_VERSION = "AO68K_ENGLISH_PREMIUM_CANON_FASTLANE_V1"
+ORKIO_DECISION_MESH_VERSION = "AO68O_PT_AMCHAM_CONTACT_PRE_GUARD_V1"
 
 
 def _env_bool(name: str, default: bool = True) -> bool:
@@ -294,6 +294,46 @@ def build_orkio_decision_mesh_decision(
             memory_snapshot=memory_snapshot,
             selected_hooks=selected_hooks,
         )
+
+    # AO68O: direct public/commercial answers must run before the generic
+    # technical-governance public block. Portuguese questions such as
+    # "Empresas da AMCHAM podem falar com a equipe da Patroai?" can be
+    # misclassified upstream as technical/governance because of "empresa/equipe".
+    # If the public Orkio policy has a deterministic contact/site/identity answer,
+    # delegate immediately and avoid the generic beta-text fallback.
+    public_orkio_pre_guard = build_public_orkio_policy_decision(
+        message,
+        visible_agent=visible_agent,
+        target_agent_slug=target_agent_slug,
+        dest_mode=dest_mode,
+        route_plan=route_plan,
+    )
+    direct_reasons_pre_guard = {
+        "public_human_contact_whatsapp",
+        "public_official_site_and_contact",
+        "public_amcham_on_demand",
+        "public_patroai_identity",
+        "public_orkio_platform_identity",
+        "public_implementation_process",
+        "public_orkio_factual_created_at",
+    }
+    if public_orkio_pre_guard.get("handled") and str(public_orkio_pre_guard.get("reason") or "") in direct_reasons_pre_guard:
+        answer = str(public_orkio_pre_guard.get("answer") or "").strip()
+        decision = _base_decision(
+            handled=True,
+            reason=f"decision_mesh_delegated_{public_orkio_pre_guard.get('reason')}",
+            answer=answer,
+            route=route,
+            memory_snapshot=memory_snapshot,
+            selected_hooks=selected_hooks,
+        )
+        decision["delegated_policy"] = "public_orkio_policy_module"
+        decision["delegated_decision"] = {
+            "reason": public_orkio_pre_guard.get("reason"),
+            "policy_version": public_orkio_pre_guard.get("policy_version") or PUBLIC_ORKIO_POLICY_VERSION,
+            "runtime_hints": public_orkio_pre_guard.get("runtime_hints"),
+        }
+        return decision
 
     if intent == "technical_governance_request":
         return _base_decision(
