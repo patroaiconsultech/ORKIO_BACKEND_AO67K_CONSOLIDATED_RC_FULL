@@ -15,7 +15,7 @@ from app.services.agent_access_policy import (
     public_agent_catalog_answer,
 )
 
-AMCHAM_PUBLIC_JOURNEY_POLICY_VERSION = "AO68H_PATROAI_RESPONSE_WHATSAPP_CTA_V1"
+AMCHAM_PUBLIC_JOURNEY_POLICY_VERSION = "AO68I_ORKIO_PREMIUM_CANON_FASTLANE_V1"
 
 FUTURE_UNLOCK_NOTICE = (
     "Com a evolução das conversas, o uso correto da ferramenta e a identificação de necessidades específicas, "
@@ -154,10 +154,25 @@ def classify_amcham_public_journey(normalized: str) -> Optional[str]:
         "atendimento humano",
         "contato humano",
         "falar com a equipe",
+        "falar com alguem",
+        "falar com alguém",
+        "quero falar com alguem",
+        "quero falar com alguém",
+        "quero falar com uma pessoa",
+        "quero falar com atendimento",
+        "me conecta com alguem",
+        "me conecta com alguém",
+        "me conecte com alguem",
+        "me conecte com alguém",
         "entrar em contato",
         "contatar alguem",
         "contatar alguém",
+        "telefone",
         "whatsapp",
+        "me da o whatsapp",
+        "me dá o whatsapp",
+        "me manda o whatsapp",
+        "me envie o whatsapp",
         "botao de whatsapp",
         "botão de whatsapp",
         "disponibilize o botao",
@@ -180,8 +195,17 @@ def classify_amcham_public_journey(normalized: str) -> Optional[str]:
         "traga o link",
         "me traga o site",
         "me traga o link",
+        "me traz o site",
+        "me traz o link",
+        "me da o site",
+        "me dá o site",
+        "me passa o site",
+        "me passe o site",
         "qual e o site",
         "qual é o site",
+        "qual o site",
+        "site da patroai",
+        "site da patro ai",
         "link oficial",
         "endereco do site",
         "endereço do site",
@@ -300,8 +324,8 @@ def _base_runtime_hints(reason: str, public_intent: str) -> Dict[str, Any]:
 def _answer_institutional_patroai() -> str:
     return (
         "A Patroai Consultech é a empresa criadora, mantenedora e detentora da tecnologia Orkio. "
-        "Sua atuação une inteligência artificial aplicada, agentes personalizados, diagnóstico consultivo, governança e clareza executiva "
-        "para ajudar pessoas e empresas a transformar ideias, problemas e objetivos em próximos passos concretos.\n\n"
+        "Ela atua unindo consultoria, inteligência artificial aplicada, agentes personalizados, diagnóstico consultivo, governança "
+        "e acompanhamento humano para transformar desafios em clareza, plano e próximos passos concretos.\n\n"
         "A Patroai nasce com uma visão de tecnologia com propósito: servir com responsabilidade, proteger a confiança do usuário, "
         "organizar conhecimento e ampliar a capacidade humana de decidir, criar e executar.\n\n"
         "Daniel Graebin é o founder e CEO da Patroai Consultech."
@@ -310,10 +334,10 @@ def _answer_institutional_patroai() -> str:
 
 def _answer_institutional_orkio() -> str:
     return (
-        "O Orkio é a tecnologia de IA da Patroai Consultech. Ele atua como copiloto inteligente para organizar objetivos, "
-        "diagnosticar ideias, mapear caminhos, apoiar inovação, estruturar projetos e transformar conversas em clareza e próximos passos.\n\n"
-        "Neste beta público, a experiência principal é conduzida pelo Orkio no chat. Recursos e agentes especializados podem ser liberados "
-        "progressivamente conforme contexto, necessidade e governança."
+        "O Orkio é a tecnologia de IA da Patroai Consultech. Ele atua como uma camada consultiva de inteligência para conversar, "
+        "entender contexto, organizar objetivos, diagnosticar demandas e transformar dúvidas em plano, escopo e próximos passos.\n\n"
+        "No beta público, a experiência principal é conduzida pelo Orkio no chat e, quando liberado, por voz em tempo real. "
+        "Em projetos empresariais, a Patroai pode desenhar agentes personalizados, fluxos, contexto, governança e acompanhamento de adoção."
     )
 
 
@@ -329,21 +353,22 @@ def _answer_institutional_amcham() -> str:
 
 def _answer_implementation_process() -> str:
     return (
-        "A implantação da tecnologia Orkio pela Patroai é acompanhada por uma jornada consultiva, não por uma entrega solta de ferramenta.\n\n"
-        "Funciona assim:\n"
-        "1. Diagnóstico: entendemos objetivo, processo atual, usuários e critérios de sucesso.\n"
-        "2. Desenho: estruturamos agentes, fluxos, limites de segurança, dados e integrações necessárias.\n"
-        "3. Piloto: validamos em ambiente controlado, ajustando linguagem, contexto e usabilidade.\n"
-        "4. Adoção: existe suporte humano para orientar uso, responder dúvidas e acompanhar feedback.\n"
-        "5. Evolução: os agentes e fluxos são refinados conforme resultados e necessidades reais.\n\n"
-        "Se quiser falar com a equipe humana da ORKIO/PATROAI, use o WhatsApp:\n\n"
+        "A implantação do Orkio pela Patroai é uma jornada consultiva acompanhada, não uma simples entrega de ferramenta.\n\n"
+        "Funciona em cinco movimentos:\n"
+        "1. Diagnóstico do desafio, dos usuários e dos critérios de sucesso.\n"
+        "2. Desenho dos agentes, fluxos, bases de contexto, integrações e limites de governança.\n"
+        "3. Piloto controlado para validar utilidade, linguagem, segurança e aderência ao processo real.\n"
+        "4. Adoção com suporte humano, treinamento e acompanhamento de feedback.\n"
+        "5. Evolução contínua, ajustando agentes e jornadas conforme resultados.\n\n"
+        "Se quiser falar com a equipe humana da Patroai/Orkio, use o WhatsApp:\n\n"
         f"{get_consultive_whatsapp_url()}"
     )
 
 
 def _answer_human_contact() -> str:
     return (
-        "Sim. Você pode falar com a equipe humana da ORKIO/PATROAI pelo WhatsApp.\n\n"
+        "Claro. Você pode falar com a equipe humana da Patroai/Orkio pelo WhatsApp.\n\n"
+        "A equipe pode entender sua demanda, orientar o melhor caminho e avaliar se faz sentido desenhar uma implantação acompanhada.\n\n"
         f"{get_consultive_whatsapp_url()}"
     )
 
@@ -352,7 +377,7 @@ def _answer_official_site() -> str:
     return (
         "O site institucional da Patroai é:\n\n"
         "https://patroai.com.br/\n\n"
-        "E, se quiser falar diretamente com a equipe humana da ORKIO/PATROAI, use o WhatsApp:\n\n"
+        "Para falar diretamente com a equipe humana da Patroai/Orkio, use o WhatsApp:\n\n"
         f"{get_consultive_whatsapp_url()}"
     )
 
