@@ -21,7 +21,7 @@ from .runtime_feature_flags import (
     is_public_orkio_policy_enabled,
 )
 
-ORKIO_POLICY_VERSION = "AO68I_ORKIO_PREMIUM_CANON_FASTLANE_V1"
+ORKIO_POLICY_VERSION = "AO68K_ENGLISH_PREMIUM_CANON_FASTLANE_V1"
 
 
 def _consultive_cta_text() -> str:
@@ -111,6 +111,47 @@ def normalize_text(value: Any) -> str:
     raw = raw.lower()
     raw = re.sub(r"[^a-z0-9@:/\.\-_\s]+", " ", raw, flags=re.I)
     return re.sub(r"\s+", " ", raw).strip()
+
+
+def _wants_english(normalized: str) -> bool:
+    """Best-effort language intent for deterministic public answers.
+
+    The public fastlane must answer in the user's language for simple
+    institutional, website, WhatsApp and implementation questions. This helper
+    intentionally favors English only when clear English markers are present,
+    preserving pt-BR as the default for the Brazilian public beta.
+    """
+    if not normalized:
+        return False
+    english_markers = [
+        "who is ",
+        "what is ",
+        "what are ",
+        "how does ",
+        "how do ",
+        "how can ",
+        "is there ",
+        "is patroai ",
+        "is orkio ",
+        "related to ",
+        "i want ",
+        "i would like ",
+        "can i ",
+        "could i ",
+        "may i ",
+        "give me ",
+        "website",
+        "official website",
+        "human support",
+        "talk to someone",
+        "talk to a human",
+        "contact someone",
+        "implementation",
+        "deployment",
+        "rollout",
+        "amcham members",
+    ]
+    return _contains_any(normalized, english_markers)
 
 
 def _contains_any(text: str, markers: Iterable[str]) -> bool:
@@ -342,6 +383,11 @@ def _is_explicit_amcham_request(normalized: str) -> bool:
             "membro da amcham",
             "como a amcham pode testar",
             "amcham pode testar",
+            "is patroai related to amcham",
+            "how can amcham members test orkio",
+            "amcham members",
+            "amcham member",
+            "related to amcham",
         ],
     )
 
@@ -368,6 +414,12 @@ def _is_patroai_identity_request(normalized: str) -> bool:
         "patry ai",
         "patrol ai",
         "patroal",
+        "who is patroai",
+        "what is patroai",
+        "who is patroai consultech",
+        "what is patroai consultech",
+        "tell me about patroai",
+        "tell me about patroai consultech",
     ]
     return _contains_any(normalized, markers)
 
@@ -390,6 +442,14 @@ def _is_orkio_platform_request(normalized: str) -> bool:
         "orkio como funciona",
         "urkio",
         "orquio",
+        "what is orkio",
+        "who is orkio",
+        "how does orkio work",
+        "how orkio works",
+        "how does the orkio platform work",
+        "orkio platform",
+        "urkio platform",
+        "how does urkio work",
     ]
     return _contains_any(normalized, platform_markers)
 
@@ -415,6 +475,20 @@ def _is_implementation_request(normalized: str) -> bool:
         "como a patro ai atua",
         "como a patrol ai atua",
         "como a patryai atua",
+        "how does implementation work",
+        "how does the implementation work",
+        "implementation work",
+        "how is implementation done",
+        "how is the implementation done",
+        "deployment process",
+        "implementation process",
+        "rollout process",
+        "onboarding process",
+        "is there human support",
+        "human support",
+        "do you have human support",
+        "does patroai provide support",
+        "is support available",
     ]
     return _contains_any(normalized, implementation_terms)
 
@@ -460,6 +534,24 @@ def _is_human_contact_request(normalized: str) -> bool:
         "contato da patrol ai",
         "falar com a loja",
         "entrar em contato com a loja",
+        "i want to talk to someone",
+        "i want to talk to a person",
+        "i want to talk to a human",
+        "i would like to talk to someone",
+        "talk to someone",
+        "talk to a human",
+        "speak to someone",
+        "speak to a human",
+        "contact someone",
+        "contact the team",
+        "contact patroai",
+        "contact orkio",
+        "human contact",
+        "can i have your whatsapp",
+        "can i have the whatsapp",
+        "give me your whatsapp",
+        "send me the whatsapp",
+        "whatsapp number",
     ]
     return _contains_any(normalized, contact_terms)
 
@@ -489,11 +581,29 @@ def _is_official_site_or_link_request(normalized: str) -> bool:
         "endereço do site",
         "patroai.com",
         "patroai.com.br",
+        "what is the patroai website",
+        "what is patroai website",
+        "what is your website",
+        "what is the website",
+        "patroai website",
+        "official website",
+        "website",
+        "site",
     ]
     return _contains_any(normalized, link_terms)
 
 
-def _patroai_identity_answer() -> str:
+def _patroai_identity_answer(*, english: bool = False) -> str:
+    if english:
+        return (
+            "Patroai Consultech is the company that created, maintains and owns the Orkio technology.\n\n"
+            "Patroai works at the intersection of consulting, applied artificial intelligence and guided implementation: "
+            "it understands the client's challenge, designs personalized agents, organizes context, defines governance boundaries "
+            "and turns conversations into diagnosis, plans and concrete next steps.\n\n"
+            "Its core principle is technology with purpose: clarity before complexity, trust before blind automation, "
+            "and AI as an extension of the human ability to decide, create and execute.\n\n"
+            "Daniel Graebin is the founder and CEO of Patroai Consultech."
+        )
     return (
         "A Patroai Consultech é a empresa criadora, mantenedora e detentora da tecnologia Orkio.\n\n"
         "A Patroai atua na interseção entre consultoria, inteligência artificial aplicada e implantação acompanhada: "
@@ -505,7 +615,16 @@ def _patroai_identity_answer() -> str:
     )
 
 
-def _orkio_platform_answer() -> str:
+def _orkio_platform_answer(*, english: bool = False) -> str:
+    if english:
+        return (
+            "Orkio is Patroai Consultech's AI technology. It works as a consultive intelligence layer: it talks with the user, "
+            "listens to context, organizes goals, identifies paths and turns loose questions into diagnosis, plans and next steps.\n\n"
+            "In the public beta, Orkio can guide users through chat and, when enabled, through real-time voice. In business projects, "
+            "Patroai can design personalized agents, workflows, context bases, safety criteria and adoption journeys.\n\n"
+            "The goal is not only to automate tasks. It is to create a useful, governed and guided AI experience that supports "
+            "decision-making, innovation, implementation and continuous evolution."
+        )
     return (
         "O Orkio é a tecnologia de IA da Patroai Consultech. Ele funciona como uma camada consultiva de inteligência: conversa, "
         "escuta contexto, organiza objetivos, identifica caminhos e transforma dúvidas soltas em diagnóstico, plano e próximos passos.\n\n"
@@ -516,7 +635,18 @@ def _orkio_platform_answer() -> str:
     )
 
 
-def _implementation_process_answer() -> str:
+def _implementation_process_answer(*, english: bool = False) -> str:
+    if english:
+        return _join_with_cta(
+            "Orkio implementation by Patroai is a guided consultive journey, not a loose delivery of a tool.\n\n"
+            "A typical path is:\n"
+            "1. Diagnosis of the challenge, users and success criteria.\n"
+            "2. Design of agents, workflows, context bases, integrations and governance boundaries.\n"
+            "3. Controlled pilot to validate language, usefulness, safety and fit with the real process.\n"
+            "4. Adoption with human support, training, follow-up and feedback reading.\n"
+            "5. Continuous evolution, adjusting agents and journeys based on real outcomes.\n\n"
+            "The difference is the guidance: technology is delivered together with method, governance and human support."
+        )
     return _join_with_cta(
         "A implantação do Orkio pela Patroai é uma jornada consultiva acompanhada, não uma simples entrega de ferramenta.\n\n"
         "O caminho recomendado é:\n"
@@ -529,7 +659,13 @@ def _implementation_process_answer() -> str:
     )
 
 
-def _human_contact_answer() -> str:
+def _human_contact_answer(*, english: bool = False) -> str:
+    if english:
+        return (
+            "Of course. You can talk to the human Patroai/Orkio team through WhatsApp.\n\n"
+            "The team can understand your demand, guide the best next step and evaluate whether a guided implementation makes sense.\n\n"
+            f"{get_consultive_whatsapp_url()}"
+        )
     return (
         "Claro. Você pode falar com a equipe humana da Patroai/Orkio pelo WhatsApp.\n\n"
         "A equipe pode entender sua demanda, orientar o melhor caminho e avaliar se faz sentido desenhar uma implantação acompanhada.\n\n"
@@ -537,7 +673,14 @@ def _human_contact_answer() -> str:
     )
 
 
-def _official_site_answer() -> str:
+def _official_site_answer(*, english: bool = False) -> str:
+    if english:
+        return (
+            "The official Patroai website is:\n\n"
+            "www.patroai.com\n\n"
+            "To talk directly to the human Patroai/Orkio team, use WhatsApp:\n\n"
+            f"{get_consultive_whatsapp_url()}"
+        )
     return (
         "O site institucional da Patroai é:\n\n"
         "www.patroai.com\n\n"
@@ -546,7 +689,14 @@ def _official_site_answer() -> str:
     )
 
 
-def _amcham_on_demand_answer() -> str:
+def _amcham_on_demand_answer(*, english: bool = False) -> str:
+    if english:
+        return (
+            "Patroai Consultech is a member company of AMCHAM RS. Its mission in this context is to bring digital disruption "
+            "to AMCHAM members through Orkio technology, combining applied AI, personalized agents, consultive diagnosis and governance.\n\n"
+            "AMCHAM members can test Orkio with real situations: professional development, skill mapping, leadership, innovation inside companies, "
+            "AI projects, idea diagnosis or new business creation."
+        )
     return (
         "A Patroai Consultech é empresa membro da AMCHAM RS e tem como missão levar disrupção digital aos associados "
         "por meio da tecnologia Orkio, unindo IA aplicada, agentes personalizados, diagnóstico consultivo e governança.\n\n"
@@ -1073,16 +1223,17 @@ def build_public_orkio_policy_decision(
     if _is_natural_voice_no_audit_request(normalized):
         return {"handled": False, "reason": "natural_voice_no_audit_passthrough"}
 
-    # AO68H: direct institutional/contact answers must be deterministic.
-    # This prevents the generic provider from inventing PatroAI/Orkio facts or
-    # saying it cannot provide the WhatsApp/site CTA.
+    # AO68K: direct institutional/contact answers must be deterministic and
+    # language-aware. This prevents English public questions from falling into
+    # pt-BR-only answers or the heavier direct runtime.
+    wants_english = _wants_english(normalized)
     direct_public_answers = [
-        (_is_human_contact_request(normalized), "public_human_contact_whatsapp", "human_contact", _human_contact_answer()),
-        (_is_official_site_or_link_request(normalized), "public_official_site_and_contact", "official_site", _official_site_answer()),
-        (_is_explicit_amcham_request(normalized), "public_amcham_on_demand", "institutional_amcham", _amcham_on_demand_answer()),
-        (_is_patroai_identity_request(normalized), "public_patroai_identity", "institutional_patroai", _patroai_identity_answer()),
-        (_is_orkio_platform_request(normalized), "public_orkio_platform_identity", "institutional_orkio", _orkio_platform_answer()),
-        (_is_implementation_request(normalized), "public_implementation_process", "implementation_process", _implementation_process_answer()),
+        (_is_human_contact_request(normalized), "public_human_contact_whatsapp", "human_contact", _human_contact_answer(english=wants_english)),
+        (_is_official_site_or_link_request(normalized), "public_official_site_and_contact", "official_site", _official_site_answer(english=wants_english)),
+        (_is_explicit_amcham_request(normalized), "public_amcham_on_demand", "institutional_amcham", _amcham_on_demand_answer(english=wants_english)),
+        (_is_orkio_platform_request(normalized), "public_orkio_platform_identity", "institutional_orkio", _orkio_platform_answer(english=wants_english)),
+        (_is_implementation_request(normalized), "public_implementation_process", "implementation_process", _implementation_process_answer(english=wants_english)),
+        (_is_patroai_identity_request(normalized), "public_patroai_identity", "institutional_patroai", _patroai_identity_answer(english=wants_english)),
     ]
     for matched, reason, public_intent, answer in direct_public_answers:
         if matched:
