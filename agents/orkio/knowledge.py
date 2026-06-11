@@ -3,21 +3,36 @@ from __future__ import annotations
 from app.agents.base import KnowledgeCard
 
 
-ORKIO_KNOWLEDGE_VERSION = "AO67C_ORKIO_KNOWLEDGE_V1"
+ORKIO_KNOWLEDGE_VERSION = "AO68G_PATROAI_IDENTITY_AMCHAM_ON_DEMAND_V1"
 
 
 def get_knowledge_cards() -> list[KnowledgeCard]:
     return [
         KnowledgeCard(
-            card_id="orkio.public.amcham_institutional",
+            card_id="orkio.public.patroai_identity",
             agent_id="orkio",
-            title="Jornada pública AMCHAM/Efatà 777",
+            title="Identidade Patroai Consultech e Orkio",
             summary=(
-                "A experiência pública deve apresentar a PATROAI e o Orkio de forma simples, "
-                "explicando como testar por chat em trilhas de carreira, skills, networking, liderança, inovação e negócios."
+                "A Patroai Consultech é a empresa criadora, mantenedora e detentora da tecnologia Orkio. "
+                "Sua atuação une IA aplicada, agentes personalizados, diagnóstico consultivo, governança, clareza executiva e propósito humano. "
+                "Daniel Graebin é founder e CEO da Patroai Consultech."
             ),
-            domains=("amcham", "public_journey", "institutional"),
-            triggers=("amcham", "patroai", "patroaí", "efata", "efatà", "testar o orkio", "como testar"),
+            domains=("patroai", "orkio", "identity", "institutional", "founder"),
+            triggers=("patroai", "patroaí", "patroai consultech", "o que é a patroai", "o que e a patroai", "quem é daniel graebin", "daniel graebin", "founder", "ceo"),
+            public_safe=True,
+            internal_only=False,
+            priority=9,
+        ),
+        KnowledgeCard(
+            card_id="orkio.public.amcham_on_demand",
+            agent_id="orkio",
+            title="AMCHAM RS sob demanda",
+            summary=(
+                "Não cite AMCHAM espontaneamente. Quando perguntado, informe que a Patroai Consultech é empresa membro da AMCHAM RS "
+                "e tem como missão levar disrupção digital aos associados por meio da tecnologia Orkio, unindo IA aplicada, agentes personalizados, diagnóstico consultivo e governança."
+            ),
+            domains=("amcham", "amcham_rs", "public_journey", "institutional"),
+            triggers=("amcham", "amcham rs", "associados amcham", "como a amcham pode testar", "amcham pode testar"),
             public_safe=True,
             internal_only=False,
             priority=10,
