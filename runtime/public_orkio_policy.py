@@ -21,7 +21,7 @@ from .runtime_feature_flags import (
     is_public_orkio_policy_enabled,
 )
 
-ORKIO_POLICY_VERSION = "AO68L_CTA_I18N_V1"
+ORKIO_POLICY_VERSION = "AO68N_AMCHAM_COMPANY_CONTACT_EN_V1"
 
 
 def _consultive_cta_text(*, english: bool = False) -> str:
@@ -156,6 +156,17 @@ def _wants_english(normalized: str) -> bool:
         "deployment",
         "rollout",
         "amcham members",
+        "amcham companies",
+        "amcham member companies",
+        "can amcham",
+        "can amcham companies",
+        "can amcham members",
+        "talk to the patroai team",
+        "talk to the orkio team",
+        "speak to the patroai team",
+        "speak to the orkio team",
+        "contact the patroai team",
+        "contact the orkio team",
     ]
     return _contains_any(normalized, english_markers)
 
@@ -499,6 +510,37 @@ def _is_implementation_request(normalized: str) -> bool:
     return _contains_any(normalized, implementation_terms)
 
 
+def _is_amcham_company_contact_request(normalized: str) -> bool:
+    if not normalized or "amcham" not in normalized:
+        return False
+    return _contains_any(normalized, (
+        "can amcham companies talk",
+        "can amcham companies contact",
+        "can amcham companies speak",
+        "can amcham members talk",
+        "can amcham members contact",
+        "can amcham members speak",
+        "amcham companies talk",
+        "amcham companies contact",
+        "amcham companies speak",
+        "amcham member companies talk",
+        "amcham member companies contact",
+        "amcham member companies speak",
+        "talk to the patroai team",
+        "talk to patroai team",
+        "talk to the orkio team",
+        "talk to orkio team",
+        "speak to the patroai team",
+        "speak to patroai team",
+        "speak to the orkio team",
+        "speak to orkio team",
+        "contact the patroai team",
+        "contact patroai team",
+        "contact the orkio team",
+        "contact orkio team",
+    ))
+
+
 def _is_human_contact_request(normalized: str) -> bool:
     if not normalized:
         return False
@@ -552,6 +594,22 @@ def _is_human_contact_request(normalized: str) -> bool:
         "contact the team",
         "contact patroai",
         "contact orkio",
+        "talk to the patroai team",
+        "talk to patroai team",
+        "talk to the orkio team",
+        "talk to orkio team",
+        "speak to the patroai team",
+        "speak to patroai team",
+        "speak to the orkio team",
+        "speak to orkio team",
+        "contact the patroai team",
+        "contact patroai team",
+        "contact the orkio team",
+        "contact orkio team",
+        "can amcham companies talk",
+        "can amcham companies contact",
+        "can amcham members talk",
+        "can amcham members contact",
         "human contact",
         "can i have your whatsapp",
         "can i have the whatsapp",
@@ -666,11 +724,23 @@ def _implementation_process_answer(*, english: bool = False) -> str:
     )
 
 
-def _human_contact_answer(*, english: bool = False) -> str:
+def _human_contact_answer(*, english: bool = False, amcham_context: bool = False) -> str:
     if english:
+        if amcham_context:
+            return (
+                "Of course. AMCHAM companies can talk to the human Patroai/Orkio team through WhatsApp.\n\n"
+                "The team can understand the company’s demand, guide the best next step and evaluate whether a guided Orkio implementation makes sense.\n\n"
+                f"{get_consultive_whatsapp_url()}"
+            )
         return (
             "Of course. You can talk to the human Patroai/Orkio team through WhatsApp.\n\n"
             "The team can understand your demand, guide the best next step and evaluate whether a guided implementation makes sense.\n\n"
+            f"{get_consultive_whatsapp_url()}"
+        )
+    if amcham_context:
+        return (
+            "Claro. Empresas da AMCHAM podem falar com a equipe humana da Patroai/Orkio pelo WhatsApp.\n\n"
+            "A equipe pode entender a demanda da empresa, orientar o melhor próximo passo e avaliar se faz sentido desenhar uma implantação acompanhada do Orkio.\n\n"
             f"{get_consultive_whatsapp_url()}"
         )
     return (
@@ -1235,7 +1305,7 @@ def build_public_orkio_policy_decision(
     # pt-BR-only answers or the heavier direct runtime.
     wants_english = _wants_english(normalized)
     direct_public_answers = [
-        (_is_human_contact_request(normalized), "public_human_contact_whatsapp", "human_contact", _human_contact_answer(english=wants_english)),
+        (_is_human_contact_request(normalized), "public_human_contact_whatsapp", "human_contact", _human_contact_answer(english=wants_english, amcham_context=_is_amcham_company_contact_request(normalized))),
         (_is_official_site_or_link_request(normalized), "public_official_site_and_contact", "official_site", _official_site_answer(english=wants_english)),
         (_is_explicit_amcham_request(normalized), "public_amcham_on_demand", "institutional_amcham", _amcham_on_demand_answer(english=wants_english)),
         (_is_orkio_platform_request(normalized), "public_orkio_platform_identity", "institutional_orkio", _orkio_platform_answer(english=wants_english)),
