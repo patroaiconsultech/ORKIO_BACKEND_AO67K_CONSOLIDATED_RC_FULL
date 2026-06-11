@@ -1,3 +1,4 @@
+"""AO68B-HF1_ADMIN_AUTH_PARITY — expanded admin detection for chat orchestration."""
 """
 AO68M — Admin Chat Orchestration Hooks
 
@@ -94,7 +95,9 @@ def _admin_emails() -> List[str]:
     for key in (
         "FOUNDER_ADMIN_EMAILS",
         "ORKIO_FOUNDER_EMAILS",
+        "ORKIO_SUPER_ADMIN_EMAILS",
         "ORKIO_ADMIN_EMAILS",
+        "SUPER_ADMIN_EMAILS",
         "ADMIN_EMAILS",
         "MASTER_ADMIN_EMAILS",
     ):
@@ -117,7 +120,18 @@ def is_admin_user(user: Any = None, *, org_slug: Optional[str] = None, route_pla
         return True
     if any(role in admin_roles for role in roles):
         return True
-    if str(_get_value(user, "is_admin", "founder") or "").strip().lower() == "true":
+    if _truthy(_get_value(
+        user,
+        "is_admin",
+        "admin",
+        "admin_console_access",
+        "is_admin_master",
+        "super_admin",
+        "is_super_admin",
+        "founder",
+        "is_founder",
+        "write_approval_authority",
+    ), False):
         return True
 
     # Optional trusted backend route-plan signal. Use only if backend built it,
