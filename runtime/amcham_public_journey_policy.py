@@ -15,7 +15,7 @@ from app.services.agent_access_policy import (
     public_agent_catalog_answer,
 )
 
-AMCHAM_PUBLIC_JOURNEY_POLICY_VERSION = "AO68K_ENGLISH_PREMIUM_CANON_FASTLANE_V1"
+AMCHAM_PUBLIC_JOURNEY_POLICY_VERSION = "AO68M_ENGLISH_AMCHAM_COMPANY_CONTACT_I18N_V1"
 
 FUTURE_UNLOCK_NOTICE = (
     "Com a evolução das conversas, o uso correto da ferramenta e a identificação de necessidades específicas, "
@@ -102,8 +102,18 @@ def _wants_english(normalized: str) -> bool:
             "i want ",
             "i would like ",
             "can i ",
+            "can amcham ",
+            "can companies ",
+            "can members ",
             "could i ",
             "give me ",
+            "amcham companies",
+            "amcham member companies",
+            "talk to the patroai team",
+            "talk to patroai team",
+            "talk to the team",
+            "patroai team",
+            "orkio team",
             "website",
             "official website",
             "human support",
@@ -231,6 +241,20 @@ def classify_amcham_public_journey(normalized: str) -> Optional[str]:
         "contact the team",
         "contact patroai",
         "contact orkio",
+        "talk to the patroai team",
+        "talk to patroai team",
+        "talk to the orkio team",
+        "talk to orkio team",
+        "talk to the team",
+        "speak to the patroai team",
+        "speak to patroai team",
+        "speak to the orkio team",
+        "speak to orkio team",
+        "amcham companies talk to the patroai team",
+        "can amcham companies talk",
+        "can amcham companies contact",
+        "can amcham members talk",
+        "can amcham members contact",
         "human contact",
         "can i have your whatsapp",
         "can i have the whatsapp",
@@ -284,6 +308,9 @@ def classify_amcham_public_journey(normalized: str) -> Optional[str]:
         "how can amcham members test orkio",
         "amcham members",
         "amcham member",
+        "amcham companies",
+        "amcham company",
+        "amcham member companies",
         "related to amcham",
     )):
         return "institutional_amcham"
