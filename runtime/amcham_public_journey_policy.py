@@ -15,7 +15,7 @@ from app.services.agent_access_policy import (
     public_agent_catalog_answer,
 )
 
-AMCHAM_PUBLIC_JOURNEY_POLICY_VERSION = "AO68I_ORKIO_PREMIUM_CANON_FASTLANE_V1"
+AMCHAM_PUBLIC_JOURNEY_POLICY_VERSION = "AO68K_ENGLISH_PREMIUM_CANON_FASTLANE_V1"
 
 FUTURE_UNLOCK_NOTICE = (
     "Com a evolução das conversas, o uso correto da ferramenta e a identificação de necessidades específicas, "
@@ -83,6 +83,39 @@ def normalize_text(value: Any) -> str:
     raw = _strip_accents(value).lower()
     raw = re.sub(r"[^a-z0-9@:/\.\-_\s]+", " ", raw, flags=re.I)
     return re.sub(r"\s+", " ", raw).strip()
+
+
+def _wants_english(normalized: str) -> bool:
+    if not normalized:
+        return False
+    return _contains_any(
+        normalized,
+        (
+            "who is ",
+            "what is ",
+            "how does ",
+            "how can ",
+            "is there ",
+            "is patroai ",
+            "is orkio ",
+            "related to ",
+            "i want ",
+            "i would like ",
+            "can i ",
+            "could i ",
+            "give me ",
+            "website",
+            "official website",
+            "human support",
+            "talk to someone",
+            "talk to a human",
+            "contact someone",
+            "implementation",
+            "deployment",
+            "rollout",
+            "amcham members",
+        ),
+    )
 
 
 def _contains_any(text: str, markers: Iterable[str]) -> bool:
@@ -186,6 +219,24 @@ def classify_amcham_public_journey(normalized: str) -> Optional[str]:
         "contato da patrol ai",
         "falar com a loja",
         "entrar em contato com a loja",
+        "i want to talk to someone",
+        "i want to talk to a human",
+        "i want to talk to a person",
+        "i would like to talk to someone",
+        "talk to someone",
+        "talk to a human",
+        "speak to someone",
+        "speak to a human",
+        "contact someone",
+        "contact the team",
+        "contact patroai",
+        "contact orkio",
+        "human contact",
+        "can i have your whatsapp",
+        "can i have the whatsapp",
+        "give me your whatsapp",
+        "send me the whatsapp",
+        "whatsapp number",
     )):
         return "human_contact"
 
@@ -211,10 +262,30 @@ def classify_amcham_public_journey(normalized: str) -> Optional[str]:
         "endereço do site",
         "patroai.com",
         "patroai.com.br",
+        "what is the patroai website",
+        "what is patroai website",
+        "what is your website",
+        "what is the website",
+        "patroai website",
+        "official website",
+        "website",
+        "site",
     )):
         return "official_site"
 
-    if _contains_any(normalized, ("como a amcham pode testar", "amcham pode testar", "amcham", "associados amcham", "membro da amcham", "amcham rs")):
+    if _contains_any(normalized, (
+        "como a amcham pode testar",
+        "amcham pode testar",
+        "amcham",
+        "associados amcham",
+        "membro da amcham",
+        "amcham rs",
+        "is patroai related to amcham",
+        "how can amcham members test orkio",
+        "amcham members",
+        "amcham member",
+        "related to amcham",
+    )):
         return "institutional_amcham"
     if _contains_any(normalized, (
         "patroai consultech",
@@ -233,6 +304,12 @@ def classify_amcham_public_journey(normalized: str) -> Optional[str]:
         "patry ai",
         "patrol ai",
         "patroal",
+        "who is patroai",
+        "what is patroai",
+        "who is patroai consultech",
+        "what is patroai consultech",
+        "tell me about patroai",
+        "tell me about patroai consultech",
     )):
         return "institutional_patroai"
     if _contains_any(normalized, (
@@ -248,6 +325,14 @@ def classify_amcham_public_journey(normalized: str) -> Optional[str]:
         "como funciona a plataforma",
         "urkio",
         "orquio",
+        "what is orkio",
+        "who is orkio",
+        "how does orkio work",
+        "how orkio works",
+        "how does the orkio platform work",
+        "orkio platform",
+        "urkio platform",
+        "how does urkio work",
     )):
         return "institutional_orkio"
     if _contains_any(normalized, (
@@ -268,6 +353,20 @@ def classify_amcham_public_journey(normalized: str) -> Optional[str]:
         "como a patro ai atua",
         "como a patrol ai atua",
         "como a patryai atua",
+        "how does implementation work",
+        "how does the implementation work",
+        "implementation work",
+        "how is implementation done",
+        "how is the implementation done",
+        "deployment process",
+        "implementation process",
+        "rollout process",
+        "onboarding process",
+        "is there human support",
+        "human support",
+        "do you have human support",
+        "does patroai provide support",
+        "is support available",
     )):
         return "implementation_process"
     if _contains_any(normalized, ("nao sei o que testar", "não sei o que testar", "me conduza", "por onde comecar", "por onde começar", "o que posso fazer", "como usar")):
@@ -321,7 +420,16 @@ def _base_runtime_hints(reason: str, public_intent: str) -> Dict[str, Any]:
     }
 
 
-def _answer_institutional_patroai() -> str:
+def _answer_institutional_patroai(*, english: bool = False) -> str:
+    if english:
+        return (
+            "Patroai Consultech is the company that created, maintains and owns the Orkio technology. "
+            "It combines consulting, applied artificial intelligence, personalized agents, consultive diagnosis, governance "
+            "and human guidance to turn challenges into clarity, plans and concrete next steps.\n\n"
+            "Patroai is built on technology with purpose: serving responsibly, protecting user trust, organizing knowledge "
+            "and expanding the human ability to decide, create and execute.\n\n"
+            "Daniel Graebin is the founder and CEO of Patroai Consultech."
+        )
     return (
         "A Patroai Consultech é a empresa criadora, mantenedora e detentora da tecnologia Orkio. "
         "Ela atua unindo consultoria, inteligência artificial aplicada, agentes personalizados, diagnóstico consultivo, governança "
@@ -332,7 +440,14 @@ def _answer_institutional_patroai() -> str:
     )
 
 
-def _answer_institutional_orkio() -> str:
+def _answer_institutional_orkio(*, english: bool = False) -> str:
+    if english:
+        return (
+            "Orkio is Patroai Consultech's AI technology. It works as a consultive intelligence layer to talk with the user, "
+            "understand context, organize goals, diagnose demands and turn questions into plans, scope and next steps.\n\n"
+            "In the public beta, the main experience is guided by Orkio in chat and, when enabled, through real-time voice. "
+            "In business projects, Patroai can design personalized agents, workflows, context, governance and adoption follow-up."
+        )
     return (
         "O Orkio é a tecnologia de IA da Patroai Consultech. Ele atua como uma camada consultiva de inteligência para conversar, "
         "entender contexto, organizar objetivos, diagnosticar demandas e transformar dúvidas em plano, escopo e próximos passos.\n\n"
@@ -341,7 +456,15 @@ def _answer_institutional_orkio() -> str:
     )
 
 
-def _answer_institutional_amcham() -> str:
+def _answer_institutional_amcham(*, english: bool = False) -> str:
+    if english:
+        return (
+            "Patroai Consultech is a member company of AMCHAM RS. In this context, its mission is to bring digital disruption "
+            "to members through Orkio technology, combining applied AI, personalized agents, consultive diagnosis and governance.\n\n"
+            "In practice, AMCHAM members can test Orkio in real situations: professional development, skill mapping, leadership, "
+            "innovation inside companies, AI projects, idea diagnosis and new business creation.\n\n"
+            "The best way to test it is to bring a concrete goal or problem. From there, I organize context, risks, opportunities and next steps."
+        )
     return (
         "A Patroai Consultech é empresa membro da AMCHAM RS e tem como missão levar disrupção digital aos associados por meio da tecnologia Orkio, "
         "unindo IA aplicada, agentes personalizados, diagnóstico consultivo e governança.\n\n"
@@ -351,7 +474,19 @@ def _answer_institutional_amcham() -> str:
     )
 
 
-def _answer_implementation_process() -> str:
+def _answer_implementation_process(*, english: bool = False) -> str:
+    if english:
+        return (
+            "Orkio implementation by Patroai is a guided consultive journey, not a simple delivery of a tool.\n\n"
+            "It usually works in five movements:\n"
+            "1. Diagnosis of the challenge, users and success criteria.\n"
+            "2. Design of agents, workflows, context bases, integrations and governance boundaries.\n"
+            "3. Controlled pilot to validate usefulness, language, safety and fit with the real process.\n"
+            "4. Adoption with human support, training and feedback follow-up.\n"
+            "5. Continuous evolution, adjusting agents and journeys based on outcomes.\n\n"
+            "To talk to the human Patroai/Orkio team, use WhatsApp:\n\n"
+            f"{get_consultive_whatsapp_url()}"
+        )
     return (
         "A implantação do Orkio pela Patroai é uma jornada consultiva acompanhada, não uma simples entrega de ferramenta.\n\n"
         "Funciona em cinco movimentos:\n"
@@ -365,7 +500,13 @@ def _answer_implementation_process() -> str:
     )
 
 
-def _answer_human_contact() -> str:
+def _answer_human_contact(*, english: bool = False) -> str:
+    if english:
+        return (
+            "Of course. You can talk to the human Patroai/Orkio team through WhatsApp.\n\n"
+            "The team can understand your demand, guide the best next step and evaluate whether a guided implementation makes sense.\n\n"
+            f"{get_consultive_whatsapp_url()}"
+        )
     return (
         "Claro. Você pode falar com a equipe humana da Patroai/Orkio pelo WhatsApp.\n\n"
         "A equipe pode entender sua demanda, orientar o melhor caminho e avaliar se faz sentido desenhar uma implantação acompanhada.\n\n"
@@ -373,7 +514,14 @@ def _answer_human_contact() -> str:
     )
 
 
-def _answer_official_site() -> str:
+def _answer_official_site(*, english: bool = False) -> str:
+    if english:
+        return (
+            "The official Patroai website is:\n\n"
+            "www.patroai.com\n\n"
+            "To talk directly to the human Patroai/Orkio team, use WhatsApp:\n\n"
+            f"{get_consultive_whatsapp_url()}"
+        )
     return (
         "O site institucional da Patroai é:\n\n"
         "www.patroai.com\n\n"
@@ -498,14 +646,19 @@ def _answer_technical_governance_public_block() -> str:
     )
 
 
-def _answer_for_intent(public_intent: str) -> str:
-    answers = {
+def _answer_for_intent(public_intent: str, *, english: bool = False) -> str:
+    language_aware_answers = {
         "institutional_patroai": _answer_institutional_patroai,
         "institutional_orkio": _answer_institutional_orkio,
         "institutional_amcham": _answer_institutional_amcham,
         "implementation_process": _answer_implementation_process,
         "human_contact": _answer_human_contact,
         "official_site": _answer_official_site,
+    }
+    if public_intent in language_aware_answers:
+        return language_aware_answers[public_intent](english=english)
+
+    answers = {
         "platform_exploration": _answer_platform_exploration,
         "professional_development": _answer_professional_development,
         "skills_mapping": _answer_skills_mapping,
@@ -558,7 +711,7 @@ def build_amcham_public_journey_decision(
     )
 
     reason = f"amcham_public_journey_{public_intent}"
-    answer = _answer_for_intent(public_intent)
+    answer = _answer_for_intent(public_intent, english=_wants_english(normalized))
 
     return {
         "handled": True,
