@@ -540,7 +540,7 @@ def _human_contact_answer() -> str:
 def _official_site_answer() -> str:
     return (
         "O site institucional da Patroai é:\n\n"
-        "https://patroai.com.br/\n\n"
+        "www.patroai.com\n\n"
         "Para falar diretamente com a equipe humana da Patroai/Orkio, use o WhatsApp:\n\n"
         f"{get_consultive_whatsapp_url()}"
     )
