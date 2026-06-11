@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional
 
 
-HOOK_REGISTRY_VERSION = "AO67B_HOOK_REGISTRY_V1"
+HOOK_REGISTRY_VERSION = "AO68G_PATROAI_IDENTITY_AMCHAM_ON_DEMAND_V1"
 
 PUBLIC_VISIBLE_AGENT_ID = "orkio"
 PUBLIC_VISIBLE_AGENT_NAME = "Orkio"
@@ -240,9 +240,9 @@ def _seed_hooks() -> None:
     register_hook(HookSpec(
         hook_id="journey.institutional",
         family="journey",
-        label="institucional PATROAI/AMCHAM",
-        description="Explica PATROAI, Orkio e como a comunidade pode testar a plataforma.",
-        triggers=("patroai", "patroaí", "amcham", "efata", "efatà", "testar o orkio", "o que e a patroai"),
+        label="institucional Patroai/Orkio",
+        description="Explica Patroai, Orkio e, somente quando solicitado, a relação com AMCHAM RS.",
+        triggers=("patroai", "patroaí", "patroai consultech", "o que e a patroai", "o que é a patroai", "orkio", "testar o orkio", "amcham", "amcham rs", "associados amcham"),
         priority=20,
         synthesis_role="answer_public_institutional",
     ))
