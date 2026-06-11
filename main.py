@@ -1816,6 +1816,151 @@ def _user_has_admin_console_access(u: Optional[User]) -> bool:
     return bool(has_admin_console_access(u))
 
 
+# AO68B-HF2 — ADMIN INTERNAL AGENT FASTPATH BYPASS
+# Objetivo: impedir que pedidos administrativos explícitos para agentes internos
+# (@Chris/@Orion/etc.) sejam capturados pelos fast-paths públicos de beta
+# (AO66B/Orkio público/Chris público/Orion público) antes da orquestração admin.
+# Patch mínimo: somente calcula bypass; não executa agente, não escreve, não muda RBAC.
+def _ao68b_split_env_emails(value: Any) -> List[str]:
+    raw = str(value or "").strip()
+    if not raw:
+        return []
+    parts = re.split(r"[;,\s]+", raw)
+    out: List[str] = []
+    seen = set()
+    for item in parts:
+        email = str(item or "").strip().lower()
+        if not email or "@" not in email or email in seen:
+            continue
+        seen.add(email)
+        out.append(email)
+    return out
+
+
+def _ao68b_payload_email(payload: Optional[Dict[str, Any]]) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    for key in ("email", "user_email", "preferred_email", "login_email"):
+        value = str(payload.get(key) or "").strip().lower()
+        if value:
+            return value
+    nested = payload.get("user")
+    if isinstance(nested, dict):
+        return _ao68b_payload_email(nested)
+    return ""
+
+
+def _ao68b_payload_has_admin_authority(payload: Optional[Dict[str, Any]]) -> bool:
+    if not isinstance(payload, dict):
+        return False
+
+    try:
+        authority = build_admin_authority_context(payload)
+        if isinstance(authority, dict) and (
+            authority.get("admin_console_access")
+            or authority.get("is_admin_master")
+            or authority.get("write_approval_authority")
+        ):
+            return True
+    except Exception:
+        pass
+
+    truthy_keys = (
+        "admin",
+        "is_admin",
+        "admin_console_access",
+        "is_admin_master",
+        "is_super_admin",
+        "write_approval_authority",
+        "founder_admin",
+    )
+    for key in truthy_keys:
+        if bool(payload.get(key)):
+            return True
+
+    role = str(payload.get("role") or "").strip().lower()
+    if role in {"admin", "super_admin", "founder_admin", "admin_master"}:
+        return True
+
+    email = _ao68b_payload_email(payload)
+    configured = set(admin_emails()) | set(super_admin_emails()) | set(get_admin_master_emails())
+    configured |= set(_ao68b_split_env_emails(os.getenv("ORKIO_SUPER_ADMIN_EMAILS", "")))
+    configured |= set(_ao68b_split_env_emails(os.getenv("ORKIO_ADMIN_EMAILS", "")))
+    configured |= set(_ao68b_split_env_emails(os.getenv("FOUNDER_ADMIN_EMAILS", "")))
+    return bool(email and email in configured)
+
+
+def _ao68b_internal_agent_requested(
+    message: str,
+    *,
+    visible_agent: Any = None,
+    target_agent_slug: Any = None,
+    dest_mode: Any = None,
+    route_plan: Optional[Dict[str, Any]] = None,
+) -> Optional[str]:
+    route_plan = route_plan if isinstance(route_plan, dict) else {}
+
+    candidates: List[str] = []
+    for value in (
+        visible_agent,
+        target_agent_slug,
+        dest_mode,
+        route_plan.get("requested_agent"),
+        route_plan.get("resolved_agent"),
+        route_plan.get("agent_slug"),
+        route_plan.get("target_agent_slug"),
+        route_plan.get("agent"),
+    ):
+        raw = str(value or "").strip().lower()
+        if raw:
+            candidates.append(raw)
+
+    for raw in candidates:
+        normalized = re.sub(r"[^a-z0-9_\-]+", "", raw)
+        if normalized in {"chris", "orion", "founder", "founder_admin", "warren"}:
+            return normalized
+
+    text_norm = str(message or "").strip().lower()
+    if not text_norm:
+        return None
+
+    direct = re.search(r"@\s*(chris|orion|founder_admin|founder|warren)\b", text_norm, flags=re.IGNORECASE)
+    if direct:
+        return direct.group(1).lower()
+
+    conversational = re.search(
+        r"\b(?:chama|chamar|aciona|acionar|abre|abrir|conecta|conectar|coloca|colocar|traz|trazer)\s+(?:o|a|a\s+agente|o\s+agente)?\s*(chris|orion|warren)\b",
+        text_norm,
+        flags=re.IGNORECASE,
+    )
+    if conversational:
+        return conversational.group(1).lower()
+
+    return None
+
+
+def _ao68b_should_bypass_public_fastpaths_for_admin(
+    *,
+    user_payload: Optional[Dict[str, Any]],
+    message: str,
+    visible_agent: Any = None,
+    target_agent_slug: Any = None,
+    dest_mode: Any = None,
+    route_plan: Optional[Dict[str, Any]] = None,
+) -> bool:
+    if not _ao68b_payload_has_admin_authority(user_payload):
+        return False
+    return bool(
+        _ao68b_internal_agent_requested(
+            message,
+            visible_agent=visible_agent,
+            target_agent_slug=target_agent_slug,
+            dest_mode=dest_mode,
+            route_plan=route_plan,
+        )
+    )
+
+
 def _serialize_user_payload(u: User, usage_tier: Optional[str] = None) -> Dict[str, Any]:
     authority = build_admin_authority_context(u)
     admin_access = bool(authority.get("admin_console_access"))
@@ -33120,6 +33265,31 @@ async def chat_stream(
     client_message_id = getattr(inp, "client_message_id", None)
     started_at = int(_time.time())
 
+    # AO68B-HF2 — ADMIN INTERNAL AGENT FASTPATH BYPASS
+    # Se admin/super-admin pedir explicitamente @Chris/@Orion, os fast-paths
+    # públicos do beta não devem interceptar antes da orquestração admin.
+    ao68b_admin_internal_agent_bypass = False
+    ao68b_requested_internal_agent = None
+    try:
+        ao68b_requested_internal_agent = _ao68b_internal_agent_requested(
+            message,
+            visible_agent=getattr(inp, "visible_agent", None),
+            target_agent_slug=getattr(inp, "target_agent_slug", None),
+            dest_mode=getattr(inp, "dest_mode", None),
+            route_plan=route_plan if isinstance(route_plan, dict) else None,
+        )
+        ao68b_admin_internal_agent_bypass = _ao68b_should_bypass_public_fastpaths_for_admin(
+            user_payload=user,
+            message=message,
+            visible_agent=getattr(inp, "visible_agent", None),
+            target_agent_slug=getattr(inp, "target_agent_slug", None),
+            dest_mode=getattr(inp, "dest_mode", None),
+            route_plan=route_plan if isinstance(route_plan, dict) else None,
+        )
+    except Exception:
+        ao68b_admin_internal_agent_bypass = False
+        ao68b_requested_internal_agent = None
+
     def _safe_payload(obj: Any) -> Dict[str, Any]:
         # AO40C: normalize runtime payloads for immediate SSE completion.
         if obj is None:
@@ -39299,6 +39469,18 @@ async def chat_stream(
         except Exception:
             pass
 
+        if ao68b_admin_internal_agent_bypass:
+            try:
+                logger.warning(
+                    "AO68M_ADMIN_INTERNAL_AGENT_BYPASS_PUBLIC_FASTPATH trace_id=%s thread_id=%s requested_agent=%s email=%s",
+                    trace_id,
+                    tid_seed,
+                    ao68b_requested_internal_agent or "unknown",
+                    _ao68b_payload_email(user),
+                )
+            except Exception:
+                pass
+
         # AO-29C_BEFORE_FIRST_STATUS_YIELD_OBSERVABILITY
         try:
             logger.warning("AO29_BEFORE_FIRST_STATUS_YIELD trace_id=%s thread_id=%s", trace_id, tid_seed)
@@ -39556,7 +39738,7 @@ async def chat_stream(
                 "final_speaker": "Orkio",
             }
 
-        if should_short_circuit_public_chat(_ao67f_gateway_decision):
+        if (not ao68b_admin_internal_agent_bypass) and should_short_circuit_public_chat(_ao67f_gateway_decision):
             try:
                 _ao67f_stream_payload = dict(_ao67f_gateway_decision.get("stream_payload") or {})
                 _ao67f_final_text = str(
@@ -39621,7 +39803,8 @@ async def chat_stream(
             }
 
         if (
-            isinstance(_amcham_public_journey_decision, dict)
+            (not ao68b_admin_internal_agent_bypass)
+            and isinstance(_amcham_public_journey_decision, dict)
             and _amcham_public_journey_decision.get("handled")
         ):
             try:
@@ -39673,7 +39856,7 @@ async def chat_stream(
         except Exception:
             _ao67a_unlock_decision = {"handled": False, "reason": "ao67a_policy_exception"}
 
-        if isinstance(_ao67a_unlock_decision, dict) and _ao67a_unlock_decision.get("handled"):
+        if (not ao68b_admin_internal_agent_bypass) and isinstance(_ao67a_unlock_decision, dict) and _ao67a_unlock_decision.get("handled"):
             try:
                 final_text = str(_ao67a_unlock_decision.get("answer") or "").strip()
                 persisted = await asyncio.to_thread(
@@ -39713,7 +39896,7 @@ async def chat_stream(
         except Exception:
             _public_chris_decision = {"handled": False, "reason": "policy_exception"}
 
-        if isinstance(_public_chris_decision, dict) and _public_chris_decision.get("handled"):
+        if (not ao68b_admin_internal_agent_bypass) and isinstance(_public_chris_decision, dict) and _public_chris_decision.get("handled"):
             try:
                 final_text = str(_public_chris_decision.get("answer") or "").strip()
                 persisted = await asyncio.to_thread(
@@ -39750,7 +39933,7 @@ async def chat_stream(
         except Exception:
             _public_orion_decision = {"handled": False, "reason": "policy_exception"}
 
-        if isinstance(_public_orion_decision, dict) and _public_orion_decision.get("handled"):
+        if (not ao68b_admin_internal_agent_bypass) and isinstance(_public_orion_decision, dict) and _public_orion_decision.get("handled"):
             try:
                 final_text = str(_public_orion_decision.get("answer") or "").strip()
                 persisted = await asyncio.to_thread(
@@ -39803,7 +39986,7 @@ async def chat_stream(
         except Exception:
             _public_orkio_decision = {"handled": False, "reason": "policy_exception"}
 
-        if isinstance(_public_orkio_decision, dict) and _public_orkio_decision.get("handled"):
+        if (not ao68b_admin_internal_agent_bypass) and isinstance(_public_orkio_decision, dict) and _public_orkio_decision.get("handled"):
             try:
                 final_text = str(_public_orkio_decision.get("answer") or "").strip()
                 persisted = await asyncio.to_thread(
