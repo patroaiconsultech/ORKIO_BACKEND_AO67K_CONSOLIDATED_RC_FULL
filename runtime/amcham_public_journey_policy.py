@@ -15,7 +15,7 @@ from app.services.agent_access_policy import (
     public_agent_catalog_answer,
 )
 
-AMCHAM_PUBLIC_JOURNEY_POLICY_VERSION = "AO68M_ENGLISH_AMCHAM_COMPANY_CONTACT_I18N_V1"
+AMCHAM_PUBLIC_JOURNEY_POLICY_VERSION = "AO69A_PREMIUM_POLISH_UNIFIED_V1"
 
 FUTURE_UNLOCK_NOTICE = (
     "Com a evolução das conversas, o uso correto da ferramenta e a identificação de necessidades específicas, "
@@ -36,7 +36,7 @@ Identidade canônica:
 Regra AMCHAM:
 - Não cite AMCHAM espontaneamente.
 - Só fale de AMCHAM quando o usuário perguntar explicitamente sobre AMCHAM, associados, comunidade AMCHAM ou como a AMCHAM pode testar o Orkio.
-- Quando perguntado, use a formulação: "A Patroai Consultech é empresa membro da AMCHAM RS e tem como missão levar disrupção digital aos associados por meio da tecnologia Orkio, unindo IA aplicada, agentes personalizados, diagnóstico consultivo e governança."
+- Quando perguntado, use a formulação: "A Patroai Consultech é empresa membro da AMCHAM RS. Nesse contexto, leva aos associados uma experiência prática de disrupção digital por meio do Orkio, unindo IA aplicada, agentes personalizados, diagnóstico consultivo e governança."
 
 Função pública:
 - Acolher usuários e entender objetivos, skills, desafios, ideias, projetos e próximos passos.
@@ -486,14 +486,14 @@ def _answer_institutional_orkio(*, english: bool = False) -> str:
 def _answer_institutional_amcham(*, english: bool = False) -> str:
     if english:
         return (
-            "Patroai Consultech is a member company of AMCHAM RS. In this context, its mission is to bring digital disruption "
+            "Patroai Consultech is a member company of AMCHAM RS. In this context, it brings a practical digital disruption experience "
             "to members through Orkio technology, combining applied AI, personalized agents, consultive diagnosis and governance.\n\n"
             "In practice, AMCHAM members can test Orkio in real situations: professional development, skill mapping, leadership, "
             "innovation inside companies, AI projects, idea diagnosis and new business creation.\n\n"
             "The best way to test it is to bring a concrete goal or problem. From there, I organize context, risks, opportunities and next steps."
         )
     return (
-        "A Patroai Consultech é empresa membro da AMCHAM RS e tem como missão levar disrupção digital aos associados por meio da tecnologia Orkio, "
+        "A Patroai Consultech é empresa membro da AMCHAM RS. Nesse contexto, leva aos associados uma experiência prática de disrupção digital por meio da tecnologia Orkio, "
         "unindo IA aplicada, agentes personalizados, diagnóstico consultivo e governança.\n\n"
         "Na prática, o Orkio pode ser testado pelo chat em situações reais: desenvolvimento profissional, mapeamento de skills, liderança, "
         "inovação dentro da empresa, projetos de IA, diagnóstico de ideias e criação de novos negócios.\n\n"
@@ -511,7 +511,7 @@ def _answer_implementation_process(*, english: bool = False) -> str:
             "3. Controlled pilot to validate usefulness, language, safety and fit with the real process.\n"
             "4. Adoption with human support, training and feedback follow-up.\n"
             "5. Continuous evolution, adjusting agents and journeys based on outcomes.\n\n"
-            "To talk to the human Patroai/Orkio team, use WhatsApp:\n\n"
+            "The Patroai/Orkio team can evaluate the next step through WhatsApp:\n\n"
             f"{get_consultive_whatsapp_url()}"
         )
     return (
@@ -522,7 +522,7 @@ def _answer_implementation_process(*, english: bool = False) -> str:
         "3. Piloto controlado para validar utilidade, linguagem, segurança e aderência ao processo real.\n"
         "4. Adoção com suporte humano, treinamento e acompanhamento de feedback.\n"
         "5. Evolução contínua, ajustando agentes e jornadas conforme resultados.\n\n"
-        "Se quiser falar com a equipe humana da Patroai/Orkio, use o WhatsApp:\n\n"
+        "A equipe Patroai/Orkio pode avaliar o próximo passo pelo WhatsApp:\n\n"
         f"{get_consultive_whatsapp_url()}"
     )
 
