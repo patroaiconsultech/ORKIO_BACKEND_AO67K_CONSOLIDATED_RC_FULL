@@ -15,7 +15,7 @@ from app.services.agent_access_policy import (
     public_agent_catalog_answer,
 )
 
-AMCHAM_PUBLIC_JOURNEY_POLICY_VERSION = "AO67A_AGENT_ACCESS_MESH_READY_V1"
+AMCHAM_PUBLIC_JOURNEY_POLICY_VERSION = "AO68G_PATROAI_IDENTITY_AMCHAM_ON_DEMAND_V1"
 
 FUTURE_UNLOCK_NOTICE = (
     "Com a evolução das conversas, o uso correto da ferramenta e a identificação de necessidades específicas, "
@@ -23,13 +23,23 @@ FUTURE_UNLOCK_NOTICE = (
 )
 
 AMCHAM_PUBLIC_JOURNEY_OVERLAY = f"""
-AMCHAM_PUBLIC_JOURNEY_POLICY — contrato público de jornada
+ORKIO_PUBLIC_JOURNEY_POLICY — contrato público de jornada
 
-Você é Orkio, copiloto profissional da jornada AMCHAM/Efatà 777.
+Você é Orkio, copiloto inteligente da PatroAI/Patroai Consultech.
+
+Identidade canônica:
+- A Patroai Consultech é a empresa criadora, mantenedora e detentora da tecnologia Orkio.
+- O Orkio ajuda pessoas e empresas a organizar objetivos, ideias, projetos, diagnósticos, inovação, IA aplicada e próximos passos.
+- Daniel Graebin é founder e CEO da Patroai Consultech.
+- A atuação combina tecnologia, agentes personalizados de IA, governança, consultoria, clareza executiva e propósito humano.
+
+Regra AMCHAM:
+- Não cite AMCHAM espontaneamente.
+- Só fale de AMCHAM quando o usuário perguntar explicitamente sobre AMCHAM, associados, comunidade AMCHAM ou como a AMCHAM pode testar o Orkio.
+- Quando perguntado, use a formulação: "A Patroai Consultech é empresa membro da AMCHAM RS e tem como missão levar disrupção digital aos associados por meio da tecnologia Orkio, unindo IA aplicada, agentes personalizados, diagnóstico consultivo e governança."
 
 Função pública:
-- Acolher usuários da comunidade AMCHAM e convidados Efatà 777.
-- Entender objetivos, skills, desafios, ideias, projetos e próximos passos.
+- Acolher usuários e entender objetivos, skills, desafios, ideias, projetos e próximos passos.
 - Conduzir pelo chat com clareza, segurança e propósito.
 - Fazer descoberta de intenção antes de recomendar qualquer capacidade avançada.
 
@@ -37,7 +47,7 @@ Regras principais:
 - Não assuma que todo usuário quer criar um negócio.
 - Não assuma que todo usuário quer agentes.
 - Não ofereça especialistas imediatamente.
-- Não cite agentes internos por nome.
+- Não cite agentes internos por nome para usuário público.
 - Não exponha bastidores, runtime, GitHub, patches, logs, branch, PR, deploy ou auditoria técnica.
 - Não conduza direto para WhatsApp, implantação ou venda consultiva sem contexto suficiente.
 - Mantenha Orkio como único agente visível na experiência pública.
@@ -46,7 +56,7 @@ Regras principais:
 Trilhas públicas:
 1. Desenvolvimento profissional.
 2. Mapeamento de skills.
-3. Networking e comunidade AMCHAM.
+3. Networking, posicionamento e conexões estratégicas.
 4. Liderança e comunicação.
 5. Inovação dentro da empresa.
 6. Projetos de IA no trabalho.
@@ -91,7 +101,7 @@ def _explicit_orkio_or_public_context(
     requested = normalize_text(route.get("requested_agent") or route.get("requested") or "")
     resolved = normalize_text(route.get("resolved_agent") or route.get("final_speaker") or "")
 
-    if _contains_any(normalized, ["amcham", "efata", "efatah", "efata777", "efatah777", "patroai", "orkio"]):
+    if _contains_any(normalized, ["amcham", "efata", "efatah", "efata777", "efatah777", "orkio"]):
         return True
 
     return any(
@@ -137,8 +147,12 @@ def classify_amcham_public_journey(normalized: str) -> Optional[str]:
     if _is_technical_governance_request(normalized):
         return "technical_governance_public_block"
 
-    if _contains_any(normalized, ("o que e a patroai", "o que é a patroai", "como a amcham pode testar", "amcham pode testar", "testar o orkio", "o que e o orkio", "o que é o orkio")):
+    if _contains_any(normalized, ("como a amcham pode testar", "amcham pode testar", "amcham", "associados amcham", "membro da amcham", "amcham rs")):
         return "institutional_amcham"
+    if _contains_any(normalized, ("patroai consultech", "patroai", "patroaí", "o que e a patroai", "o que é a patroai", "quem e a patroai", "quem é a patroai")):
+        return "institutional_patroai"
+    if _contains_any(normalized, ("testar o orkio", "o que e o orkio", "o que é o orkio", "quem e orkio", "quem é orkio")):
+        return "institutional_orkio"
     if _contains_any(normalized, ("nao sei o que testar", "não sei o que testar", "me conduza", "por onde comecar", "por onde começar", "o que posso fazer", "como usar")):
         return "platform_exploration"
     if _contains_any(normalized, ("desenvolver dentro da amcham", "me desenvolver", "desenvolvimento profissional", "evoluir profissionalmente", "carreira", "crescer profissionalmente")):
@@ -190,16 +204,33 @@ def _base_runtime_hints(reason: str, public_intent: str) -> Dict[str, Any]:
     }
 
 
+def _answer_institutional_patroai() -> str:
+    return (
+        "A Patroai Consultech é a empresa criadora, mantenedora e detentora da tecnologia Orkio. "
+        "Sua atuação une inteligência artificial aplicada, agentes personalizados, diagnóstico consultivo, governança e clareza executiva "
+        "para ajudar pessoas e empresas a transformar ideias, problemas e objetivos em próximos passos concretos.\n\n"
+        "A Patroai nasce com uma visão de tecnologia com propósito: servir com responsabilidade, proteger a confiança do usuário, "
+        "organizar conhecimento e ampliar a capacidade humana de decidir, criar e executar.\n\n"
+        "Daniel Graebin é o founder e CEO da Patroai Consultech."
+    )
+
+
+def _answer_institutional_orkio() -> str:
+    return (
+        "O Orkio é a tecnologia de IA da Patroai Consultech. Ele atua como copiloto inteligente para organizar objetivos, "
+        "diagnosticar ideias, mapear caminhos, apoiar inovação, estruturar projetos e transformar conversas em clareza e próximos passos.\n\n"
+        "Neste beta público, a experiência principal é conduzida pelo Orkio no chat. Recursos e agentes especializados podem ser liberados "
+        "progressivamente conforme contexto, necessidade e governança."
+    )
+
+
 def _answer_institutional_amcham() -> str:
     return (
-        "A PATROAI Consultech é a empresa responsável pela tecnologia Orkio, um copiloto de evolução profissional, "
-        "inovação e estruturação de ideias criado para transformar objetivos em clareza, trilhas e próximos passos.\n\n"
-        "Para a comunidade AMCHAM, o Orkio pode ser testado como um espaço de orientação executiva: você pode usá-lo "
-        "para mapear competências, organizar metas profissionais, fortalecer networking, revisar desafios de liderança, "
-        "estruturar projetos de IA na empresa, validar ideias de inovação ou amadurecer uma oportunidade de negócio.\n\n"
-        "A melhor forma de testar é trazer uma situação real, mesmo que ainda esteja incompleta. Eu vou ajudar a separar "
-        "contexto, prioridade, riscos, oportunidades e próximos passos, sem exigir que você já tenha todas as respostas.\n\n"
-        f"Neste beta público, o Orkio conduz a experiência principal pelo chat. {FUTURE_UNLOCK_NOTICE}"
+        "A Patroai Consultech é empresa membro da AMCHAM RS e tem como missão levar disrupção digital aos associados por meio da tecnologia Orkio, "
+        "unindo IA aplicada, agentes personalizados, diagnóstico consultivo e governança.\n\n"
+        "Na prática, o Orkio pode ser testado pelo chat em situações reais: desenvolvimento profissional, mapeamento de skills, liderança, "
+        "inovação dentro da empresa, projetos de IA, diagnóstico de ideias e criação de novos negócios.\n\n"
+        "A melhor forma de testar é trazer um objetivo ou problema concreto. A partir disso, eu organizo contexto, riscos, oportunidades e próximos passos."
     )
 
 
@@ -209,7 +240,7 @@ def _answer_platform_exploration() -> str:
         "O Orkio pode ajudar em seis caminhos principais:\n"
         "1. Evolução profissional e plano de carreira.\n"
         "2. Mapeamento de skills, forças e lacunas.\n"
-        "3. Networking, posicionamento e comunidade AMCHAM.\n"
+        "3. Networking, posicionamento e conexões estratégicas.\n"
         "4. Liderança, comunicação e influência.\n"
         "5. Projetos de IA, inovação e produtividade na empresa.\n"
         "6. Validação de ideia, projeto ou novo negócio.\n\n"
@@ -246,7 +277,7 @@ def _answer_networking() -> str:
     return (
         "Networking de alto valor não é quantidade de contatos; é clareza sobre quais relações podem gerar aprendizado, "
         "confiança, colaboração e oportunidade.\n\n"
-        "Para estruturar uma estratégia útil dentro da AMCHAM, me diga:\n"
+        "Para estruturar uma estratégia útil de networking, me diga:\n"
         "1. Que tipo de pessoa, empresa ou setor você gostaria de se aproximar?\n"
         "2. Seu objetivo principal é carreira, parcerias, vendas, aprendizado ou inovação?\n"
         "3. Que valor você pode oferecer nessas conversas?\n\n"
@@ -321,6 +352,8 @@ def _answer_technical_governance_public_block() -> str:
 
 def _answer_for_intent(public_intent: str) -> str:
     answers = {
+        "institutional_patroai": _answer_institutional_patroai,
+        "institutional_orkio": _answer_institutional_orkio,
         "institutional_amcham": _answer_institutional_amcham,
         "platform_exploration": _answer_platform_exploration,
         "professional_development": _answer_professional_development,
