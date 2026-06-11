@@ -83,7 +83,19 @@ except Exception:  # pragma: no cover
         return {"handled": False, "reason": "amcham_policy_unavailable"}
 
 
-ORKIO_DECISION_MESH_VERSION = "AO68G_PATROAI_IDENTITY_AMCHAM_ON_DEMAND_V1"
+try:
+    from .public_orkio_policy import (
+        ORKIO_POLICY_VERSION as PUBLIC_ORKIO_POLICY_VERSION,
+        build_public_orkio_policy_decision,
+    )
+except Exception:  # pragma: no cover
+    PUBLIC_ORKIO_POLICY_VERSION = "unavailable"
+
+    def build_public_orkio_policy_decision(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+        return {"handled": False, "reason": "public_orkio_policy_unavailable"}
+
+
+ORKIO_DECISION_MESH_VERSION = "AO68I_ORKIO_PREMIUM_CANON_FASTLANE_V1"
 
 
 def _env_bool(name: str, default: bool = True) -> bool:
@@ -142,6 +154,7 @@ def _base_decision(
         "hook_registry_version": HOOK_REGISTRY_VERSION,
         "journey_router_version": JOURNEY_ROUTER_VERSION,
         "amcham_public_journey_policy_version": AMCHAM_PUBLIC_JOURNEY_POLICY_VERSION,
+        "public_orkio_policy_version": PUBLIC_ORKIO_POLICY_VERSION,
         "agent_access_policy_version": AGENT_ACCESS_POLICY_VERSION,
         "visibility_policy_version": VISIBILITY_POLICY_VERSION,
         "route": route,
@@ -291,6 +304,44 @@ def build_orkio_decision_mesh_decision(
             memory_snapshot=memory_snapshot,
             selected_hooks=selected_hooks,
         )
+
+    # AO68I: premium canon fast-lane.
+    # Institutional Patroai/Orkio, site and WhatsApp questions must not fall into
+    # the heavier public journey/runtime path. This prevents generic answers and
+    # terminal-guard timeouts for simple commercial/public questions.
+    public_orkio = build_public_orkio_policy_decision(
+        message,
+        visible_agent=visible_agent,
+        target_agent_slug=target_agent_slug,
+        dest_mode=dest_mode,
+        route_plan=route_plan,
+    )
+    direct_reasons = {
+        "public_human_contact_whatsapp",
+        "public_official_site_and_contact",
+        "public_amcham_on_demand",
+        "public_patroai_identity",
+        "public_orkio_platform_identity",
+        "public_implementation_process",
+        "public_orkio_factual_created_at",
+    }
+    if public_orkio.get("handled") and str(public_orkio.get("reason") or "") in direct_reasons:
+        answer = str(public_orkio.get("answer") or "").strip()
+        decision = _base_decision(
+            handled=True,
+            reason=f"decision_mesh_delegated_{public_orkio.get('reason')}",
+            answer=answer,
+            route=route,
+            memory_snapshot=memory_snapshot,
+            selected_hooks=selected_hooks,
+        )
+        decision["delegated_policy"] = "public_orkio_policy_module"
+        decision["delegated_decision"] = {
+            "reason": public_orkio.get("reason"),
+            "policy_version": public_orkio.get("policy_version") or PUBLIC_ORKIO_POLICY_VERSION,
+            "runtime_hints": public_orkio.get("runtime_hints"),
+        }
+        return decision
 
     amcham = build_amcham_public_journey_decision(
         message,
