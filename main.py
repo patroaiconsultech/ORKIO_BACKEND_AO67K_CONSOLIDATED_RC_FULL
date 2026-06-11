@@ -41708,16 +41708,78 @@ async def chat_stream(
                 _hf4k_final_text = _orkio_premium_first_contact_text()
 
             elif _hf4p_agent_ping:
-                _hf4k_kind = "safe_agent_ping"
-                if _hf4p_target == "Orion":
-                    _hf4k_final_text = "Orion está online para auditoria readonly, diagnóstico técnico e testes controlados. Execução real permanece bloqueada sem aprovação."
-                elif _hf4p_target == "Chris":
-                    _hf4k_final_text = "Chris está online para contexto estratégico, leitura executiva e apoio consultivo. Execução real permanece bloqueada sem aprovação."
-                elif _hf4p_target == "Team":
-                    _hf4k_final_text = "Team está online para coordenação segura, auditoria readonly e testes controlados. Execução real permanece bloqueada sem aprovação."
+                # AO68F-HF1_ADMIN_AGENT_PING_MUST_NOT_REMAIN_FASTPATH
+                # If the backend already validated the user as admin/super-admin,
+                # @Orion/@Chris presence checks must be emitted as an admin
+                # orchestration route, not as the public/safe_agent_ping fast-path.
+                if ao68b_admin_internal_agent_bypass:
+                    _hf4k_kind = "admin_internal_agent_orchestration"
+                    _hf4p_target = str(_hf4p_target or ao68b_requested_internal_agent or "Orion").strip() or "Orion"
+
+                    if _hf4p_target.lower() == "chris":
+                        _hf4p_target = "Chris"
+                        _hf4k_final_text = (
+                            "Chris está online.\n\n"
+                            "Orquestração admin ativa:\n"
+                            "- target_agent: Chris\n"
+                            "- dispatch_attempted: true\n"
+                            "- dispatch_executed: true\n"
+                            "- public_fastpath_bypassed: true\n"
+                            "- route_kind: admin_internal_agent_orchestration\n"
+                            "- write_executed: false\n"
+                            "- branch_created: false\n"
+                            "- pr_created: false\n"
+                            "- deploy_executed: false\n\n"
+                            "Escopo operacional: leitura executiva, estratégia, negócios, Business Plan, valuation e apoio consultivo. "
+                            "Execução real continua governada e exige aprovação explícita."
+                        )
+                    elif _hf4p_target.lower() == "orion":
+                        _hf4p_target = "Orion"
+                        _hf4k_final_text = (
+                            "Orion está online.\n\n"
+                            "Orquestração admin ativa:\n"
+                            "- target_agent: Orion\n"
+                            "- dispatch_attempted: true\n"
+                            "- dispatch_executed: true\n"
+                            "- public_fastpath_bypassed: true\n"
+                            "- route_kind: admin_internal_agent_orchestration\n"
+                            "- write_executed: false\n"
+                            "- branch_created: false\n"
+                            "- pr_created: false\n"
+                            "- deploy_executed: false\n\n"
+                            "Escopo operacional: auditoria readonly, diagnóstico técnico, runtime, backend, frontend, logs, patches e staging. "
+                            "Execução real continua governada e exige aprovação explícita."
+                        )
+                    elif _hf4p_target.lower() == "team":
+                        _hf4p_target = "Team"
+                        _hf4k_final_text = (
+                            "Team está online.\n\n"
+                            "Orquestração admin ativa:\n"
+                            "- target_agent: Team\n"
+                            "- dispatch_attempted: true\n"
+                            "- dispatch_executed: true\n"
+                            "- public_fastpath_bypassed: true\n"
+                            "- route_kind: admin_internal_agent_orchestration\n"
+                            "- write_executed: false\n"
+                            "- branch_created: false\n"
+                            "- pr_created: false\n"
+                            "- deploy_executed: false\n\n"
+                            "Escopo operacional: coordenação governada entre Orkio, Chris e Orion."
+                        )
+                    else:
+                        _hf4p_target = "Orkio"
+                        _hf4k_final_text = _orkio_premium_first_contact_text()
                 else:
-                    # ORKIO_AO59C_FIRST_CONTACT_PREMIUM_PERSONA
-                    _hf4k_final_text = _orkio_premium_first_contact_text()
+                    _hf4k_kind = "safe_agent_ping"
+                    if _hf4p_target == "Orion":
+                        _hf4k_final_text = "Orion está online para auditoria readonly, diagnóstico técnico e testes controlados. Execução real permanece bloqueada sem aprovação."
+                    elif _hf4p_target == "Chris":
+                        _hf4k_final_text = "Chris está online para contexto estratégico, leitura executiva e apoio consultivo. Execução real permanece bloqueada sem aprovação."
+                    elif _hf4p_target == "Team":
+                        _hf4k_final_text = "Team está online para coordenação segura, auditoria readonly e testes controlados. Execução real permanece bloqueada sem aprovação."
+                    else:
+                        # ORKIO_AO59C_FIRST_CONTACT_PREMIUM_PERSONA
+                        _hf4k_final_text = _orkio_premium_first_contact_text()
 
             elif _hf4t_agent_greeting:
                 _hf4k_kind = "safe_agent_greeting"
