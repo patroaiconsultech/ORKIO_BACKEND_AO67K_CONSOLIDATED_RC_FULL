@@ -21,22 +21,21 @@ from .runtime_feature_flags import (
     is_public_orkio_policy_enabled,
 )
 
-ORKIO_POLICY_VERSION = "AO68N_AMCHAM_COMPANY_CONTACT_EN_V1"
+ORKIO_POLICY_VERSION = "AO69A_PREMIUM_POLISH_UNIFIED_V1"
 
 
 def _consultive_cta_text(*, english: bool = False) -> str:
     if not is_consultive_success_enabled():
         return ""
-    label = get_consultive_team_label()
     if english:
         return (
-            "Our Patroai/Orkio team can turn this scope into a guided implementation, "
-            "with governance and focus on project success.\n\n"
+            "The Patroai/Orkio team can turn this diagnosis into a guided implementation, "
+            "with personalized agents, governance and continuous evolution.\n\n"
             f"{get_consultive_whatsapp_url()}"
         )
     return (
-        f"Nossa {label} pode transformar esse escopo em implantação acompanhada, "
-        "com governança e foco no sucesso do projeto.\n\n"
+        "A equipe Patroai/Orkio pode transformar esse diagnóstico em uma implantação acompanhada, "
+        "com agentes personalizados, governança e evolução contínua.\n\n"
         f"{get_consultive_whatsapp_url()}"
     )
 
@@ -54,7 +53,7 @@ Sempre que houver demanda concreta, interesse comercial, necessidade de automaç
 - ajustar o roadmap conforme resultados reais.
 
 CTA obrigatório quando houver oportunidade real:
-"Nossa equipe consultiva premium pode transformar esse escopo em implantação acompanhada, com governança e foco no sucesso do projeto."
+"A equipe Patroai/Orkio pode transformar esse diagnóstico em uma implantação acompanhada, com agentes personalizados, governança e evolução contínua."
 Depois inclua somente a URL do WhatsApp, sem frase extra antes da URL.
 """.strip()
 
@@ -709,7 +708,8 @@ def _implementation_process_answer(*, english: bool = False) -> str:
             "3. Controlled pilot to validate language, usefulness, safety and fit with the real process.\n"
             "4. Adoption with human support, training, follow-up and feedback reading.\n"
             "5. Continuous evolution, adjusting agents and journeys based on real outcomes.\n\n"
-            "The difference is the guidance: technology is delivered together with method, governance and human support.",
+            "The difference is the guidance: technology is delivered together with method, governance and human support. "
+            "The next step is to map the real demand before designing agents or automations.",
             english=True,
         )
     return _join_with_cta(
@@ -720,7 +720,8 @@ def _implementation_process_answer(*, english: bool = False) -> str:
         "3. Piloto controlado para validar linguagem, utilidade, segurança e aderência ao processo real.\n"
         "4. Adoção com suporte humano, treinamento, acompanhamento e leitura de feedback.\n"
         "5. Evolução contínua, ajustando agentes e jornadas conforme resultados.\n\n"
-        "A diferença está no acompanhamento: a tecnologia entra junto com método, governança e suporte para virar rotina útil."
+        "A diferença está no acompanhamento: a tecnologia entra junto com método, governança e suporte para virar rotina útil. "
+        "O próximo passo é mapear a demanda real antes de desenhar agentes ou automações."
     )
 
 
@@ -769,14 +770,14 @@ def _official_site_answer(*, english: bool = False) -> str:
 def _amcham_on_demand_answer(*, english: bool = False) -> str:
     if english:
         return (
-            "Patroai Consultech is a member company of AMCHAM RS. Its mission in this context is to bring digital disruption "
+            "Patroai Consultech is a member company of AMCHAM RS. In this context, it brings a practical digital disruption experience "
             "to AMCHAM members through Orkio technology, combining applied AI, personalized agents, consultive diagnosis and governance.\n\n"
             "AMCHAM members can test Orkio with real situations: professional development, skill mapping, leadership, innovation inside companies, "
             "AI projects, idea diagnosis or new business creation."
         )
     return (
-        "A Patroai Consultech é empresa membro da AMCHAM RS e tem como missão levar disrupção digital aos associados "
-        "por meio da tecnologia Orkio, unindo IA aplicada, agentes personalizados, diagnóstico consultivo e governança.\n\n"
+        "A Patroai Consultech é empresa membro da AMCHAM RS. Nesse contexto, leva aos associados uma experiência prática "
+        "de disrupção digital por meio da tecnologia Orkio, unindo IA aplicada, agentes personalizados, diagnóstico consultivo e governança.\n\n"
         "A AMCHAM pode testar o Orkio trazendo situações reais: desenvolvimento profissional, mapeamento de skills, "
         "liderança, inovação dentro da empresa, projetos de IA, diagnóstico de ideias ou criação de novos negócios."
     )
