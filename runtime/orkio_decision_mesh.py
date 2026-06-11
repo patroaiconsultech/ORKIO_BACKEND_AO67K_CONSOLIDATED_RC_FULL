@@ -95,7 +95,7 @@ except Exception:  # pragma: no cover
         return {"handled": False, "reason": "public_orkio_policy_unavailable"}
 
 
-ORKIO_DECISION_MESH_VERSION = "AO68I_ORKIO_PREMIUM_CANON_FASTLANE_V1"
+ORKIO_DECISION_MESH_VERSION = "AO68K_ENGLISH_PREMIUM_CANON_FASTLANE_V1"
 
 
 def _env_bool(name: str, default: bool = True) -> bool:
@@ -305,7 +305,7 @@ def build_orkio_decision_mesh_decision(
             selected_hooks=selected_hooks,
         )
 
-    # AO68I: premium canon fast-lane.
+    # AO68K: premium canon fast-lane with English parity.
     # Institutional Patroai/Orkio, site and WhatsApp questions must not fall into
     # the heavier public journey/runtime path. This prevents generic answers and
     # terminal-guard timeouts for simple commercial/public questions.
