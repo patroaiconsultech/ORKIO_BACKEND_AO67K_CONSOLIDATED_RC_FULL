@@ -21,7 +21,7 @@ from .runtime_feature_flags import (
     is_public_orkio_policy_enabled,
 )
 
-ORKIO_POLICY_VERSION = "AO68H_PATROAI_RESPONSE_WHATSAPP_CTA_V1"
+ORKIO_POLICY_VERSION = "AO68I_ORKIO_PREMIUM_CANON_FASTLANE_V1"
 
 
 def _consultive_cta_text() -> str:
@@ -428,10 +428,25 @@ def _is_human_contact_request(normalized: str) -> bool:
         "atendimento humano",
         "contato humano",
         "falar com a equipe",
+        "falar com alguem",
+        "falar com alguém",
+        "quero falar com alguem",
+        "quero falar com alguém",
+        "quero falar com uma pessoa",
+        "quero falar com atendimento",
+        "me conecta com alguem",
+        "me conecta com alguém",
+        "me conecte com alguem",
+        "me conecte com alguém",
         "contatar alguem",
         "contatar alguém",
         "entrar em contato",
+        "telefone",
         "whatsapp",
+        "me da o whatsapp",
+        "me dá o whatsapp",
+        "me manda o whatsapp",
+        "me envie o whatsapp",
         "botao de whatsapp",
         "botão de whatsapp",
         "disponibilize o botao",
@@ -458,8 +473,17 @@ def _is_official_site_or_link_request(normalized: str) -> bool:
         "traga o link",
         "me traga o site",
         "me traga o link",
+        "me traz o site",
+        "me traz o link",
+        "me da o site",
+        "me dá o site",
+        "me passa o site",
+        "me passe o site",
         "qual e o site",
         "qual é o site",
+        "qual o site",
+        "site da patroai",
+        "site da patro ai",
         "link oficial",
         "endereco do site",
         "endereço do site",
@@ -472,47 +496,43 @@ def _is_official_site_or_link_request(normalized: str) -> bool:
 def _patroai_identity_answer() -> str:
     return (
         "A Patroai Consultech é a empresa criadora, mantenedora e detentora da tecnologia Orkio.\n\n"
-        "Na prática, a Patroai une inteligência artificial aplicada, agentes personalizados, diagnóstico consultivo, "
-        "governança, clareza executiva e acompanhamento humano para ajudar empresas e pessoas a transformar ideias, "
-        "problemas e objetivos em próximos passos concretos.\n\n"
-        "O propósito da Patroai é usar tecnologia com responsabilidade, confiança e sentido humano: organizar decisões, "
-        "ampliar capacidade de execução e criar soluções digitais que façam diferença real.\n\n"
+        "A Patroai atua na interseção entre consultoria, inteligência artificial aplicada e implantação acompanhada: "
+        "entende o desafio do cliente, estrutura agentes personalizados, organiza contexto, define limites de governança "
+        "e transforma conversas em diagnóstico, plano e próximos passos executáveis.\n\n"
+        "Seu princípio é tecnologia com propósito: clareza antes de complexidade, confiança antes de automação cega, "
+        "e IA como extensão da capacidade humana de decidir, criar e executar.\n\n"
         "Daniel Graebin é o founder e CEO da Patroai Consultech."
     )
 
 
 def _orkio_platform_answer() -> str:
     return (
-        "O Orkio é a tecnologia de IA da Patroai Consultech. Ele funciona como um copiloto inteligente para conversar, "
-        "entender contexto, organizar ideias, diagnosticar demandas e transformar uma conversa em plano, escopo e próximos passos.\n\n"
-        "Na experiência pública, o Orkio conduz pelo chat e por voz em tempo real quando liberado. Em projetos acompanhados, "
-        "a Patroai pode desenhar agentes personalizados para áreas como vendas, atendimento, financeiro, operações, marketing, "
-        "produto, governança e inovação.\n\n"
-        "A diferença é que o Orkio não deve ser tratado como um chatbot genérico: ele é uma camada consultiva de IA para estruturar "
-        "decisões, processos e implantação com governança."
+        "O Orkio é a tecnologia de IA da Patroai Consultech. Ele funciona como uma camada consultiva de inteligência: conversa, "
+        "escuta contexto, organiza objetivos, identifica caminhos e transforma dúvidas soltas em diagnóstico, plano e próximos passos.\n\n"
+        "No beta público, o Orkio pode conduzir pelo chat e, quando liberado, por voz em tempo real. Em projetos empresariais, "
+        "a Patroai pode desenhar agentes personalizados, fluxos, bases de contexto, critérios de segurança e jornadas de adoção.\n\n"
+        "A proposta não é apenas automatizar tarefas. É criar uma experiência de IA útil, governada e acompanhada, capaz de apoiar "
+        "decisão, inovação, implantação e evolução contínua."
     )
 
 
 def _implementation_process_answer() -> str:
     return _join_with_cta(
-        "A implantação da tecnologia Orkio pela Patroai é pensada como uma jornada acompanhada, não como uma ferramenta entregue sem suporte.\n\n"
-        "Um fluxo seguro costuma ter cinco etapas:\n\n"
-        "1. Diagnóstico inicial\n"
-        "Entendemos o objetivo, o problema real, os usuários, os processos atuais e os critérios de sucesso.\n\n"
-        "2. Desenho da solução\n"
-        "Organizamos o escopo, os agentes necessários, dados de entrada, limites de segurança, integrações e jornada do usuário.\n\n"
-        "3. Configuração e piloto\n"
-        "A solução é testada em ambiente controlado, com ajustes de linguagem, contexto, governança e usabilidade.\n\n"
-        "4. Adoção com suporte humano\n"
-        "A equipe orienta o uso, acompanha dúvidas, coleta feedback e ajuda a transformar a tecnologia em rotina útil.\n\n"
-        "5. Evolução contínua\n"
-        "Com base nos resultados, a Patroai ajusta agentes, fluxos, indicadores e próximos módulos para aumentar a chance de sucesso."
+        "A implantação do Orkio pela Patroai é uma jornada consultiva acompanhada, não uma simples entrega de ferramenta.\n\n"
+        "O caminho recomendado é:\n"
+        "1. Diagnóstico do desafio, dos usuários e dos critérios de sucesso.\n"
+        "2. Desenho dos agentes, fluxos, bases de contexto, integrações e limites de governança.\n"
+        "3. Piloto controlado para validar linguagem, utilidade, segurança e aderência ao processo real.\n"
+        "4. Adoção com suporte humano, treinamento, acompanhamento e leitura de feedback.\n"
+        "5. Evolução contínua, ajustando agentes e jornadas conforme resultados.\n\n"
+        "A diferença está no acompanhamento: a tecnologia entra junto com método, governança e suporte para virar rotina útil."
     )
 
 
 def _human_contact_answer() -> str:
     return (
-        "Sim. Você pode falar com a equipe humana da ORKIO/PATROAI pelo WhatsApp.\n\n"
+        "Claro. Você pode falar com a equipe humana da Patroai/Orkio pelo WhatsApp.\n\n"
+        "A equipe pode entender sua demanda, orientar o melhor caminho e avaliar se faz sentido desenhar uma implantação acompanhada.\n\n"
         f"{get_consultive_whatsapp_url()}"
     )
 
@@ -521,7 +541,7 @@ def _official_site_answer() -> str:
     return (
         "O site institucional da Patroai é:\n\n"
         "https://patroai.com.br/\n\n"
-        "E, se quiser falar diretamente com a equipe humana da ORKIO/PATROAI, use o WhatsApp:\n\n"
+        "Para falar diretamente com a equipe humana da Patroai/Orkio, use o WhatsApp:\n\n"
         f"{get_consultive_whatsapp_url()}"
     )
 
