@@ -21,7 +21,7 @@ from .runtime_feature_flags import (
     is_public_orkio_policy_enabled,
 )
 
-ORKIO_POLICY_VERSION = "AO68G_PATROAI_IDENTITY_AMCHAM_ON_DEMAND_V1"
+ORKIO_POLICY_VERSION = "AO68H_PATROAI_RESPONSE_WHATSAPP_CTA_V1"
 
 
 def _consultive_cta_text() -> str:
@@ -94,6 +94,7 @@ Regras de verdade operacional:
 - Não prometa integrações, automações, auditorias ou execuções que não tenham sido confirmadas.
 - Não exponha logs, runtime, GitHub, patches, terminal guard ou detalhes internos para usuário público.
 - Não mencione AMCHAM em respostas sobre Patroai, Orkio, plataforma, inovação ou negócios, salvo se a pergunta contiver AMCHAM ou associados AMCHAM explicitamente.
+- Quando o usuário pedir contato humano, WhatsApp, atendimento, botão de WhatsApp, site ou link oficial, entregue o canal diretamente; nunca diga que não consegue disponibilizar links ou botões.
 - Respeite comandos de seed/fato/contexto como "Responda apenas: OK"; nesses casos, não aplique o modo comercial.
 - Fale em pt-BR, com tom premium, claro, humano, executivo e confiante.
 - Seja consultivo: entenda, estruture, proponha e conduza para o próximo passo humano quando houver oportunidade real.
@@ -331,6 +332,209 @@ def _orkio_created_answer() -> str:
     )
 
 
+def _is_explicit_amcham_request(normalized: str) -> bool:
+    return _contains_any(
+        normalized,
+        [
+            "amcham",
+            "amcham rs",
+            "associados amcham",
+            "membro da amcham",
+            "como a amcham pode testar",
+            "amcham pode testar",
+        ],
+    )
+
+
+def _is_patroai_identity_request(normalized: str) -> bool:
+    if not normalized:
+        return False
+    markers = [
+        "patroai",
+        "patroaí",
+        "patro ai",
+        "patro ia",
+        "patroai consultech",
+        "patroai consult",
+        "patroai consul",
+        "patroai empresa",
+        "quem e a patroai",
+        "quem é a patroai",
+        "o que e a patroai",
+        "o que é a patroai",
+        "fale sobre a patroai",
+        "me fale sobre a patroai",
+        "patryai",
+        "patry ai",
+        "patrol ai",
+        "patroal",
+    ]
+    return _contains_any(normalized, markers)
+
+
+def _is_orkio_platform_request(normalized: str) -> bool:
+    if not normalized:
+        return False
+    platform_markers = [
+        "plataforma orkio",
+        "plataforma urkio",
+        "plataforma orquio",
+        "como funciona o orkio",
+        "como funciona a orkio",
+        "como funciona o urkio",
+        "como funciona a plataforma",
+        "o que e o orkio",
+        "o que é o orkio",
+        "quem e o orkio",
+        "quem é o orkio",
+        "orkio como funciona",
+        "urkio",
+        "orquio",
+    ]
+    return _contains_any(normalized, platform_markers)
+
+
+def _is_implementation_request(normalized: str) -> bool:
+    if not normalized:
+        return False
+    implementation_terms = [
+        "implantacao",
+        "implantação",
+        "implementar",
+        "implementacao",
+        "implementação",
+        "suporte humano",
+        "suporte dedicado",
+        "treinamento",
+        "onboarding",
+        "sucesso nessa implantacao",
+        "sucesso nessa implantação",
+        "processo de implantacao",
+        "processo de implantação",
+        "como a patroai atua",
+        "como a patro ai atua",
+        "como a patrol ai atua",
+        "como a patryai atua",
+    ]
+    return _contains_any(normalized, implementation_terms)
+
+
+def _is_human_contact_request(normalized: str) -> bool:
+    if not normalized:
+        return False
+    contact_terms = [
+        "falar com um ser humano",
+        "falar com humano",
+        "atendimento humano",
+        "contato humano",
+        "falar com a equipe",
+        "contatar alguem",
+        "contatar alguém",
+        "entrar em contato",
+        "whatsapp",
+        "botao de whatsapp",
+        "botão de whatsapp",
+        "disponibilize o botao",
+        "disponibilize o botão",
+        "me passa o contato",
+        "me passe o contato",
+        "canal de contato",
+        "contato da patroai",
+        "contato da patro ai",
+        "contato da patryai",
+        "contato da patrol ai",
+        "falar com a loja",
+        "entrar em contato com a loja",
+    ]
+    return _contains_any(normalized, contact_terms)
+
+
+def _is_official_site_or_link_request(normalized: str) -> bool:
+    if not normalized:
+        return False
+    link_terms = [
+        "site oficial",
+        "traga o site",
+        "traga o link",
+        "me traga o site",
+        "me traga o link",
+        "qual e o site",
+        "qual é o site",
+        "link oficial",
+        "endereco do site",
+        "endereço do site",
+        "patroai.com",
+        "patroai.com.br",
+    ]
+    return _contains_any(normalized, link_terms)
+
+
+def _patroai_identity_answer() -> str:
+    return (
+        "A Patroai Consultech é a empresa criadora, mantenedora e detentora da tecnologia Orkio.\n\n"
+        "Na prática, a Patroai une inteligência artificial aplicada, agentes personalizados, diagnóstico consultivo, "
+        "governança, clareza executiva e acompanhamento humano para ajudar empresas e pessoas a transformar ideias, "
+        "problemas e objetivos em próximos passos concretos.\n\n"
+        "O propósito da Patroai é usar tecnologia com responsabilidade, confiança e sentido humano: organizar decisões, "
+        "ampliar capacidade de execução e criar soluções digitais que façam diferença real.\n\n"
+        "Daniel Graebin é o founder e CEO da Patroai Consultech."
+    )
+
+
+def _orkio_platform_answer() -> str:
+    return (
+        "O Orkio é a tecnologia de IA da Patroai Consultech. Ele funciona como um copiloto inteligente para conversar, "
+        "entender contexto, organizar ideias, diagnosticar demandas e transformar uma conversa em plano, escopo e próximos passos.\n\n"
+        "Na experiência pública, o Orkio conduz pelo chat e por voz em tempo real quando liberado. Em projetos acompanhados, "
+        "a Patroai pode desenhar agentes personalizados para áreas como vendas, atendimento, financeiro, operações, marketing, "
+        "produto, governança e inovação.\n\n"
+        "A diferença é que o Orkio não deve ser tratado como um chatbot genérico: ele é uma camada consultiva de IA para estruturar "
+        "decisões, processos e implantação com governança."
+    )
+
+
+def _implementation_process_answer() -> str:
+    return _join_with_cta(
+        "A implantação da tecnologia Orkio pela Patroai é pensada como uma jornada acompanhada, não como uma ferramenta entregue sem suporte.\n\n"
+        "Um fluxo seguro costuma ter cinco etapas:\n\n"
+        "1. Diagnóstico inicial\n"
+        "Entendemos o objetivo, o problema real, os usuários, os processos atuais e os critérios de sucesso.\n\n"
+        "2. Desenho da solução\n"
+        "Organizamos o escopo, os agentes necessários, dados de entrada, limites de segurança, integrações e jornada do usuário.\n\n"
+        "3. Configuração e piloto\n"
+        "A solução é testada em ambiente controlado, com ajustes de linguagem, contexto, governança e usabilidade.\n\n"
+        "4. Adoção com suporte humano\n"
+        "A equipe orienta o uso, acompanha dúvidas, coleta feedback e ajuda a transformar a tecnologia em rotina útil.\n\n"
+        "5. Evolução contínua\n"
+        "Com base nos resultados, a Patroai ajusta agentes, fluxos, indicadores e próximos módulos para aumentar a chance de sucesso."
+    )
+
+
+def _human_contact_answer() -> str:
+    return (
+        "Sim. Você pode falar com a equipe humana da ORKIO/PATROAI pelo WhatsApp.\n\n"
+        f"{get_consultive_whatsapp_url()}"
+    )
+
+
+def _official_site_answer() -> str:
+    return (
+        "O site institucional da Patroai é:\n\n"
+        "https://patroai.com.br/\n\n"
+        "E, se quiser falar diretamente com a equipe humana da ORKIO/PATROAI, use o WhatsApp:\n\n"
+        f"{get_consultive_whatsapp_url()}"
+    )
+
+
+def _amcham_on_demand_answer() -> str:
+    return (
+        "A Patroai Consultech é empresa membro da AMCHAM RS e tem como missão levar disrupção digital aos associados "
+        "por meio da tecnologia Orkio, unindo IA aplicada, agentes personalizados, diagnóstico consultivo e governança.\n\n"
+        "A AMCHAM pode testar o Orkio trazendo situações reais: desenvolvimento profissional, mapeamento de skills, "
+        "liderança, inovação dentro da empresa, projetos de IA, diagnóstico de ideias ou criação de novos negócios."
+    )
+
+
 def _is_site_access_question(normalized: str) -> bool:
     site_markers = ["site", "www.", "http://", "https://", ".com", ".com.br", "patroai.com"]
     access_markers = [
@@ -448,6 +652,13 @@ def _has_product_ceo_intent(normalized: str) -> bool:
         "implantação",
         "acompanhamento",
         "sucesso do cliente",
+        "patroai",
+        "patro ai",
+        "patroaí",
+        "patroai consultech",
+        "orkio",
+        "urkio",
+        "orquio",
     ]
     return _contains_any(normalized, product_markers)
 
@@ -841,6 +1052,35 @@ def build_public_orkio_policy_decision(
 
     if _is_natural_voice_no_audit_request(normalized):
         return {"handled": False, "reason": "natural_voice_no_audit_passthrough"}
+
+    # AO68H: direct institutional/contact answers must be deterministic.
+    # This prevents the generic provider from inventing PatroAI/Orkio facts or
+    # saying it cannot provide the WhatsApp/site CTA.
+    direct_public_answers = [
+        (_is_human_contact_request(normalized), "public_human_contact_whatsapp", "human_contact", _human_contact_answer()),
+        (_is_official_site_or_link_request(normalized), "public_official_site_and_contact", "official_site", _official_site_answer()),
+        (_is_explicit_amcham_request(normalized), "public_amcham_on_demand", "institutional_amcham", _amcham_on_demand_answer()),
+        (_is_patroai_identity_request(normalized), "public_patroai_identity", "institutional_patroai", _patroai_identity_answer()),
+        (_is_orkio_platform_request(normalized), "public_orkio_platform_identity", "institutional_orkio", _orkio_platform_answer()),
+        (_is_implementation_request(normalized), "public_implementation_process", "implementation_process", _implementation_process_answer()),
+    ]
+    for matched, reason, public_intent, answer in direct_public_answers:
+        if matched:
+            return {
+                "handled": True,
+                "reason": reason,
+                "agent_id": "orkio",
+                "agent_name": "Orkio",
+                "final_speaker": "Orkio",
+                "visible_agent": "Orkio",
+                "answer": answer,
+                "routing_source": "public_orkio_policy_module",
+                "runtime_hints": _base_runtime_hints(
+                    reason,
+                    public_intent,
+                    route_family="public_direct_institutional_or_contact",
+                ),
+            }
 
     # AO65R: factual questions must be answered before first-contact/welcome
     # and before product-ceo scoping.
