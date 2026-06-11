@@ -3,7 +3,7 @@ from __future__ import annotations
 from app.agents.base import KnowledgeCard
 
 
-ORKIO_KNOWLEDGE_VERSION = "AO68G_PATROAI_IDENTITY_AMCHAM_ON_DEMAND_V1"
+ORKIO_KNOWLEDGE_VERSION = "AO68H_PATROAI_RESPONSE_WHATSAPP_CTA_V1"
 
 
 def get_knowledge_cards() -> list[KnowledgeCard]:
@@ -18,7 +18,24 @@ def get_knowledge_cards() -> list[KnowledgeCard]:
                 "Daniel Graebin é founder e CEO da Patroai Consultech."
             ),
             domains=("patroai", "orkio", "identity", "institutional", "founder"),
-            triggers=("patroai", "patroaí", "patroai consultech", "o que é a patroai", "o que e a patroai", "quem é daniel graebin", "daniel graebin", "founder", "ceo"),
+            triggers=(
+                "patroai",
+                "patroaí",
+                "patro ai",
+                "patro ia",
+                "patryai",
+                "patry ai",
+                "patrol ai",
+                "patroai consultech",
+                "o que é a patroai",
+                "o que e a patroai",
+                "quem é a patroai",
+                "quem e a patroai",
+                "quem é daniel graebin",
+                "daniel graebin",
+                "founder",
+                "ceo",
+            ),
             public_safe=True,
             internal_only=False,
             priority=9,
@@ -75,6 +92,38 @@ def get_knowledge_cards() -> list[KnowledgeCard]:
             public_safe=True,
             internal_only=False,
             priority=22,
+        ),
+        KnowledgeCard(
+            card_id="orkio.public.platform_and_implementation",
+            agent_id="orkio",
+            title="Orkio, plataforma, implantação e suporte humano",
+            summary=(
+                "Orkio é a tecnologia de IA da Patroai Consultech. Funciona como copiloto inteligente para entender contexto, "
+                "organizar ideias, diagnosticar demandas e transformar conversa em plano, escopo e próximos passos. "
+                "A implantação deve ser descrita como jornada acompanhada: diagnóstico, desenho, piloto, adoção com suporte humano e evolução contínua. "
+                "Quando o usuário pedir WhatsApp, botão de WhatsApp, contato humano, site ou link, forneça o canal diretamente e nunca diga que não consegue fornecer links."
+            ),
+            domains=("orkio", "platform", "implementation", "human_support", "whatsapp", "contact"),
+            triggers=(
+                "orkio",
+                "urkio",
+                "orquio",
+                "plataforma orkio",
+                "como funciona o orkio",
+                "implantação",
+                "implantacao",
+                "suporte humano",
+                "whatsapp",
+                "botão de whatsapp",
+                "botao de whatsapp",
+                "entrar em contato",
+                "atendimento humano",
+                "site oficial",
+                "link oficial",
+            ),
+            public_safe=True,
+            internal_only=False,
+            priority=11,
         ),
         KnowledgeCard(
             card_id="orkio.public.guardrails",
