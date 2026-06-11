@@ -8,14 +8,14 @@ import re
 import unicodedata
 from typing import Any, Dict, Iterable, Optional
 
-from .runtime_feature_flags import is_amcham_public_journey_enabled
+from .runtime_feature_flags import is_amcham_public_journey_enabled, get_consultive_whatsapp_url
 from app.services.agent_access_policy import (
     is_public_internal_agent_request,
     public_agent_access_denied_answer,
     public_agent_catalog_answer,
 )
 
-AMCHAM_PUBLIC_JOURNEY_POLICY_VERSION = "AO68G_PATROAI_IDENTITY_AMCHAM_ON_DEMAND_V1"
+AMCHAM_PUBLIC_JOURNEY_POLICY_VERSION = "AO68H_PATROAI_RESPONSE_WHATSAPP_CTA_V1"
 
 FUTURE_UNLOCK_NOTICE = (
     "Com a evolução das conversas, o uso correto da ferramenta e a identificação de necessidades específicas, "
@@ -50,6 +50,7 @@ Regras principais:
 - Não cite agentes internos por nome para usuário público.
 - Não exponha bastidores, runtime, GitHub, patches, logs, branch, PR, deploy ou auditoria técnica.
 - Não conduza direto para WhatsApp, implantação ou venda consultiva sem contexto suficiente.
+- Se o usuário pedir contato humano, WhatsApp, botão de WhatsApp, site ou link oficial, entregue o canal diretamente; isso é contexto suficiente.
 - Mantenha Orkio como único agente visível na experiência pública.
 - Quando houver ambiguidade, faça 2 ou 3 perguntas curtas.
 
@@ -147,12 +148,104 @@ def classify_amcham_public_journey(normalized: str) -> Optional[str]:
     if _is_technical_governance_request(normalized):
         return "technical_governance_public_block"
 
+    if _contains_any(normalized, (
+        "falar com um ser humano",
+        "falar com humano",
+        "atendimento humano",
+        "contato humano",
+        "falar com a equipe",
+        "entrar em contato",
+        "contatar alguem",
+        "contatar alguém",
+        "whatsapp",
+        "botao de whatsapp",
+        "botão de whatsapp",
+        "disponibilize o botao",
+        "disponibilize o botão",
+        "me passa o contato",
+        "me passe o contato",
+        "canal de contato",
+        "contato da patroai",
+        "contato da patro ai",
+        "contato da patryai",
+        "contato da patrol ai",
+        "falar com a loja",
+        "entrar em contato com a loja",
+    )):
+        return "human_contact"
+
+    if _contains_any(normalized, (
+        "site oficial",
+        "traga o site",
+        "traga o link",
+        "me traga o site",
+        "me traga o link",
+        "qual e o site",
+        "qual é o site",
+        "link oficial",
+        "endereco do site",
+        "endereço do site",
+        "patroai.com",
+        "patroai.com.br",
+    )):
+        return "official_site"
+
     if _contains_any(normalized, ("como a amcham pode testar", "amcham pode testar", "amcham", "associados amcham", "membro da amcham", "amcham rs")):
         return "institutional_amcham"
-    if _contains_any(normalized, ("patroai consultech", "patroai", "patroaí", "o que e a patroai", "o que é a patroai", "quem e a patroai", "quem é a patroai")):
+    if _contains_any(normalized, (
+        "patroai consultech",
+        "patroai",
+        "patroaí",
+        "patro ai",
+        "patro ia",
+        "o que e a patroai",
+        "o que é a patroai",
+        "quem e a patroai",
+        "quem é a patroai",
+        "quem e a patro ai",
+        "quem é a patro ai",
+        "fale sobre a patroai",
+        "patryai",
+        "patry ai",
+        "patrol ai",
+        "patroal",
+    )):
         return "institutional_patroai"
-    if _contains_any(normalized, ("testar o orkio", "o que e o orkio", "o que é o orkio", "quem e orkio", "quem é orkio")):
+    if _contains_any(normalized, (
+        "testar o orkio",
+        "o que e o orkio",
+        "o que é o orkio",
+        "quem e orkio",
+        "quem é orkio",
+        "plataforma orkio",
+        "plataforma urkio",
+        "plataforma orquio",
+        "como funciona o orkio",
+        "como funciona a plataforma",
+        "urkio",
+        "orquio",
+    )):
         return "institutional_orkio"
+    if _contains_any(normalized, (
+        "implantacao",
+        "implantação",
+        "implementar",
+        "implementacao",
+        "implementação",
+        "suporte humano",
+        "suporte dedicado",
+        "treinamento",
+        "onboarding",
+        "sucesso nessa implantacao",
+        "sucesso nessa implantação",
+        "processo de implantacao",
+        "processo de implantação",
+        "como a patroai atua",
+        "como a patro ai atua",
+        "como a patrol ai atua",
+        "como a patryai atua",
+    )):
+        return "implementation_process"
     if _contains_any(normalized, ("nao sei o que testar", "não sei o que testar", "me conduza", "por onde comecar", "por onde começar", "o que posso fazer", "como usar")):
         return "platform_exploration"
     if _contains_any(normalized, ("desenvolver dentro da amcham", "me desenvolver", "desenvolvimento profissional", "evoluir profissionalmente", "carreira", "crescer profissionalmente")):
@@ -231,6 +324,36 @@ def _answer_institutional_amcham() -> str:
         "Na prática, o Orkio pode ser testado pelo chat em situações reais: desenvolvimento profissional, mapeamento de skills, liderança, "
         "inovação dentro da empresa, projetos de IA, diagnóstico de ideias e criação de novos negócios.\n\n"
         "A melhor forma de testar é trazer um objetivo ou problema concreto. A partir disso, eu organizo contexto, riscos, oportunidades e próximos passos."
+    )
+
+
+def _answer_implementation_process() -> str:
+    return (
+        "A implantação da tecnologia Orkio pela Patroai é acompanhada por uma jornada consultiva, não por uma entrega solta de ferramenta.\n\n"
+        "Funciona assim:\n"
+        "1. Diagnóstico: entendemos objetivo, processo atual, usuários e critérios de sucesso.\n"
+        "2. Desenho: estruturamos agentes, fluxos, limites de segurança, dados e integrações necessárias.\n"
+        "3. Piloto: validamos em ambiente controlado, ajustando linguagem, contexto e usabilidade.\n"
+        "4. Adoção: existe suporte humano para orientar uso, responder dúvidas e acompanhar feedback.\n"
+        "5. Evolução: os agentes e fluxos são refinados conforme resultados e necessidades reais.\n\n"
+        "Se quiser falar com a equipe humana da ORKIO/PATROAI, use o WhatsApp:\n\n"
+        f"{get_consultive_whatsapp_url()}"
+    )
+
+
+def _answer_human_contact() -> str:
+    return (
+        "Sim. Você pode falar com a equipe humana da ORKIO/PATROAI pelo WhatsApp.\n\n"
+        f"{get_consultive_whatsapp_url()}"
+    )
+
+
+def _answer_official_site() -> str:
+    return (
+        "O site institucional da Patroai é:\n\n"
+        "https://patroai.com.br/\n\n"
+        "E, se quiser falar diretamente com a equipe humana da ORKIO/PATROAI, use o WhatsApp:\n\n"
+        f"{get_consultive_whatsapp_url()}"
     )
 
 
@@ -355,6 +478,9 @@ def _answer_for_intent(public_intent: str) -> str:
         "institutional_patroai": _answer_institutional_patroai,
         "institutional_orkio": _answer_institutional_orkio,
         "institutional_amcham": _answer_institutional_amcham,
+        "implementation_process": _answer_implementation_process,
+        "human_contact": _answer_human_contact,
+        "official_site": _answer_official_site,
         "platform_exploration": _answer_platform_exploration,
         "professional_development": _answer_professional_development,
         "skills_mapping": _answer_skills_mapping,
