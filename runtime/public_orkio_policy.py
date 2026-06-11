@@ -21,13 +21,19 @@ from .runtime_feature_flags import (
     is_public_orkio_policy_enabled,
 )
 
-ORKIO_POLICY_VERSION = "AO68K_ENGLISH_PREMIUM_CANON_FASTLANE_V1"
+ORKIO_POLICY_VERSION = "AO68L_CTA_I18N_V1"
 
 
-def _consultive_cta_text() -> str:
+def _consultive_cta_text(*, english: bool = False) -> str:
     if not is_consultive_success_enabled():
         return ""
     label = get_consultive_team_label()
+    if english:
+        return (
+            "Our Patroai/Orkio team can turn this scope into a guided implementation, "
+            "with governance and focus on project success.\n\n"
+            f"{get_consultive_whatsapp_url()}"
+        )
     return (
         f"Nossa {label} pode transformar esse escopo em implantação acompanhada, "
         "com governança e foco no sucesso do projeto.\n\n"
@@ -645,7 +651,8 @@ def _implementation_process_answer(*, english: bool = False) -> str:
             "3. Controlled pilot to validate language, usefulness, safety and fit with the real process.\n"
             "4. Adoption with human support, training, follow-up and feedback reading.\n"
             "5. Continuous evolution, adjusting agents and journeys based on real outcomes.\n\n"
-            "The difference is the guidance: technology is delivered together with method, governance and human support."
+            "The difference is the guidance: technology is delivered together with method, governance and human support.",
+            english=True,
         )
     return _join_with_cta(
         "A implantação do Orkio pela Patroai é uma jornada consultiva acompanhada, não uma simples entrega de ferramenta.\n\n"
@@ -934,12 +941,12 @@ def _agents_for_needs(needs: List[str]) -> List[str]:
     return list(dict.fromkeys(suggestions))[:6]
 
 
-def _cta() -> str:
-    return _consultive_cta_text()
+def _cta(*, english: bool = False) -> str:
+    return _consultive_cta_text(english=english)
 
 
-def _join_with_cta(body: str) -> str:
-    cta = _cta()
+def _join_with_cta(body: str, *, english: bool = False) -> str:
+    cta = _cta(english=english)
     return (str(body or "").strip() + ("\n\n" + cta if cta else "")).strip()
 
 
