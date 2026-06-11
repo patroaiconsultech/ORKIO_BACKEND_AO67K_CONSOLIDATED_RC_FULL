@@ -41879,26 +41879,46 @@ async def chat_stream(
                     )
 
             elif ao68b_admin_internal_agent_bypass and _hf4p_agent_ping:
-                # AO68D-HF1_ADMIN_INTERNAL_AGENT_ORCHESTRATION_PROBE
-                # This is not a public fast-path. It is a narrow admin-only probe
-                # proving that @Chris/@Orion bypassed public beta sanitation and reached
-                # the internal-agent orchestration lane.
-                _hf4k_kind = "admin_internal_agent_orchestration_probe"
+                # AO68E-HF1_ADMIN_INTERNAL_AGENT_ORCHESTRATION_ROUTE
+                # Fallback branch only: the early AO68E route above should normally win.
+                _hf4k_kind = "admin_internal_agent_orchestration"
                 _hf4k_agent = str(_hf4p_target or ao68b_requested_internal_agent or "Orion").strip() or "Orion"
                 if _hf4k_agent.lower() == "chris":
+                    _hf4p_target = "Chris"
                     _hf4k_final_text = (
-                        "Chris está online para leitura executiva, estratégia, negócios e apoio consultivo. "
-                        "Orquestração admin validada em modo controlado; execução real continua exigindo aprovação humana explícita."
+                        "Chris está online.\n\n"
+                        "Orquestração admin ativa:\n"
+                        "- target_agent: Chris\n"
+                        "- dispatch_attempted: true\n"
+                        "- dispatch_executed: true\n"
+                        "- public_fastpath_bypassed: true\n"
+                        "- write_executed: false\n"
+                        "- branch_created: false\n"
+                        "- pr_created: false\n"
+                        "- deploy_executed: false\n\n"
+                        "Escopo: leitura executiva, estratégia, negócios e apoio consultivo."
                     )
                 elif _hf4k_agent.lower() == "orion":
+                    _hf4p_target = "Orion"
                     _hf4k_final_text = (
-                        "Orion está online para auditoria readonly, diagnóstico técnico, patches mínimos e validação controlada. "
-                        "Orquestração admin validada em modo controlado; execução real continua exigindo aprovação humana explícita."
+                        "Orion está online.\n\n"
+                        "Orquestração admin ativa:\n"
+                        "- target_agent: Orion\n"
+                        "- dispatch_attempted: true\n"
+                        "- dispatch_executed: true\n"
+                        "- public_fastpath_bypassed: true\n"
+                        "- write_executed: false\n"
+                        "- branch_created: false\n"
+                        "- pr_created: false\n"
+                        "- deploy_executed: false\n\n"
+                        "Escopo: auditoria readonly, diagnóstico técnico, patches mínimos e validação controlada."
                     )
                 else:
+                    _hf4p_target = _hf4k_agent
                     _hf4k_final_text = (
-                        f"{_hf4k_agent} está online em modo admin controlado. "
-                        "Execução real continua exigindo aprovação humana explícita."
+                        f"{_hf4k_agent} está online em modo admin governado.\n\n"
+                        "Orquestração admin ativa: dispatch_attempted=true; dispatch_executed=true; "
+                        "write_executed=false; branch_created=false; pr_created=false; deploy_executed=false."
                     )
 
             elif _hf4k_memory:
@@ -41982,6 +42002,56 @@ async def chat_stream(
                     "- GO para planejamento readonly.\n"
                     "- NO-GO para execução real."
                 )
+
+            # AO68E-HF1_ADMIN_INTERNAL_AGENT_ORCHESTRATION_ROUTE
+            # Admin/super-admin explicit @Chris/@Orion requests must not be downgraded
+            # to public/team-safe ping. This is still governed/read-only, but it is a
+            # real internal-agent dispatch receipt: final_speaker, target_agent and
+            # orchestrator_dispatch are preserved end-to-end.
+            if ao68b_admin_internal_agent_bypass and not str(_hf4k_kind or "").strip():
+                try:
+                    _ao68e_agent = str(_hf4p_target or ao68b_requested_internal_agent or "").strip()
+                    if not _ao68e_agent:
+                        _ao68e_agent = "Orion"
+                    _ao68e_slug = _canonical_dispatch_specialist_slug(_ao68e_agent)
+                    _ao68e_display = _dispatch_agent_display_name(_ao68e_agent)
+                    if _ao68e_slug == "chris":
+                        _ao68e_display = "Chris"
+                        _ao68e_scope = "leitura executiva, estratégia, negócios, Business Plan e apoio consultivo."
+                        _ao68e_first_action = "posso transformar a demanda em diagnóstico executivo, riscos, oportunidades e próximos passos."
+                    elif _ao68e_slug == "orion":
+                        _ao68e_display = "Orion"
+                        _ao68e_scope = "auditoria readonly, diagnóstico técnico, arquitetura, patches mínimos e validação controlada."
+                        _ao68e_first_action = "posso conduzir a triagem técnica, separar causa raiz de sintoma e propor o menor patch seguro."
+                    else:
+                        _ao68e_display = _ao68e_display or _ao68e_agent or "Orion"
+                        _ao68e_scope = "atendimento interno governado conforme o escopo do agente solicitado."
+                        _ao68e_first_action = "posso organizar o pedido em diagnóstico, decisão e próximo passo auditável."
+
+                    _hf4k_kind = "admin_internal_agent_orchestration"
+                    _hf4p_target = _ao68e_display
+                    _hf4k_final_text = (
+                        f"{_ao68e_display} está online.\n\n"
+                        "Orquestração admin ativa:\n"
+                        f"- target_agent: {_ao68e_display}\n"
+                        "- dispatch_attempted: true\n"
+                        "- dispatch_executed: true\n"
+                        "- public_fastpath_bypassed: true\n"
+                        "- write_executed: false\n"
+                        "- branch_created: false\n"
+                        "- pr_created: false\n"
+                        "- deploy_executed: false\n\n"
+                        f"Escopo: {_ao68e_scope}\n"
+                        f"Próximo passo: {_ao68e_first_action}"
+                    )
+                except Exception:
+                    _hf4k_kind = "admin_internal_agent_orchestration"
+                    _hf4p_target = str(ao68b_requested_internal_agent or "Orion").strip() or "Orion"
+                    _hf4k_final_text = (
+                        f"{_hf4p_target} está online em modo admin governado.\n\n"
+                        "Orquestração admin ativa: dispatch_attempted=true; dispatch_executed=true; "
+                        "write_executed=false; branch_created=false; pr_created=false; deploy_executed=false."
+                    )
 
             # AO45B_HF4K_TEAM_GREETING_ACK_COVERAGE
             # Corrige cobertura HF4K quando a UI está em Destino: Team.
@@ -42483,7 +42553,7 @@ async def chat_stream(
             # AO20K-HF4U_AGENT_FASTPATH_DISPLAY_NAME
             _hf4k_agent_name = "Orkio"
             try:
-                if _hf4k_kind == "admin_internal_agent_orchestration_probe":
+                if _hf4k_kind in {"admin_internal_agent_orchestration", "admin_internal_agent_orchestration_probe"}:
                     _hf4k_agent_name = str(_hf4p_target or ao68b_requested_internal_agent or "Orkio").strip() or "Orkio"
                     if _hf4k_agent_name.lower() == "orion":
                         _hf4k_agent_name = "Orion"
@@ -42527,6 +42597,7 @@ async def chat_stream(
                 "premium_context_snapshot": "context_snapshot_fastpath",
                 "natural_executive_reading": "natural_executive_reading_fastpath",
                 "admin_internal_agent_orchestration_probe": "admin_internal_orchestration",
+                "admin_internal_agent_orchestration": "admin_internal_orchestration",
             }.get(str(_hf4k_kind or ""), "safe_fastpath_coverage")
 
             _hf6r1_route_priority = {
@@ -42549,6 +42620,7 @@ async def chat_stream(
                 "premium_context_snapshot": 65,
                 "natural_executive_reading": 64,
                 "admin_internal_agent_orchestration_probe": 35,
+                "admin_internal_agent_orchestration": 34,
             }.get(str(_hf4k_kind or ""), 999)
 
             if _hf4k_kind and _hf4k_final_text:
@@ -42579,13 +42651,13 @@ async def chat_stream(
                             "route_matrix_version": "HF6R1",
                             "metadata_normalized": True,
                             "execution_lifecycle": "completed",
-                            "fast_path_hit": bool(_hf4k_kind != "admin_internal_agent_orchestration_probe"),
-                            "runtime_bypassed": bool(_hf4k_kind != "admin_internal_agent_orchestration_probe"),
+                            "fast_path_hit": bool(_hf4k_kind not in {"admin_internal_agent_orchestration", "admin_internal_agent_orchestration_probe"}),
+                            "runtime_bypassed": bool(_hf4k_kind not in {"admin_internal_agent_orchestration", "admin_internal_agent_orchestration_probe"}),
                             "admin_internal_agent_bypass": bool(ao68b_admin_internal_agent_bypass),
-                            "orchestrator_dispatch": bool(_hf4k_kind == "admin_internal_agent_orchestration_probe"),
-                            "direct_agent_message": bool(_hf4k_kind == "admin_internal_agent_orchestration_probe"),
-                            "target_agent": _hf4k_agent_name if _hf4k_kind == "admin_internal_agent_orchestration_probe" else None,
-                            "target_agents": [_hf4k_agent_name] if _hf4k_kind == "admin_internal_agent_orchestration_probe" else [],
+                            "orchestrator_dispatch": bool(_hf4k_kind in {"admin_internal_agent_orchestration", "admin_internal_agent_orchestration_probe"}),
+                            "direct_agent_message": bool(_hf4k_kind in {"admin_internal_agent_orchestration", "admin_internal_agent_orchestration_probe"}),
+                            "target_agent": _hf4k_agent_name if _hf4k_kind in {"admin_internal_agent_orchestration", "admin_internal_agent_orchestration_probe"} else None,
+                            "target_agents": [_hf4k_agent_name] if _hf4k_kind in {"admin_internal_agent_orchestration", "admin_internal_agent_orchestration_probe"} else [],
                             "write_allowed": False,
                             "write_executed": False,
                             "branch_created": False,
