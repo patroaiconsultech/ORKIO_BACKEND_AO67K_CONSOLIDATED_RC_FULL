@@ -32,7 +32,7 @@ from fastapi import FastAPI, Depends, HTTPException, Header, UploadFile, File as
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import OperationalError, TimeoutError as SQLAlchemyTimeoutError
+from sqlalchemy.exc import IntegrityError, OperationalError, TimeoutError as SQLAlchemyTimeoutError
 from sqlalchemy import select, func, text, delete, update
 
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
@@ -1371,17 +1371,20 @@ def _send_resend_email(to_email: Any, subject: str, text_body: str, *, html_body
         )
         ctx = _ssl.create_default_context()
         resp = _urllib_request.urlopen(req, context=ctx, timeout=10)
-        body = resp.read().decode("utf-8", errors="replace")
+        # Consume the provider response without persisting recipient, subject or body.
+        resp.read()
         logger.info(
-            "RESEND_SEND_OK status=%s recipients=%s subject=%s body=%s",
+            "RESEND_SEND_OK status=%s recipient_count=%s",
             getattr(resp, "status", "unknown"),
-            recipients,
-            subject,
-            body[:500],
+            len(recipients),
         )
         return True
     except Exception as e:
-        logger.exception("RESEND_SEND_FAILED recipients=%s subject=%s error=%s", recipients, subject, str(e))
+        logger.warning(
+            "RESEND_SEND_FAILED recipient_count=%s error_type=%s",
+            len(recipients),
+            e.__class__.__name__,
+        )
         return False
 
 def _ascii_safe_text(v: str) -> str:
@@ -1427,6 +1430,14 @@ _LOGIN_MAX_PER_MINUTE = int(os.getenv("LOGIN_MAX_PER_MINUTE", "20"))
 _rl_register_lock = _threading.Lock()
 _rl_register_calls: dict = {}  # {ip: [ts...]}
 _REGISTER_MAX_PER_MINUTE = int(os.getenv("REGISTER_MAX_PER_MINUTE", "120"))
+
+# AO71D — public contact abuse guard.
+# In-memory per replica by design; staging/prod should still use an edge/WAF limit.
+_rl_contact_lock = _threading.Lock()
+_rl_contact_calls: dict = {}  # {"ip:<address>": [ts...], "email:<sha256>": [ts...]}
+_CONTACT_MAX_PER_WINDOW = max(1, int(os.getenv("CONTACT_MAX_PER_WINDOW", "5")))
+_CONTACT_EMAIL_MAX_PER_WINDOW = max(1, int(os.getenv("CONTACT_EMAIL_MAX_PER_WINDOW", "3")))
+_CONTACT_RATE_WINDOW_SECONDS = max(60, int(os.getenv("CONTACT_RATE_WINDOW_SECONDS", "600")))
 
 _rl_otp_lock = _threading.Lock()
 _rl_otp_calls: dict = {}  # {ip: [ts...]}
@@ -2850,13 +2861,32 @@ class FounderActionIn(BaseModel):
 class ContactIn(BaseModel):
     full_name: str = Field(min_length=1, max_length=200)
     email: EmailStr
-    whatsapp: Optional[str] = None
+    whatsapp: Optional[str] = Field(default=None, max_length=64)
     subject: str = Field(min_length=1, max_length=200)
     message: str = Field(min_length=1, max_length=5000)
-    privacy_request_type: Optional[str] = None  # access | delete | correction | portability
-    consent_terms: bool = True
+    privacy_request_type: Optional[str] = Field(default=None, max_length=64)  # access | delete | correction | portability
+    consent_terms: bool
     consent_marketing: bool = False
-    terms_version: str = TERMS_VERSION
+    terms_version: str = Field(default=TERMS_VERSION, min_length=1, max_length=64)
+
+
+class BetaWaitlistIn(BaseModel):
+    """Public closed-beta waitlist contract used by BetaAccessGate."""
+
+    name: str = Field(min_length=1, max_length=200)
+    company: Optional[str] = Field(default=None, max_length=200)
+    whatsapp: Optional[str] = Field(default=None, max_length=64)
+    email: EmailStr
+    consent: bool
+    access_code: Optional[str] = Field(default=None, max_length=64)
+    source: str = Field(default="orkio_closed_beta_gate", min_length=1, max_length=80)
+
+
+class BetaWaitlistOut(BaseModel):
+    ok: bool = True
+    waitlist_id: str
+    status: str
+    message: str
 
 class SignupCodeIn(BaseModel):
     label: str = Field(min_length=1, max_length=100)
@@ -3663,33 +3693,54 @@ def require_onboarding_complete(payload: Dict[str, Any]) -> None:
     return
 
 def require_admin(payload: Dict[str, Any]) -> None:
-    if payload.get("role") == "admin":
+    """Require canonical admin-console authority for an already decoded payload."""
+    if has_admin_console_access(payload):
         return
-    raise HTTPException(status_code=403, detail="Admin required")
+    raise HTTPException(status_code=403, detail="Admin console access required")
 
 def require_admin_key(x_admin_key: Optional[str]) -> None:
     k = admin_api_key()
     # ADMIN_API_KEY is optional; if not configured, key-auth cannot be used.
     if not k:
         raise HTTPException(status_code=401, detail="ADMIN_API_KEY not configured")
-    if not x_admin_key or x_admin_key != k:
+    if not x_admin_key or not secrets.compare_digest(str(x_admin_key), str(k)):
         raise HTTPException(status_code=401, detail="Invalid admin key")
 
 def require_admin_access(
     authorization: Optional[str] = Header(default=None),
     x_admin_key: Optional[str] = Header(default=None),
 ) -> Dict[str, Any]:
-    """Allow admin via JWT (role=admin) OR via X-Admin-Key."""
-    # 1) JWT path
+    """Allow canonical admin-console authority via JWT or X-Admin-Key.
+
+    Console roles are resolved centrally by ``admin_master_identity`` so
+    ``founder_admin``, master roles and configured admin identities behave
+    consistently across legacy routes and the newer internal routers.
+    """
+    # 1) JWT path. A present bearer token never falls through to key auth.
     if authorization and authorization.lower().startswith("bearer "):
         payload = get_current_user(authorization)
-        if payload.get("role") == "admin":
-            return payload
-        raise HTTPException(status_code=403, detail="Admin required")
+        context = {
+            **payload,
+            **build_admin_authority_context(payload),
+            "via": "bearer",
+        }
+        if context.get("admin_console_access"):
+            return context
+        raise HTTPException(status_code=403, detail="Admin console access required")
 
-    # 2) Admin key path
+    # 2) Admin key path. Preserve the historical console-admin behavior.
     require_admin_key(x_admin_key)
-    return {"role": "admin", "via": "admin_key"}
+    base = {
+        "role": "admin",
+        "via": "admin_key",
+        "email": "x-admin-key",
+        "sub": "x-admin-key",
+    }
+    return {
+        **base,
+        **build_admin_authority_context(base),
+        "via": "admin_key",
+    }
 
 
 # PATCH0100_14 — Thread ACL helpers
@@ -9159,14 +9210,10 @@ def _apply_runtime_hard_constraints_to_targets(
     }
 
 def _payload_has_catalog_privileged_access(payload: Optional[Dict[str, Any]]) -> bool:
+    """Use the canonical admin-console policy for privileged catalog access."""
     if not isinstance(payload, dict):
         return False
-    role = str(payload.get("role") or "").strip().lower()
-    if role in {"admin", "owner", "superadmin"}:
-        return True
-    if bool(payload.get("is_admin")) or bool(payload.get("admin")):
-        return True
-    return False
+    return bool(has_admin_console_access(payload))
 
 
 def _safe_bool(v: Any, default: bool = False) -> bool:
@@ -46717,19 +46764,205 @@ def admin_join_founder_escalation(escalation_id: str, user=Depends(require_admin
     db.add(r); db.commit()
     return {"ok": True, "id": r.id, "status": r.status}
 
+@app.post("/api/beta/waitlist", response_model=BetaWaitlistOut)
+def register_beta_waitlist(
+    inp: BetaWaitlistIn,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Register closed-beta interest without creating a new database table.
+
+    The stable id is derived from the normalized e-mail, making retries
+    idempotent. Optional access codes are stored only as a SHA-256 digest.
+    """
+
+    if not inp.consent:
+        raise HTTPException(
+            status_code=400,
+            detail="Autorize o contato para entrar na Lista Prioritária.",
+        )
+
+    email = str(inp.email).strip().lower()
+    name = inp.name.strip()
+    company = (inp.company or "").strip()
+    whatsapp = (inp.whatsapp or "").strip() or None
+    source = re.sub(r"[^a-z0-9_.:-]+", "_", inp.source.strip().lower()).strip("_")
+    source = source or "orkio_closed_beta_gate"
+
+    access_code = re.sub(r"\s+", "", (inp.access_code or "")).strip().upper()
+    access_code_sha256 = (
+        hashlib.sha256(access_code.encode("utf-8")).hexdigest()
+        if access_code
+        else None
+    )
+
+    waitlist_id = (
+        "beta_waitlist_"
+        + hashlib.sha256(email.encode("utf-8")).hexdigest()[:32]
+    )
+    ip = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "")
+
+    stored_payload = {
+        "kind": "beta_waitlist",
+        "company": company or None,
+        "source": source,
+        "access_code_sha256": access_code_sha256,
+    }
+
+    existing = db.execute(
+        select(ContactRequest).where(ContactRequest.id == waitlist_id)
+    ).scalar_one_or_none()
+
+    registration_status = "already_registered" if existing else "registered"
+    contact = existing
+
+    if contact is None:
+        contact = ContactRequest(
+            id=waitlist_id,
+            full_name=name,
+            email=email,
+            whatsapp=whatsapp,
+            subject="Lista Prioritária ORKIO OS",
+            message=json.dumps(stored_payload, ensure_ascii=False, sort_keys=True),
+            privacy_request_type=None,
+            consent_terms=False,
+            consent_marketing=True,
+            ip_address=ip,
+            user_agent=user_agent,
+            terms_version=None,
+            status="pending",
+            retention_until=now_ts() + (2 * 365 * 86400),
+            created_at=now_ts(),
+        )
+        db.add(contact)
+        try:
+            db.commit()
+        except IntegrityError:
+            # A concurrent retry may have inserted the deterministic id first.
+            db.rollback()
+            contact = db.execute(
+                select(ContactRequest).where(ContactRequest.id == waitlist_id)
+            ).scalar_one_or_none()
+            if contact is None:
+                raise
+            registration_status = "already_registered"
+    else:
+        # Preserve idempotency while refreshing user-provided contact details.
+        contact.full_name = name
+        contact.whatsapp = whatsapp
+        contact.message = json.dumps(
+            stored_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        contact.ip_address = ip
+        contact.user_agent = user_agent
+        db.add(contact)
+        db.commit()
+
+    channels = ["email"]
+    if whatsapp:
+        channels.append("whatsapp")
+
+    for channel in channels:
+        consent_exists = db.execute(
+            select(MarketingConsent).where(
+                MarketingConsent.contact_id == waitlist_id,
+                MarketingConsent.channel == channel,
+                MarketingConsent.opt_out_date.is_(None),
+            )
+        ).scalar_one_or_none()
+        if consent_exists is None:
+            db.add(
+                MarketingConsent(
+                    id=new_id(),
+                    contact_id=waitlist_id,
+                    channel=channel,
+                    opt_in_date=now_ts(),
+                    ip=ip,
+                    source=source,
+                    created_at=now_ts(),
+                )
+            )
+
+    db.commit()
+
+    try:
+        audit(
+            db,
+            "public",
+            None,
+            "beta.waitlist.registered",
+            request_id=ensure_request_id(request),
+            path="/api/beta/waitlist",
+            status_code=200,
+            latency_ms=0,
+            meta={
+                "waitlist_id": waitlist_id,
+                "source": source,
+                "status": registration_status,
+            },
+        )
+    except Exception:
+        logger.exception(
+            "BETA_WAITLIST_AUDIT_FAILED waitlist_id=%s",
+            waitlist_id,
+        )
+
+    return {
+        "ok": True,
+        "waitlist_id": waitlist_id,
+        "status": registration_status,
+        "message": (
+            "Cadastro já estava na Lista Prioritária."
+            if registration_status == "already_registered"
+            else "Cadastro registrado na Lista Prioritária."
+        ),
+    }
+
+
 @app.post("/api/public/contact")
 def public_contact(inp: ContactIn, request: Request = None, db: Session = Depends(get_db)):
     """Public contact form — stores request + consent records for LGPD compliance."""
-    ip = (request.client.host if request and request.client else "unknown")
+    ip = _client_ip(request) if request else "unknown"
     ua = (request.headers.get("user-agent", "") if request else "")
+    normalized_email = inp.email.lower().strip()
+    email_rate_hash = hashlib.sha256(normalized_email.encode("utf-8")).hexdigest()
 
     if not inp.consent_terms:
         raise HTTPException(status_code=400, detail="Você precisa aceitar os Termos de Uso.")
 
+    if not _rate_limit_check(
+        _rl_contact_lock,
+        _rl_contact_calls,
+        f"ip:{ip}",
+        _CONTACT_MAX_PER_WINDOW,
+        window=_CONTACT_RATE_WINDOW_SECONDS,
+    ):
+        raise HTTPException(
+            status_code=429,
+            detail="Muitas solicitações de contato. Aguarde alguns minutos e tente novamente.",
+            headers={"Retry-After": str(_CONTACT_RATE_WINDOW_SECONDS)},
+        )
+
+    if not _rate_limit_check(
+        _rl_contact_lock,
+        _rl_contact_calls,
+        f"email:{email_rate_hash}",
+        _CONTACT_EMAIL_MAX_PER_WINDOW,
+        window=_CONTACT_RATE_WINDOW_SECONDS,
+    ):
+        raise HTTPException(
+            status_code=429,
+            detail="Muitas solicitações para este contato. Aguarde alguns minutos e tente novamente.",
+            headers={"Retry-After": str(_CONTACT_RATE_WINDOW_SECONDS)},
+        )
+
     cr = ContactRequest(
         id=new_id(),
         full_name=inp.full_name.strip(),
-        email=inp.email.lower().strip(),
+        email=normalized_email,
         whatsapp=(inp.whatsapp or "").strip() or None,
         subject=inp.subject.strip(),
         message=inp.message.strip(),
@@ -46757,10 +46990,24 @@ def public_contact(inp: ContactIn, request: Request = None, db: Session = Depend
             logger.exception("MARKETING_CONSENT_CONTACT_FAILED")
 
     try:
-        audit(db, "public", None, "contact.submitted", request_id="contact", path="/api/public/contact",
-              status_code=200, latency_ms=0, meta={"email": inp.email, "subject": inp.subject, "privacy_request_type": inp.privacy_request_type})
+        audit(
+            db,
+            "public",
+            None,
+            "contact.submitted",
+            request_id=ensure_request_id(request),
+            path="/api/public/contact",
+            status_code=200,
+            latency_ms=0,
+            meta={
+                "contact_id": cr.id,
+                "has_whatsapp": bool(cr.whatsapp),
+                "privacy_request_type": cr.privacy_request_type,
+                "consent_marketing": bool(cr.consent_marketing),
+            },
+        )
     except Exception:
-        pass
+        logger.warning("CONTACT_AUDIT_FAILED contact_id=%s", cr.id)
 
 
     # AO67I — Contact Delivery Reliability
