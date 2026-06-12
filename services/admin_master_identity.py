@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 from fastapi import Header, HTTPException
 from app.security import decode_token
 
-_ADMIN_MASTER_ROLE_SET = {"admin_master", "master_admin"}
+_ADMIN_MASTER_ROLE_SET = {"admin_master", "master_admin", "founder_admin"}
 _ADMIN_CONSOLE_ROLE_SET = {
     "admin",
     "owner",
@@ -14,6 +14,7 @@ _ADMIN_CONSOLE_ROLE_SET = {
     "super_admin",
     "admin_master",
     "master_admin",
+    "founder_admin",
     "creator",
 }
 _ADMIN_MASTER_ENV_KEYS = (
@@ -101,10 +102,20 @@ def is_admin_master(subject: Any) -> bool:
     if subject is None:
         return False
     if isinstance(subject, dict):
-        if bool(subject.get("is_admin_master")) or bool(subject.get("master_admin")) or bool(subject.get("write_approval_authority")):
+        if (
+            bool(subject.get("is_admin_master"))
+            or bool(subject.get("master_admin"))
+            or bool(subject.get("founder_admin"))
+            or bool(subject.get("write_approval_authority"))
+        ):
             return True
     else:
-        if bool(getattr(subject, "is_admin_master", False)) or bool(getattr(subject, "master_admin", False)) or bool(getattr(subject, "write_approval_authority", False)):
+        if (
+            bool(getattr(subject, "is_admin_master", False))
+            or bool(getattr(subject, "master_admin", False))
+            or bool(getattr(subject, "founder_admin", False))
+            or bool(getattr(subject, "write_approval_authority", False))
+        ):
             return True
     email = extract_identity_email(subject)
     role = extract_identity_role(subject)
@@ -135,6 +146,8 @@ def authority_source(subject: Any) -> str:
     configured = get_admin_master_emails()
     if email and configured and email in configured:
         return "admin_master_identity"
+    if role == "founder_admin":
+        return "founder_admin_role"
     if role in _ADMIN_MASTER_ROLE_SET:
         return "master_admin_role"
     if has_admin_console_access(subject):
