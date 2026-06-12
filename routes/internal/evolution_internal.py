@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -27,7 +28,11 @@ from app.services.governance_service import build_governance_health, evaluate_go
 from app.services.receipt_service import make_governed_receipt
 from app.services.admin_master_identity import require_admin_console_access, require_master_admin_access
 
-router = APIRouter(prefix="/api/internal/orion", tags=["orion_internal"], dependencies=[Depends(require_admin_console_access)])
+router = APIRouter(
+    prefix="/api/internal/evolution",
+    tags=["evolution_internal"],
+    dependencies=[Depends(require_admin_console_access)],
+)
 
 PATCH_SENTINEL = "PR_COMPARE_STATUS_SENTINEL_12BN_V1"
 PATCH_FEATURE = "github_pr_compare_status_resolver"
