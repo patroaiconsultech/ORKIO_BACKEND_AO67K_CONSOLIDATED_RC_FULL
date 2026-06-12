@@ -1,5 +1,5 @@
-"""AO68B-HF1_ADMIN_AUTH_PARITY — expanded admin detection for chat orchestration."""
-"""
+"""AO68B-HF1_ADMIN_AUTH_PARITY — expanded admin detection for chat orchestration.
+
 AO68M — Admin Chat Orchestration Hooks
 
 Purpose:
