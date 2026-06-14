@@ -1,4 +1,5 @@
 # AO67F — Chat Stream Decision Gateway
+# AO72E-HF1 DOCUMENT CONTEXT GATEWAY BYPASS
 # Destino real: runtime/chat_stream_decision_gateway.py
 # Modo: PATCH_PREMIUM / minimal wiring-ready
 #
@@ -88,6 +89,80 @@ def is_journey_memory_commit_enabled(default: bool = False) -> bool:
 def _safe_str(value: Any, default: str = "") -> str:
     text = str(value if value is not None else default).strip()
     return text if text else default
+
+# AO72E-HF1 — document requests must reach the real chat/RAG runtime.
+# The public Decision Mesh is intentionally bypassed for explicit attachment
+# references so it cannot replace document analysis with a generic governance
+# message before the file context is loaded.
+def _is_document_context_request(message: Any) -> bool:
+    low = " ".join(str(message or "").strip().lower().split())
+    if not low:
+        return False
+
+    explicit_file_markers = (
+        "anexo",
+        "anexado",
+        "anexada",
+        "anexei",
+        "arquivo",
+        "documento",
+        "docx",
+        "pdf",
+        "pptx",
+        "planilha",
+        "upload",
+        "regulamento",
+        "apresentação",
+        "apresentacao",
+    )
+    if any(marker in low for marker in explicit_file_markers):
+        return True
+
+    sent_markers = (
+        "mandei",
+        "enviei",
+        "encaminhei",
+        "subi",
+        "carreguei",
+        "fiz o upload",
+    )
+    document_objects = (
+        "projeto",
+        "material",
+        "arquivo",
+        "documento",
+        "apresentação",
+        "apresentacao",
+        "regulamento",
+        "proposta",
+        "plano",
+    )
+    if any(marker in low for marker in sent_markers) and any(obj in low for obj in document_objects):
+        return True
+
+    deictic_markers = (
+        "que te mandei",
+        "que eu mandei",
+        "que te enviei",
+        "que eu enviei",
+        "que anexei",
+        "em anexo",
+        "aqui anexado",
+        "aqui em anexo",
+    )
+    analysis_markers = (
+        "analis",
+        "resum",
+        "revis",
+        "leia",
+        "ler",
+        "avalie",
+        "avalia",
+        "olhada",
+    )
+    return any(marker in low for marker in deictic_markers) and any(
+        marker in low for marker in analysis_markers
+    )
 
 
 def _extract_user_id(user: Any) -> Optional[str]:
@@ -223,6 +298,27 @@ def build_public_chat_gateway_decision(
         if commit_memory is None
         else bool(commit_memory)
     )
+
+    if _is_document_context_request(message):
+        return {
+            "ok": True,
+            "handled": False,
+            "reason": "document_context_requires_chat_runtime",
+            "service": "chat_stream_decision_gateway",
+            "version": CHAT_STREAM_DECISION_GATEWAY_VERSION,
+            "agent_id": "orkio",
+            "agent_name": PUBLIC_SPEAKER,
+            "final_speaker": PUBLIC_SPEAKER,
+            "visible_agent": PUBLIC_SPEAKER,
+            "commit_memory": should_commit_memory,
+            "integration_contract": {
+                "main_py_change_required": True,
+                "document_context_required": True,
+                "specialists_visible": False,
+                "rule": "attachment_requests_must_reach_thread_rag",
+                "rollback_env": "ORKIO_PUBLIC_CHAT_GATEWAY_ENABLED=false",
+            },
+        }
 
     admin_override = _admin_chat_gateway_override(
         message=message,
