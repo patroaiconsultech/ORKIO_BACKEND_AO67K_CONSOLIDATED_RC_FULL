@@ -56,6 +56,11 @@ from .runtime.public_orkio_policy import (
     build_public_orkio_stream_payload,
     append_orkio_ceo_scope_overlay,
 )
+from .runtime.orkio_context_intent import (
+    classify_orkio_context_intent,
+    public_fastpath_allowed as orkio_public_fastpath_allowed,
+    requires_document_context as orkio_requires_document_context,
+)
 from .runtime.realtime_unlock_journey import (
     build_realtime_unlock_journey_decision,
     decorate_orkio_policy_decision_with_realtime_unlock,
@@ -14352,6 +14357,307 @@ def _build_file_context_block(
 
 
 
+
+# AO75A — shared context-intent contract.
+# The compatibility wrapper keeps existing callers stable while routing all
+# attachment and continuity decisions through one dependency-free classifier.
+def _is_thread_document_context_request(
+    user_text: Any,
+    *,
+    previous_messages: Optional[List[Any]] = None,
+    has_thread_files: bool = False,
+) -> bool:
+    contract = classify_orkio_context_intent(
+        user_text,
+        previous_messages=previous_messages,
+        has_thread_files=has_thread_files,
+    )
+    return orkio_requires_document_context(contract)
+
+
+def _get_thread_chat_file_ids(
+    db: Session,
+    *,
+    org: str,
+    thread_id: str,
+    max_files: int = 8,
+) -> List[str]:
+    if not thread_id:
+        return []
+
+    rows: List[Any] = []
+    try:
+        rows = db.execute(
+            select(File.id)
+            .where(
+                File.org_slug == org,
+                File.scope_thread_id == thread_id,
+                File.origin == "chat",
+            )
+            .order_by(File.created_at.desc())
+            .limit(max(1, int(max_files or 8)))
+        ).all()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        rows = []
+
+    # Compatibility with older rows that populated thread_id but not
+    # scope_thread_id.
+    if not rows:
+        try:
+            rows = db.execute(
+                select(File.id)
+                .where(
+                    File.org_slug == org,
+                    File.thread_id == thread_id,
+                    File.origin == "chat",
+                )
+                .order_by(File.created_at.desc())
+                .limit(max(1, int(max_files or 8)))
+            ).all()
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            rows = []
+
+    out: List[str] = []
+    seen: set = set()
+    for row in list(rows or []):
+        try:
+            file_id = str(row[0] or "").strip()
+        except Exception:
+            file_id = ""
+        if file_id and file_id not in seen:
+            out.append(file_id)
+            seen.add(file_id)
+    return out
+
+
+def _load_recent_thread_context_messages(
+    db: Session,
+    *,
+    org: str,
+    thread_id: str,
+    limit: int = 12,
+) -> List[Dict[str, str]]:
+    if not thread_id:
+        return []
+
+    try:
+        rows = db.execute(
+            select(Message.role, Message.content)
+            .where(
+                Message.org_slug == org,
+                Message.thread_id == thread_id,
+            )
+            .order_by(Message.created_at.desc())
+            .limit(max(1, int(limit or 12)))
+        ).all()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return []
+
+    out: List[Dict[str, str]] = []
+    for role, content in reversed(list(rows or [])):
+        text_value = str(content or "").strip()
+        if text_value:
+            out.append(
+                {
+                    "role": str(role or "user").strip() or "user",
+                    "content": text_value,
+                }
+            )
+    return out
+
+
+def _append_ao75_task_first_overlay(
+    runtime_enrichment: Optional[Dict[str, Any]],
+    intent_contract: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    data = dict(runtime_enrichment or {})
+    contract = dict(intent_contract or {})
+    if not contract.get("concrete_task"):
+        return data
+
+    task_overlay = (
+        "TASK-FIRST RESPONSE CONTRACT. "
+        "Answer the user's concrete task before presenting Patroai, services, implementation or calls to action. "
+        "Use available evidence, separate confirmed facts from inference, state operational limitations honestly, "
+        "and never claim an external action, document access or execution that was not actually confirmed. "
+        "Orkio remains the public speaker."
+    )
+    current_overlay = str(data.get("system_overlay") or "").strip()
+    data["system_overlay"] = (
+        current_overlay + ("\n\n" if current_overlay else "") + task_overlay
+    ).strip()
+
+    runtime_hints = (
+        dict(data.get("runtime_hints") or {})
+        if isinstance(data.get("runtime_hints"), dict)
+        else {}
+    )
+    runtime_hints["ao75_intent"] = {
+        "version": contract.get("version"),
+        "intent": contract.get("intent"),
+        "reason": contract.get("reason"),
+        "confidence": contract.get("confidence"),
+        "requires_document_context": bool(contract.get("requires_document_context")),
+        "public_fastpath_allowed": bool(contract.get("public_fastpath_allowed", True)),
+        "memory_commit_allowed": bool(contract.get("memory_commit_allowed", False)),
+        "speaker": "Orkio",
+    }
+    data["runtime_hints"] = runtime_hints
+    return data
+
+
+def _load_thread_document_citations(
+    db: Session,
+    *,
+    org: str,
+    thread_id: str,
+    query: str,
+    top_k: int = 8,
+) -> Dict[str, Any]:
+    file_ids = _get_thread_chat_file_ids(
+        db,
+        org=org,
+        thread_id=thread_id,
+        max_files=8,
+    )
+    citations: List[Dict[str, Any]] = []
+
+    if file_ids:
+        try:
+            citations = keyword_retrieve(
+                db,
+                org_slug=org,
+                query=query,
+                top_k=max(1, int(top_k or 8)),
+                file_ids=file_ids,
+            )
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            citations = []
+
+        # Requests such as "analise o documento que mandei" usually contain no
+        # terms from the document itself. Fall back to the first chunks of the
+        # most recently attached file instead of claiming that no file exists.
+        if not citations:
+            try:
+                citations = rag_fallback_recent_chunks(
+                    db,
+                    org=org,
+                    file_ids=file_ids,
+                    top_k=max(1, int(top_k or 8)),
+                )
+            except Exception:
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+                citations = []
+
+    file_ctx = _build_file_context_block(citations)
+    return {
+        "file_ids": file_ids,
+        "citations": citations,
+        "file_context_injected": bool(file_ctx.get("file_context_injected")),
+        "file_context_chars": int(file_ctx.get("file_context_chars") or 0),
+        "file_evidence_count": int(file_ctx.get("file_evidence_count") or 0),
+        "files_used": list(file_ctx.get("files_used") or []),
+    }
+
+
+def _build_thread_document_runtime_enrichment(
+    *,
+    thread_id: str,
+    document_context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    document_context = dict(document_context or {})
+    evidence_count = int(document_context.get("file_evidence_count") or 0)
+    file_count = len(list(document_context.get("file_ids") or []))
+    context_available = bool(document_context.get("file_context_injected"))
+
+    if context_available:
+        overlay = (
+            "DOCUMENT ANALYSIS MODE — READONLY.\n"
+            "The user is referring to one or more files attached to this same thread. "
+            "Use the provided document evidence as the primary source. State the file "
+            "name when useful, distinguish confirmed evidence from inference, and do "
+            "not claim that the attachment is unavailable while evidence is present. "
+            "If the retrieved excerpts are incomplete, say exactly what remains "
+            "unverified and offer a focused continuation."
+        )
+    elif file_count:
+        overlay = (
+            "DOCUMENT ANALYSIS MODE — READONLY.\n"
+            "A file record exists in this thread, but no extracted text evidence is "
+            "available. Do not invent document content. Explain that the upload was "
+            "registered but text extraction/context is unavailable, and ask for a "
+            "supported re-upload or a specific excerpt."
+        )
+    else:
+        overlay = (
+            "DOCUMENT ANALYSIS MODE — READONLY.\n"
+            "No thread-scoped uploaded file was found. Do not invent document content. "
+            "Ask the user to upload the file into this conversation."
+        )
+
+    return {
+        "intent_package": {
+            "intent": "thread_document_analysis",
+            "capability_name": "document_analysis_readonly",
+            "requires_runtime_execution": False,
+            "runtime_operation": {
+                "kind": "conversation",
+                "capability_name": "document_analysis_readonly",
+                "execution_depth": "chat",
+                "prepare_only": True,
+            },
+        },
+        "first_win_plan": {},
+        "continuity_hints": {},
+        "profile_hints": None,
+        "chain": [],
+        "planner_snapshot": {
+            "route_applied": False,
+            "routing_mode": "single",
+            "document_context_fastpath": True,
+        },
+        "dag_snapshot": {
+            "route_applied": False,
+            "routing_mode": "single",
+            "document_context_fastpath": True,
+        },
+        "memory_snapshot": {},
+        "trial_hints": {},
+        "trial_analytics": {},
+        "system_overlay": overlay,
+        "runtime_hints": {
+            "intent": "thread_document_analysis",
+            "document_context": {
+                "thread_id": thread_id,
+                "file_count": file_count,
+                "evidence_count": evidence_count,
+                "context_available": context_available,
+                "file_context_chars": int(document_context.get("file_context_chars") or 0),
+            },
+        },
+        "thread_dispatch_contract": {},
+    }
+
+
 def _extract_patch_governance_target_files(user_text: str) -> List[str]:
     txt = str(user_text or "")
     matches = re.findall(r'(?<![\w/.-])([A-Za-z0-9_./\\-]+\.(?:py|jsx|tsx|js|ts|json|md|txt|yml|yaml|sql|html|css|docx|pptx|pdf))(?![\w/.-])', txt)
@@ -22541,23 +22847,116 @@ def chat(
     except Exception:
         pass
 
+    _ao75_thread_file_ids = _get_thread_chat_file_ids(
+        db,
+        org=org,
+        thread_id=tid,
+        max_files=8,
+    )
+    _ao75_intent_contract = classify_orkio_context_intent(
+        inp.message,
+        previous_messages=prev,
+        has_thread_files=bool(_ao75_thread_file_ids),
+    )
+    _ao72e_document_request = orkio_requires_document_context(
+        _ao75_intent_contract
+    )
+    _ao72e_document_context: Dict[str, Any] = {}
+    _ao72e_document_citations: List[Dict[str, Any]] = []
+    _ao72e_document_file_ids: List[str] = list(_ao75_thread_file_ids)
+
     try:
-        runtime_enrichment = _build_runtime_enrichment(
-            db,
-            org,
-            uid,
+        logger.info(
+            "AO75_INTENT_CLASSIFIED trace_id=%s thread_id=%s intent=%s confidence=%s explicit=%s document_context=%s public_fastpath_allowed=%s",
+            ao32_trace_id,
             tid,
-            inp.message,
-            prev,
-            available_agents=[getattr(a, "name", None) for a in target_agents],
-            destination_contract=destination_contract,
+            _ao75_intent_contract.get("intent"),
+            _ao75_intent_contract.get("confidence"),
+            bool(_ao75_intent_contract.get("explicit")),
+            bool(_ao72e_document_request),
+            bool(_ao75_intent_contract.get("public_fastpath_allowed", True)),
         )
     except Exception:
+        pass
+
+    if _ao72e_document_request:
         try:
-            db.rollback()
+            _ao72e_document_context = _load_thread_document_citations(
+                db,
+                org=org,
+                thread_id=tid,
+                query=inp.message,
+                top_k=8,
+            )
+            _ao72e_document_citations = list(
+                _ao72e_document_context.get("citations") or []
+            )
+            _ao72e_document_file_ids = list(
+                _ao72e_document_context.get("file_ids") or _ao75_thread_file_ids
+            )
+            logger.info(
+                "AO75_DOCUMENT_RETRIEVAL_READY trace_id=%s thread_id=%s intent=%s file_count=%s citation_count=%s context_chars=%s elapsed_ms=%s",
+                ao32_trace_id,
+                tid,
+                _ao75_intent_contract.get("intent"),
+                len(_ao72e_document_file_ids),
+                len(_ao72e_document_citations),
+                int(_ao72e_document_context.get("file_context_chars") or 0),
+                _ao32_elapsed_ms(),
+            )
         except Exception:
-            pass
-        runtime_enrichment = {}
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            _ao72e_document_context = {
+                "file_ids": list(_ao75_thread_file_ids),
+                "citations": [],
+                "file_context_injected": False,
+                "file_context_chars": 0,
+                "file_evidence_count": 0,
+                "files_used": [],
+            }
+            _ao72e_document_citations = []
+            _ao72e_document_file_ids = list(_ao75_thread_file_ids)
+            logger.exception(
+                "AO75_DOCUMENT_RETRIEVAL_FAILED trace_id=%s thread_id=%s intent=%s elapsed_ms=%s",
+                ao32_trace_id,
+                tid,
+                _ao75_intent_contract.get("intent"),
+                _ao32_elapsed_ms(),
+            )
+
+        # Document questions use a bounded enrichment contract. This prevents
+        # planner/profile/trial enrichment from consuming the stream guard before
+        # the authorized thread attachment can be resolved.
+        runtime_enrichment = _build_thread_document_runtime_enrichment(
+            thread_id=tid,
+            document_context=_ao72e_document_context,
+        )
+    else:
+        try:
+            runtime_enrichment = _build_runtime_enrichment(
+                db,
+                org,
+                uid,
+                tid,
+                inp.message,
+                prev,
+                available_agents=[getattr(a, "name", None) for a in target_agents],
+                destination_contract=destination_contract,
+            )
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            runtime_enrichment = {}
+
+    runtime_enrichment = _append_ao75_task_first_overlay(
+        runtime_enrichment,
+        _ao75_intent_contract,
+    )
 
     try:
         logger.warning(
@@ -23333,66 +23732,127 @@ def chat(
                 if not agent or not pm.agent_id or pm.agent_id != agent.id:
                     continue
             history.append({"role": role, "content": (pm.content or "")})
-        # Scoped knowledge (agent + linked agents) + thread-scoped temp files
+        # Scoped knowledge (agent + linked agents) + thread-scoped temp files.
+        # AO72E: thread attachments are available even when Orkio has rag_enabled
+        # disabled, because an explicit document request is itself authorization
+        # to read the file attached to this conversation.
+        thread_file_ids: List[str] = (
+            list(_ao72e_document_file_ids)
+            if _ao72e_document_request
+            else _get_thread_chat_file_ids(db, org=org, thread_id=tid, max_files=8)
+        )
+
         agent_file_ids: List[str] | None = None
         if agent:
             linked_agent_ids = get_linked_agent_ids(db, org, agent.id)
             scope_agent_ids = [agent.id] + linked_agent_ids
             agent_file_ids = get_agent_file_ids(db, org, scope_agent_ids)
 
-            # Include thread-scoped temporary files (uploads with intent='chat')
-            if tid:
-                thread_file_ids = [
-                    r[0]
-                    for r in db.execute(
-                        select(File.id).where(
-                            File.org_slug == org,
-                            File.scope_thread_id == tid,
-                            File.origin == "chat",
-                        )
-                    ).all()
-                ]
-                if thread_file_ids:
-                    agent_file_ids = list(dict.fromkeys((agent_file_ids or []) + thread_file_ids))
+        if thread_file_ids:
+            agent_file_ids = list(
+                dict.fromkeys((agent_file_ids or []) + list(thread_file_ids))
+            )
 
-        effective_top_k = (agent.rag_top_k if agent and agent.rag_enabled else inp.top_k)
+        effective_top_k = (
+            agent.rag_top_k if agent and agent.rag_enabled else inp.top_k
+        )
+        if _ao72e_document_request:
+            try:
+                effective_top_k = max(8, int(effective_top_k or 0))
+            except Exception:
+                effective_top_k = 8
 
-        citations: List[Dict[str, Any]] = []
-        if (not agent) or agent.rag_enabled:
+        citations: List[Dict[str, Any]] = (
+            list(_ao72e_document_citations)
+            if _ao72e_document_request
+            else []
+        )
+        should_run_rag = bool(
+            _ao72e_document_request
+            or (not agent)
+            or getattr(agent, "rag_enabled", False)
+        )
+
+        if should_run_rag:
             try:
                 logger.warning(
-                    "AO32_BEFORE_RAG trace_id=%s thread_id=%s client_message_id=%s agent=%s top_k=%s file_ids_count=%s elapsed_ms=%s",
+                    "AO32_BEFORE_RAG trace_id=%s thread_id=%s client_message_id=%s agent=%s top_k=%s file_ids_count=%s preloaded_citations=%s elapsed_ms=%s",
                     ao32_trace_id,
                     tid,
                     ao32_client_message_id,
                     getattr(agent, "name", None) if agent else None,
                     effective_top_k,
                     len(list(agent_file_ids or [])),
-                    _ao32_elapsed_ms(),
-                )
-            except Exception:
-                pass
-
-            citations = keyword_retrieve(db, org_slug=org, query=inp.message, top_k=effective_top_k, file_ids=agent_file_ids)
-
-            try:
-                logger.warning(
-                    "AO32_AFTER_RAG trace_id=%s thread_id=%s client_message_id=%s agent=%s citations_count=%s elapsed_ms=%s",
-                    ao32_trace_id,
-                    tid,
-                    ao32_client_message_id,
-                    getattr(agent, "name", None) if agent else None,
                     len(list(citations or [])),
                     _ao32_elapsed_ms(),
                 )
             except Exception:
                 pass
 
-            # Fallback for summary-style requests
-            if (not citations) and agent_file_ids:
+            if not citations:
+                try:
+                    citations = keyword_retrieve(
+                        db,
+                        org_slug=org,
+                        query=inp.message,
+                        top_k=effective_top_k,
+                        file_ids=agent_file_ids,
+                    )
+                except Exception:
+                    try:
+                        db.rollback()
+                    except Exception:
+                        pass
+                    citations = []
+
+            # Generic document-analysis prompts often do not share keywords with
+            # the document. Use deterministic recent chunks from the newest
+            # thread attachment as the safe fallback.
+            if (not citations) and thread_file_ids:
                 q = (inp.message or "").lower()
-                if any(k in q for k in ["resumo", "resuma", "sumar", "summary", "sintet", "analis", "analise"]):
-                    citations = rag_fallback_recent_chunks(db, org=org, file_ids=agent_file_ids, top_k=effective_top_k)
+                if _ao72e_document_request or any(
+                    k in q
+                    for k in [
+                        "resumo",
+                        "resuma",
+                        "sumar",
+                        "summary",
+                        "sintet",
+                        "analis",
+                        "analise",
+                        "documento",
+                        "arquivo",
+                        "anexo",
+                    ]
+                ):
+                    try:
+                        citations = rag_fallback_recent_chunks(
+                            db,
+                            org=org,
+                            file_ids=thread_file_ids,
+                            top_k=effective_top_k,
+                        )
+                    except Exception:
+                        try:
+                            db.rollback()
+                        except Exception:
+                            pass
+                        citations = []
+
+            try:
+                logger.warning(
+                    "AO32_AFTER_RAG trace_id=%s thread_id=%s client_message_id=%s agent=%s citations_count=%s thread_file_count=%s document_request=%s elapsed_ms=%s",
+                    ao32_trace_id,
+                    tid,
+                    ao32_client_message_id,
+                    getattr(agent, "name", None) if agent else None,
+                    len(list(citations or [])),
+                    len(list(thread_file_ids or [])),
+                    bool(_ao72e_document_request),
+                    _ao32_elapsed_ms(),
+                )
+            except Exception:
+                pass
 
         # Determine temperature
         temperature = None
@@ -33422,7 +33882,7 @@ async def chat_stream(
         ]
         if any(marker.lower() in raw.lower() for marker in internal_runtime_markers):
             try:
-                if _is_beta_planning_request(message):
+                if (not _ao75_force_context_runtime) and _is_beta_planning_request(message):
                     return _build_beta_planning_answer(message)
             except Exception:
                 pass
@@ -39758,31 +40218,101 @@ async def chat_stream(
                     pass
                 # If this fast-path fails, existing guarded rails still protect the UI.
 
+        # AO75A — classify the active task before any terminal public fastpath.
+        # This preserves the fast lane for genuine institutional/contact questions
+        # while concrete tasks continue into the contextual chat runtime.
+        try:
+            _ao75_recent_messages = _load_recent_thread_context_messages(
+                db,
+                org=org,
+                thread_id=tid_seed or "",
+                limit=12,
+            )
+            _ao75_stream_file_ids = _get_thread_chat_file_ids(
+                db,
+                org=org,
+                thread_id=tid_seed or "",
+                max_files=8,
+            )
+            _ao75_intent_contract = classify_orkio_context_intent(
+                message,
+                previous_messages=_ao75_recent_messages,
+                has_thread_files=bool(_ao75_stream_file_ids),
+            )
+        except Exception:
+            _ao75_recent_messages = []
+            _ao75_stream_file_ids = []
+            _ao75_intent_contract = classify_orkio_context_intent(message)
+
+        _ao75_public_fastpath_allowed = orkio_public_fastpath_allowed(
+            _ao75_intent_contract
+        )
+        _ao75_intent_name = str(
+            _ao75_intent_contract.get("intent") or ""
+        ).strip().lower()
+        _ao75_force_context_runtime = _ao75_intent_name in {
+            "document_analysis",
+            "document_summary",
+            "document_comparison",
+            "document_status",
+            "document_reference",
+            "document_creation",
+            "business_plan",
+            "project_strategy",
+            "product_design",
+        }
+        try:
+            logger.info(
+                "AO75_INTENT_CLASSIFIED trace_id=%s thread_id=%s intent=%s confidence=%s explicit=%s document_context=%s public_fastpath_allowed=%s",
+                trace_id,
+                tid_seed,
+                _ao75_intent_contract.get("intent"),
+                _ao75_intent_contract.get("confidence"),
+                bool(_ao75_intent_contract.get("explicit")),
+                bool(_ao75_intent_contract.get("requires_document_context")),
+                bool(_ao75_public_fastpath_allowed),
+            )
+        except Exception:
+            pass
+
         # AO67F — ORKIO_DECISION_MESH_GATEWAY_WIRE
         # Minimal and reversible wiring before AMCHAM/Chris/Orion/Orkio public policies.
         # The gateway is fail-open: if Decision Mesh or any new module fails, the
         # existing AO66B/AO67A/public policy corridor continues unchanged.
-        try:
-            _ao67f_gateway_decision = build_public_chat_gateway_decision(
-                message=message,
-                db=db,
-                user=user,
-                org_slug=org,
-                user_id=uid,
-                thread_id=tid_seed,
-                visible_agent=getattr(inp, "visible_agent", None),
-                target_agent_slug=getattr(inp, "target_agent_slug", None),
-                dest_mode=getattr(inp, "dest_mode", None),
-                route_plan=route_plan if isinstance(route_plan, dict) else None,
-                previous_messages=[],
-                commit_memory=False,
-            )
-        except Exception:
+        if _ao75_public_fastpath_allowed:
+            try:
+                _ao67f_gateway_decision = build_public_chat_gateway_decision(
+                    message=message,
+                    db=db,
+                    user=user,
+                    org_slug=org,
+                    user_id=uid,
+                    thread_id=tid_seed,
+                    visible_agent=getattr(inp, "visible_agent", None),
+                    target_agent_slug=getattr(inp, "target_agent_slug", None),
+                    dest_mode=getattr(inp, "dest_mode", None),
+                    route_plan=route_plan if isinstance(route_plan, dict) else None,
+                    previous_messages=_ao75_recent_messages,
+                    intent_contract=_ao75_intent_contract,
+                    has_thread_files=bool(_ao75_stream_file_ids),
+                    commit_memory=False,
+                )
+            except Exception:
+                _ao67f_gateway_decision = {
+                    "handled": False,
+                    "reason": "ao67f_gateway_exception",
+                    "agent_name": "Orkio",
+                    "final_speaker": "Orkio",
+                    "intent_contract": _ao75_intent_contract,
+                }
+        else:
             _ao67f_gateway_decision = {
                 "handled": False,
-                "reason": "ao67f_gateway_exception",
+                "reason": "ao75_concrete_task_passthrough",
                 "agent_name": "Orkio",
                 "final_speaker": "Orkio",
+                "intent_contract": _ao75_intent_contract,
+                "commit_memory": False,
             }
 
         if (not ao68b_admin_internal_agent_bypass) and should_short_circuit_public_chat(_ao67f_gateway_decision):
@@ -39850,7 +40380,8 @@ async def chat_stream(
             }
 
         if (
-            (not ao68b_admin_internal_agent_bypass)
+            _ao75_public_fastpath_allowed
+            and (not ao68b_admin_internal_agent_bypass)
             and isinstance(_amcham_public_journey_decision, dict)
             and _amcham_public_journey_decision.get("handled")
         ):
@@ -39903,7 +40434,7 @@ async def chat_stream(
         except Exception:
             _ao67a_unlock_decision = {"handled": False, "reason": "ao67a_policy_exception"}
 
-        if (not ao68b_admin_internal_agent_bypass) and isinstance(_ao67a_unlock_decision, dict) and _ao67a_unlock_decision.get("handled"):
+        if _ao75_public_fastpath_allowed and (not ao68b_admin_internal_agent_bypass) and isinstance(_ao67a_unlock_decision, dict) and _ao67a_unlock_decision.get("handled"):
             try:
                 final_text = str(_ao67a_unlock_decision.get("answer") or "").strip()
                 persisted = await asyncio.to_thread(
@@ -39943,7 +40474,7 @@ async def chat_stream(
         except Exception:
             _public_chris_decision = {"handled": False, "reason": "policy_exception"}
 
-        if (not ao68b_admin_internal_agent_bypass) and isinstance(_public_chris_decision, dict) and _public_chris_decision.get("handled"):
+        if _ao75_public_fastpath_allowed and (not ao68b_admin_internal_agent_bypass) and isinstance(_public_chris_decision, dict) and _public_chris_decision.get("handled"):
             try:
                 final_text = str(_public_chris_decision.get("answer") or "").strip()
                 persisted = await asyncio.to_thread(
@@ -39980,7 +40511,7 @@ async def chat_stream(
         except Exception:
             _public_orion_decision = {"handled": False, "reason": "policy_exception"}
 
-        if (not ao68b_admin_internal_agent_bypass) and isinstance(_public_orion_decision, dict) and _public_orion_decision.get("handled"):
+        if _ao75_public_fastpath_allowed and (not ao68b_admin_internal_agent_bypass) and isinstance(_public_orion_decision, dict) and _public_orion_decision.get("handled"):
             try:
                 final_text = str(_public_orion_decision.get("answer") or "").strip()
                 persisted = await asyncio.to_thread(
@@ -40033,7 +40564,7 @@ async def chat_stream(
         except Exception:
             _public_orkio_decision = {"handled": False, "reason": "policy_exception"}
 
-        if (not ao68b_admin_internal_agent_bypass) and isinstance(_public_orkio_decision, dict) and _public_orkio_decision.get("handled"):
+        if _ao75_public_fastpath_allowed and (not ao68b_admin_internal_agent_bypass) and isinstance(_public_orkio_decision, dict) and _public_orkio_decision.get("handled"):
             try:
                 final_text = str(_public_orkio_decision.get("answer") or "").strip()
                 persisted = await asyncio.to_thread(
@@ -42290,7 +42821,7 @@ async def chat_stream(
             # AO46B1_NATURAL_EXECUTIVE_READING_FASTPATH
             # Cobre pedidos naturais de leitura executiva sem @Orion,
             # antes do AO46A capturar "contexto atual" como snapshot simples.
-            if not str(_hf4k_kind or "").strip():
+            if (not _ao75_force_context_runtime) and not str(_hf4k_kind or "").strip():
                 try:
                     _ao46b1_raw = str(message or "").strip()
                     try:
@@ -42479,7 +43010,7 @@ async def chat_stream(
 
             # AO46A_CONTEXT_SNAPSHOT_FASTPATH
             # Contexto/perfil/próximo passo devem responder localmente, sem runtime pesado.
-            if not str(_hf4k_kind or "").strip():
+            if (not _ao75_force_context_runtime) and not str(_hf4k_kind or "").strip():
                 try:
                     _ao46a_raw = str(message or "").strip()
                     try:
@@ -43058,7 +43589,11 @@ async def chat_stream(
         # Follow-ups curtos depois de respostas Chris/AO44 preservam a Chris e
         # o domínio anterior da thread antes de cair no roteamento genérico.
         try:
-            _ao45a_context = _ao45a_load_recent_chris_context(db, org, tid_seed, message)
+            _ao45a_context = (
+                None
+                if _ao75_force_context_runtime
+                else _ao45a_load_recent_chris_context(db, org, tid_seed, message)
+            )
         except Exception:
             _ao45a_context = None
             try:
@@ -43125,7 +43660,7 @@ async def chat_stream(
                     pass
                 # Se falhar, o fast-path Chris original e os guards seguem protegendo a UI.
 
-        if _is_chris_strategic_squad_request(message):
+        if (not _ao75_force_context_runtime) and _is_chris_strategic_squad_request(message):
             try:
                 payload = await asyncio.to_thread(_chris_strategic_squad_fastpath_in_isolated_session)
                 async for ev in _emit_result_payload(payload, routing_source="stream_chris_strategic_squad_fastpath_v1"):
@@ -43319,7 +43854,7 @@ async def chat_stream(
 
         # AO-15_SIMPLE_AGENT_PRODUCT_FASTPATH
         # Perguntas simples de usuário novo sobre Orkio/Chris não devem cair no runtime pesado.
-        if _is_orkio_platform_explanation_request(message) or _is_chris_proposal_analysis_request(message):
+        if (not _ao75_force_context_runtime) and (_is_orkio_platform_explanation_request(message) or _is_chris_proposal_analysis_request(message)):
             try:
                 payload = await asyncio.to_thread(_simple_agent_product_fastpath_in_isolated_session)
                 routing_source = (
@@ -43340,7 +43875,7 @@ async def chat_stream(
         # INSTITUTIONAL_IDENTITY_FASTPATH_V8
         # Perguntas institucionais sobre o próprio Orkio não devem cair no baseline
         # genérico nem no runtime pesado. Respondemos em trilho leve e determinístico.
-        if _is_institutional_identity_request(message):
+        if (not _ao75_force_context_runtime) and _is_institutional_identity_request(message):
             try:
                 payload = await asyncio.to_thread(_institutional_identity_fastpath_in_isolated_session)
                 async for ev in _emit_result_payload(payload, routing_source="stream_institutional_identity_fastpath_v8"):
@@ -43356,7 +43891,7 @@ async def chat_stream(
         # AO-04_CAPABILITIES_BASELINE_FASTPATH
         # Perguntas simples sobre capacidades/roster não devem acionar runtime pesado
         # enquanto o roteador multiagente estiver em estabilização.
-        if _looks_like_capabilities_question(message):
+        if (not _ao75_force_context_runtime) and _looks_like_capabilities_question(message):
             try:
                 payload = await asyncio.to_thread(_capabilities_baseline_fastpath_in_isolated_session)
                 async for ev in _emit_result_payload(payload, routing_source="stream_capabilities_baseline_fastpath_ao04"):
@@ -43373,7 +43908,7 @@ async def chat_stream(
         # Durante a estabilização do runtime principal, perguntas comuns não devem
         # cair no fanout pesado. O baseline operacional responde de forma segura e
         # determinística; somente pedidos técnicos/governados seguem para o runtime.
-        if _is_baseline_operational_request(message):
+        if (not _ao75_force_context_runtime) and _is_baseline_operational_request(message):
             try:
                 payload = await asyncio.to_thread(_baseline_operational_fastpath_in_isolated_session)
                 async for ev in _emit_result_payload(payload, routing_source="stream_baseline_router_v8"):
