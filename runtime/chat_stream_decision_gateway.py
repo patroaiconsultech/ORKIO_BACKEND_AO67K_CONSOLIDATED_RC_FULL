@@ -15,8 +15,14 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, Iterable, Optional
 
+from .orkio_context_intent import (
+    classify_orkio_context_intent,
+    public_fastpath_allowed,
+    requires_document_context,
+)
 
-CHAT_STREAM_DECISION_GATEWAY_VERSION = "AO67F_CHAT_STREAM_DECISION_GATEWAY_V2"
+
+CHAT_STREAM_DECISION_GATEWAY_VERSION = "AO75A_CHAT_STREAM_CONTEXT_GATEWAY_V1"
 PUBLIC_SPEAKER = "Orkio"
 
 
@@ -90,79 +96,19 @@ def _safe_str(value: Any, default: str = "") -> str:
     text = str(value if value is not None else default).strip()
     return text if text else default
 
-# AO72E-HF1 — document requests must reach the real chat/RAG runtime.
-# The public Decision Mesh is intentionally bypassed for explicit attachment
-# references so it cannot replace document analysis with a generic governance
-# message before the file context is loaded.
-def _is_document_context_request(message: Any) -> bool:
-    low = " ".join(str(message or "").strip().lower().split())
-    if not low:
-        return False
-
-    explicit_file_markers = (
-        "anexo",
-        "anexado",
-        "anexada",
-        "anexei",
-        "arquivo",
-        "documento",
-        "docx",
-        "pdf",
-        "pptx",
-        "planilha",
-        "upload",
-        "regulamento",
-        "apresentação",
-        "apresentacao",
+# AO75A — compatibility wrapper around the shared intent contract.
+def _is_document_context_request(
+    message: Any,
+    *,
+    previous_messages: Optional[Iterable[Any]] = None,
+    has_thread_files: bool = False,
+) -> bool:
+    contract = classify_orkio_context_intent(
+        message,
+        previous_messages=previous_messages,
+        has_thread_files=has_thread_files,
     )
-    if any(marker in low for marker in explicit_file_markers):
-        return True
-
-    sent_markers = (
-        "mandei",
-        "enviei",
-        "encaminhei",
-        "subi",
-        "carreguei",
-        "fiz o upload",
-    )
-    document_objects = (
-        "projeto",
-        "material",
-        "arquivo",
-        "documento",
-        "apresentação",
-        "apresentacao",
-        "regulamento",
-        "proposta",
-        "plano",
-    )
-    if any(marker in low for marker in sent_markers) and any(obj in low for obj in document_objects):
-        return True
-
-    deictic_markers = (
-        "que te mandei",
-        "que eu mandei",
-        "que te enviei",
-        "que eu enviei",
-        "que anexei",
-        "em anexo",
-        "aqui anexado",
-        "aqui em anexo",
-    )
-    analysis_markers = (
-        "analis",
-        "resum",
-        "revis",
-        "leia",
-        "ler",
-        "avalie",
-        "avalia",
-        "olhada",
-    )
-    return any(marker in low for marker in deictic_markers) and any(
-        marker in low for marker in analysis_markers
-    )
+    return requires_document_context(contract)
 
 
 def _extract_user_id(user: Any) -> Optional[str]:
@@ -268,6 +214,8 @@ def build_public_chat_gateway_decision(
     dest_mode: Any = None,
     route_plan: Optional[Dict[str, Any]] = None,
     previous_messages: Optional[Iterable[Any]] = None,
+    intent_contract: Optional[Dict[str, Any]] = None,
+    has_thread_files: Optional[bool] = None,
     commit_memory: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Decisão pública antes do RAG/OpenAI no corredor do chat.
@@ -299,11 +247,23 @@ def build_public_chat_gateway_decision(
         else bool(commit_memory)
     )
 
-    if _is_document_context_request(message):
+    resolved_intent_contract = (
+        dict(intent_contract)
+        if isinstance(intent_contract, dict)
+        else classify_orkio_context_intent(
+            message,
+            previous_messages=previous_messages,
+            has_thread_files=bool(has_thread_files),
+        )
+    )
+    if not bool(resolved_intent_contract.get("memory_commit_allowed", False)):
+        should_commit_memory = False
+
+    if not public_fastpath_allowed(resolved_intent_contract):
         return {
             "ok": True,
             "handled": False,
-            "reason": "document_context_requires_chat_runtime",
+            "reason": "ao75_concrete_task_requires_chat_runtime",
             "service": "chat_stream_decision_gateway",
             "version": CHAT_STREAM_DECISION_GATEWAY_VERSION,
             "agent_id": "orkio",
@@ -311,11 +271,12 @@ def build_public_chat_gateway_decision(
             "final_speaker": PUBLIC_SPEAKER,
             "visible_agent": PUBLIC_SPEAKER,
             "commit_memory": should_commit_memory,
+            "intent_contract": resolved_intent_contract,
             "integration_contract": {
                 "main_py_change_required": True,
-                "document_context_required": True,
+                "document_context_required": requires_document_context(resolved_intent_contract),
                 "specialists_visible": False,
-                "rule": "attachment_requests_must_reach_thread_rag",
+                "rule": "concrete_tasks_must_reach_contextual_chat_runtime",
                 "rollback_env": "ORKIO_PUBLIC_CHAT_GATEWAY_ENABLED=false",
             },
         }
@@ -362,6 +323,7 @@ def build_public_chat_gateway_decision(
             route_plan=route_plan,
             previous_messages=list(previous_messages or []),
             prior_memory=prior_memory,
+            intent_contract=resolved_intent_contract,
         )
     except Exception as exc:  # pragma: no cover - integração defensiva
         return {
@@ -426,6 +388,7 @@ def build_public_chat_gateway_decision(
         "stream_payload": stream_payload,
         "journey_memory_update": memory_update,
         "commit_memory": should_commit_memory,
+        "intent_contract": resolved_intent_contract,
         "integration_contract": {
             "insert_before": "AO66B_AMCHAM_PUBLIC_JOURNEY_FASTPATH_WIRE",
             "main_py_change_required": True,
