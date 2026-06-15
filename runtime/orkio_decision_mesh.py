@@ -17,6 +17,11 @@ em fase posterior, após auditoria.
 import os
 from typing import Any, Dict, Optional
 
+from .orkio_context_intent import (
+    classify_orkio_context_intent,
+    public_fastpath_allowed,
+)
+
 from .hook_registry import (
     HOOK_REGISTRY_VERSION,
     hook_runtime_hints,
@@ -249,9 +254,31 @@ def build_orkio_decision_mesh_decision(
     route_plan: Optional[Dict[str, Any]] = None,
     previous_messages: Optional[list[Any]] = None,
     prior_memory: Optional[Dict[str, Any]] = None,
+    intent_contract: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     if not is_orkio_decision_mesh_enabled():
         return {"handled": False, "reason": "orkio_decision_mesh_disabled"}
+
+    resolved_intent_contract = (
+        dict(intent_contract)
+        if isinstance(intent_contract, dict)
+        else classify_orkio_context_intent(
+            message,
+            previous_messages=previous_messages,
+            has_thread_files=False,
+        )
+    )
+    if not public_fastpath_allowed(resolved_intent_contract):
+        return {
+            "handled": False,
+            "reason": "ao75_concrete_task_passthrough",
+            "intent_contract": resolved_intent_contract,
+            "agent_id": "orkio",
+            "agent_name": "Orkio",
+            "final_speaker": "Orkio",
+            "visible_agent": "Orkio",
+            "commit_memory": False,
+        }
 
     route = route_public_journey(
         message,
@@ -268,6 +295,48 @@ def build_orkio_decision_mesh_decision(
     )
 
     intent = str(route.get("intent") or "open_conversation")
+
+    # AO75A: canonical institutional/contact answers must win before generic
+    # internal-agent guards. Names such as "FactoryAI" are product/capability
+    # identities, not requests to expose an internal specialist.
+    early_public_orkio = build_public_orkio_policy_decision(
+        message,
+        visible_agent=visible_agent,
+        target_agent_slug=target_agent_slug,
+        dest_mode=dest_mode,
+        route_plan=route_plan,
+    )
+    early_direct_reasons = {
+        "public_human_contact_whatsapp",
+        "public_official_site_and_contact",
+        "public_amcham_on_demand",
+        "public_patroai_identity",
+        "public_factoryai_identity",
+        "public_console_tech_identity",
+        "public_orkio_platform_identity",
+        "public_implementation_process",
+        "public_orkio_factual_created_at",
+    }
+    if (
+        early_public_orkio.get("handled")
+        and str(early_public_orkio.get("reason") or "") in early_direct_reasons
+    ):
+        early_answer = str(early_public_orkio.get("answer") or "").strip()
+        decision = _base_decision(
+            handled=True,
+            reason=f"decision_mesh_delegated_{early_public_orkio.get('reason')}",
+            answer=early_answer,
+            route=route,
+            memory_snapshot=memory_snapshot,
+            selected_hooks=selected_hooks,
+        )
+        decision["delegated_policy"] = "public_orkio_policy_module"
+        decision["delegated_decision"] = {
+            "reason": early_public_orkio.get("reason"),
+            "policy_version": early_public_orkio.get("policy_version") or PUBLIC_ORKIO_POLICY_VERSION,
+            "runtime_hints": early_public_orkio.get("runtime_hints"),
+        }
+        return decision
 
     if is_public_internal_agent_request(
         message,
@@ -313,6 +382,8 @@ def build_orkio_decision_mesh_decision(
         "public_official_site_and_contact",
         "public_amcham_on_demand",
         "public_patroai_identity",
+        "public_factoryai_identity",
+        "public_console_tech_identity",
         "public_orkio_platform_identity",
         "public_implementation_process",
         "public_orkio_factual_created_at",
@@ -361,6 +432,8 @@ def build_orkio_decision_mesh_decision(
         "public_official_site_and_contact",
         "public_amcham_on_demand",
         "public_patroai_identity",
+        "public_factoryai_identity",
+        "public_console_tech_identity",
         "public_orkio_platform_identity",
         "public_implementation_process",
         "public_orkio_factual_created_at",
