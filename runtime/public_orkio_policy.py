@@ -14,6 +14,11 @@ import re
 import unicodedata
 from typing import Any, Dict, Iterable, List, Optional
 
+from .orkio_context_intent import (
+    classify_orkio_context_intent,
+    public_fastpath_allowed,
+)
+
 from .runtime_feature_flags import (
     get_consultive_team_label,
     get_consultive_whatsapp_url,
@@ -21,7 +26,7 @@ from .runtime_feature_flags import (
     is_public_orkio_policy_enabled,
 )
 
-ORKIO_POLICY_VERSION = "AO69A_PREMIUM_POLISH_UNIFIED_V1"
+ORKIO_POLICY_VERSION = "AO75A_CONTEXT_FIRST_CANON_V1"
 
 
 def _consultive_cta_text(*, english: bool = False) -> str:
@@ -61,13 +66,16 @@ Depois inclua somente a URL do WhatsApp, sem frase extra antes da URL.
 ORKIO_CEO_SCOPE_OVERLAY = f"""
 ORKIO_PUBLIC_CEO_MODE — contrato de resposta pública, comercial e consultiva
 
-Você é Orkio, o agente principal da tecnologia Orkio, criada e mantida pela Patroai Consultech.
+Você é Orkio, a inteligência e experiência pública da Patroai, uma AI Factory brasileira.
 
 Identidade canônica:
-- A Patroai Consultech é a empresa criadora, mantenedora e detentora da tecnologia Orkio.
+- A Patroai é uma AI Factory brasileira que cria, implanta e evolui agentes, plataformas, automações e produtos com IA.
+- Orkio é a inteligência e experiência pública da Patroai.
+- FactoryAI representa a capacidade produtiva da Patroai para conceber, construir, integrar, implantar e evoluir soluções com IA.
+- Console Tech representa o ambiente técnico, operacional e de governança para acompanhar e evoluir as soluções implantadas.
 - Daniel Graebin é founder e CEO da Patroai Consultech.
-- A atuação da Patroai une IA aplicada, agentes personalizados, diagnóstico consultivo, governança, clareza executiva e propósito humano.
-- Não cite AMCHAM espontaneamente. Fale de AMCHAM somente quando o usuário perguntar explicitamente. Nesse caso, informe que a Patroai Consultech é empresa membro da AMCHAM RS e tem como missão levar disrupção digital aos associados por meio da tecnologia Orkio.
+- A Patroai é empresa membro da AmCham RS. Não sugira certificação, homologação, recomendação, parceria oficial ou endosso.
+- Não cite AmCham espontaneamente. Fale da membership somente quando o usuário perguntar explicitamente.
 
 Sua função pública é entender dores reais de empreendedores, empresários, executivos e investidores, organizar essas dores em uma visão executiva e sugerir uma primeira arquitetura de agentes personalizados quando o contexto justificar.
 
@@ -659,21 +667,17 @@ def _is_official_site_or_link_request(normalized: str) -> bool:
 def _patroai_identity_answer(*, english: bool = False) -> str:
     if english:
         return (
-            "Patroai Consultech is the company that created, maintains and owns the Orkio technology.\n\n"
-            "Patroai works at the intersection of consulting, applied artificial intelligence and guided implementation: "
-            "it understands the client's challenge, designs personalized agents, organizes context, defines governance boundaries "
-            "and turns conversations into diagnosis, plans and concrete next steps.\n\n"
-            "Its core principle is technology with purpose: clarity before complexity, trust before blind automation, "
-            "and AI as an extension of the human ability to decide, create and execute.\n\n"
+            "Patroai is a Brazilian AI Factory. It designs, builds, deploys and continuously evolves personalized agents, "
+            "intelligent platforms, automations and AI-enabled products for real business operations.\n\n"
+            "Orkio is Patroai's public intelligence experience. FactoryAI is its productive capability for creating AI solutions, "
+            "and Console Tech is the technical, operational and governance environment used to monitor and evolve deployments.\n\n"
             "Daniel Graebin is the founder and CEO of Patroai Consultech."
         )
     return (
-        "A Patroai Consultech é a empresa criadora, mantenedora e detentora da tecnologia Orkio.\n\n"
-        "A Patroai atua na interseção entre consultoria, inteligência artificial aplicada e implantação acompanhada: "
-        "entende o desafio do cliente, estrutura agentes personalizados, organiza contexto, define limites de governança "
-        "e transforma conversas em diagnóstico, plano e próximos passos executáveis.\n\n"
-        "Seu princípio é tecnologia com propósito: clareza antes de complexidade, confiança antes de automação cega, "
-        "e IA como extensão da capacidade humana de decidir, criar e executar.\n\n"
+        "A Patroai é uma AI Factory brasileira. Ela concebe, constrói, implanta e evolui agentes personalizados, "
+        "plataformas inteligentes, automações e produtos com IA para operações empresariais reais.\n\n"
+        "Orkio é a inteligência e experiência pública da Patroai. FactoryAI é sua capacidade produtiva para criar soluções com IA, "
+        "e Console Tech é o ambiente técnico, operacional e de governança usado para acompanhar e evoluir as implantações.\n\n"
         "Daniel Graebin é o founder e CEO da Patroai Consultech."
     )
 
@@ -681,21 +685,75 @@ def _patroai_identity_answer(*, english: bool = False) -> str:
 def _orkio_platform_answer(*, english: bool = False) -> str:
     if english:
         return (
-            "Orkio is Patroai Consultech's AI technology. It works as a consultive intelligence layer: it talks with the user, "
-            "listens to context, organizes goals, identifies paths and turns loose questions into diagnosis, plans and next steps.\n\n"
-            "In the public beta, Orkio can guide users through chat and, when enabled, through real-time voice. In business projects, "
-            "Patroai can design personalized agents, workflows, context bases, safety criteria and adoption journeys.\n\n"
-            "The goal is not only to automate tasks. It is to create a useful, governed and guided AI experience that supports "
-            "decision-making, innovation, implementation and continuous evolution."
+            "Orkio is Patroai's public intelligence experience. It understands the user's active task, assembles authorized conversation "
+            "and document context, organizes evidence and turns requests into useful answers, plans and next steps.\n\n"
+            "In the public beta, Orkio works through chat and, when available, real-time voice. It must be operationally honest: "
+            "it only claims access to files, tools or actions that were actually confirmed.\n\n"
+            "Patroai, the AI Factory behind Orkio, can design personalized agents, workflows, context bases, integrations and governance."
         )
     return (
-        "O Orkio é a tecnologia de IA da Patroai Consultech. Ele funciona como uma camada consultiva de inteligência: conversa, "
-        "escuta contexto, organiza objetivos, identifica caminhos e transforma dúvidas soltas em diagnóstico, plano e próximos passos.\n\n"
-        "No beta público, o Orkio pode conduzir pelo chat e, quando liberado, por voz em tempo real. Em projetos empresariais, "
-        "a Patroai pode desenhar agentes personalizados, fluxos, bases de contexto, critérios de segurança e jornadas de adoção.\n\n"
-        "A proposta não é apenas automatizar tarefas. É criar uma experiência de IA útil, governada e acompanhada, capaz de apoiar "
-        "decisão, inovação, implantação e evolução contínua."
+        "Orkio é a inteligência e experiência pública da Patroai. Ele entende a tarefa ativa, reúne o contexto autorizado da conversa "
+        "e dos documentos, organiza evidências e transforma solicitações em respostas, planos e próximos passos úteis.\n\n"
+        "No beta público, Orkio atua pelo chat e, quando disponível, por voz em tempo real. Ele deve manter verdade operacional: "
+        "só confirma acesso a arquivos, ferramentas ou ações quando isso estiver realmente comprovado.\n\n"
+        "A Patroai, AI Factory responsável pelo Orkio, pode desenhar agentes personalizados, fluxos, bases de contexto, integrações e governança."
     )
+
+
+
+def _is_factoryai_request(normalized: str) -> bool:
+    return _contains_any(
+        normalized,
+        [
+            "factoryai",
+            "factory ai",
+            "o que e a factoryai",
+            "o que é a factoryai",
+            "what is factoryai",
+            "what is factory ai",
+        ],
+    )
+
+
+def _factoryai_answer(*, english: bool = False) -> str:
+    if english:
+        return (
+            "FactoryAI is Patroai's productive capability for turning business needs into usable AI solutions. "
+            "It covers discovery, solution architecture, agent and product development, integrations, governance, controlled deployment "
+            "and continuous evolution."
+        )
+    return (
+        "FactoryAI é a capacidade produtiva da Patroai para transformar necessidades empresariais em soluções de IA utilizáveis. "
+        "Ela cobre descoberta, arquitetura da solução, desenvolvimento de agentes e produtos, integrações, governança, "
+        "implantação controlada e evolução contínua."
+    )
+
+
+def _is_console_tech_request(normalized: str) -> bool:
+    return _contains_any(
+        normalized,
+        [
+            "console tech",
+            "consoletech",
+            "o que e o console tech",
+            "o que é o console tech",
+            "what is console tech",
+            "what is consoletech",
+        ],
+    )
+
+
+def _console_tech_answer(*, english: bool = False) -> str:
+    if english:
+        return (
+            "Console Tech is Patroai's technical, operational and governance environment for monitoring, controlling and evolving "
+            "deployed AI solutions. It connects observability, operational context, authorized actions and continuous improvement."
+        )
+    return (
+        "Console Tech é o ambiente técnico, operacional e de governança da Patroai para acompanhar, controlar e evoluir "
+        "as soluções de IA implantadas. Ele conecta observabilidade, contexto operacional, ações autorizadas e melhoria contínua."
+    )
+
 
 
 def _implementation_process_answer(*, english: bool = False) -> str:
@@ -770,16 +828,16 @@ def _official_site_answer(*, english: bool = False) -> str:
 def _amcham_on_demand_answer(*, english: bool = False) -> str:
     if english:
         return (
-            "Patroai Consultech is a member company of AMCHAM RS. In this context, it brings a practical digital disruption experience "
-            "to AMCHAM members through Orkio technology, combining applied AI, personalized agents, consultive diagnosis and governance.\n\n"
-            "AMCHAM members can test Orkio with real situations: professional development, skill mapping, leadership, innovation inside companies, "
-            "AI projects, idea diagnosis or new business creation."
+            "Patroai is a member company of AmCham RS. This is an institutional membership; it does not mean that AmCham certifies, "
+            "endorses, recommends or maintains an official commercial partnership with Patroai.\n\n"
+            "Within this ecosystem, Patroai can present practical AI experiences through Orkio, FactoryAI and guided projects, "
+            "combining applied AI, personalized agents, consultive diagnosis and governance."
         )
     return (
-        "A Patroai Consultech é empresa membro da AMCHAM RS. Nesse contexto, leva aos associados uma experiência prática "
-        "de disrupção digital por meio da tecnologia Orkio, unindo IA aplicada, agentes personalizados, diagnóstico consultivo e governança.\n\n"
-        "A AMCHAM pode testar o Orkio trazendo situações reais: desenvolvimento profissional, mapeamento de skills, "
-        "liderança, inovação dentro da empresa, projetos de IA, diagnóstico de ideias ou criação de novos negócios."
+        "A Patroai é empresa membro da AmCham RS. Trata-se de membership institucional; isso não significa que a AmCham "
+        "certifique, homologue, recomende ou mantenha parceria comercial oficial com a Patroai.\n\n"
+        "Nesse ecossistema, a Patroai pode apresentar experiências práticas de IA por meio do Orkio, da FactoryAI e de projetos acompanhados, "
+        "unindo IA aplicada, agentes personalizados, diagnóstico consultivo e governança."
     )
 
 
@@ -1301,6 +1359,14 @@ def build_public_orkio_policy_decision(
     if _is_natural_voice_no_audit_request(normalized):
         return {"handled": False, "reason": "natural_voice_no_audit_passthrough"}
 
+    intent_contract = classify_orkio_context_intent(message)
+    if not public_fastpath_allowed(intent_contract):
+        return {
+            "handled": False,
+            "reason": "ao75_concrete_task_passthrough",
+            "intent_contract": intent_contract,
+        }
+
     # AO68K: direct institutional/contact answers must be deterministic and
     # language-aware. This prevents English public questions from falling into
     # pt-BR-only answers or the heavier direct runtime.
@@ -1309,6 +1375,8 @@ def build_public_orkio_policy_decision(
         (_is_human_contact_request(normalized), "public_human_contact_whatsapp", "human_contact", _human_contact_answer(english=wants_english, amcham_context=_is_amcham_company_contact_request(normalized))),
         (_is_official_site_or_link_request(normalized), "public_official_site_and_contact", "official_site", _official_site_answer(english=wants_english)),
         (_is_explicit_amcham_request(normalized), "public_amcham_on_demand", "institutional_amcham", _amcham_on_demand_answer(english=wants_english)),
+        (_is_factoryai_request(normalized), "public_factoryai_identity", "institutional_factoryai", _factoryai_answer(english=wants_english)),
+        (_is_console_tech_request(normalized), "public_console_tech_identity", "institutional_console_tech", _console_tech_answer(english=wants_english)),
         (_is_orkio_platform_request(normalized), "public_orkio_platform_identity", "institutional_orkio", _orkio_platform_answer(english=wants_english)),
         (_is_implementation_request(normalized), "public_implementation_process", "implementation_process", _implementation_process_answer(english=wants_english)),
         (_is_patroai_identity_request(normalized), "public_patroai_identity", "institutional_patroai", _patroai_identity_answer(english=wants_english)),
