@@ -32,7 +32,7 @@ from fastapi import FastAPI, Depends, HTTPException, Header, UploadFile, File as
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError, OperationalError, TimeoutError as SQLAlchemyTimeoutError
+from sqlalchemy.exc import DisconnectionError, IntegrityError, OperationalError, SQLAlchemyError, TimeoutError as SQLAlchemyTimeoutError
 from sqlalchemy import select, func, text, delete, update
 
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
@@ -2045,7 +2045,7 @@ def _auto_approve_summit_user_if_needed(db: Session, u: Optional[User], *, reaso
         db.add(u)
         db.commit()
         try:
-            logger.warning("SUMMIT_AUTO_APPROVED user_id=%s email=%s reason=%s", getattr(u, "id", None), getattr(u, "email", None), reason)
+            logger.warning("SUMMIT_AUTO_APPROVED user_id=%s email_ref=%s reason=%s", getattr(u, "id", None), _ao79a_email_ref(getattr(u, "email", None)), reason)
         except Exception:
             pass
         return True
@@ -2055,7 +2055,7 @@ def _auto_approve_summit_user_if_needed(db: Session, u: Optional[User], *, reaso
         except Exception:
             pass
         try:
-            logger.exception("SUMMIT_AUTO_APPROVE_FAILED user_id=%s email=%s reason=%s", getattr(u, "id", None), getattr(u, "email", None), reason)
+            logger.exception("SUMMIT_AUTO_APPROVE_FAILED user_id=%s email_ref=%s reason=%s", getattr(u, "id", None), _ao79a_email_ref(getattr(u, "email", None)), reason)
         except Exception:
             pass
         return False
@@ -3392,6 +3392,7 @@ def _password_reset_base_url() -> str:
 def _send_password_reset_email(to_email: str, reset_token: str) -> bool:
     from urllib.parse import quote
 
+    email_ref = _ao79a_email_ref(to_email)
     base_url = _password_reset_base_url()
     token_q = quote(str(reset_token or "").strip(), safe="")
     reset_link = f"{base_url}/auth?mode=reset&token={token_q}" if base_url else str(reset_token or "").strip()
@@ -3426,11 +3427,11 @@ def _send_password_reset_email(to_email: str, reset_token: str) -> bool:
         if _clean_env(RESEND_API_KEY):
             ok = _send_resend_email(to_email, subject, text_body, html_body=html)
             if ok:
-                logger.info("PASSWORD_RESET_EMAIL_SENT provider=resend to=%s", to_email)
+                logger.info("PASSWORD_RESET_EMAIL_SENT provider=resend email_ref=%s", email_ref)
                 return True
-            logger.warning("PASSWORD_RESET_EMAIL_RESEND_FAILED_FALLING_BACK_SMTP to=%s", to_email)
+            logger.warning("PASSWORD_RESET_EMAIL_RESEND_FAILED_FALLING_BACK_SMTP email_ref=%s", email_ref)
     except Exception:
-        logger.exception("PASSWORD_RESET_EMAIL_RESEND_EXCEPTION to=%s", to_email)
+        logger.exception("PASSWORD_RESET_EMAIL_RESEND_EXCEPTION email_ref=%s", email_ref)
 
     # Fallback path: SMTP
     smtp_host = _clean_env(os.getenv("SMTP_HOST", ""), default="")
@@ -3445,7 +3446,7 @@ def _send_password_reset_email(to_email: str, reset_token: str) -> bool:
         smtp_port = 587
 
     if not smtp_host or not smtp_user:
-        logger.warning("PASSWORD_RESET_EMAIL_SEND_SKIPPED missing_email_provider_config to=%s", to_email)
+        logger.warning("PASSWORD_RESET_EMAIL_SEND_SKIPPED missing_email_provider_config email_ref=%s", email_ref)
         return False
 
     try:
@@ -3461,10 +3462,10 @@ def _send_password_reset_email(to_email: str, reset_token: str) -> bool:
             s.login(smtp_user, smtp_pass)
             s.sendmail(smtp_from, [to_email], msg.as_string())
 
-        logger.info("PASSWORD_RESET_EMAIL_SENT provider=smtp to=%s", to_email)
+        logger.info("PASSWORD_RESET_EMAIL_SENT provider=smtp email_ref=%s", email_ref)
         return True
     except Exception:
-        logger.exception("PASSWORD_RESET_EMAIL_SEND_FAILED provider=smtp to=%s", to_email)
+        logger.exception("PASSWORD_RESET_EMAIL_SEND_FAILED provider=smtp email_ref=%s", email_ref)
         return False
 
 
@@ -3839,6 +3840,139 @@ def db_ok() -> bool:
 
 
 logger = logging.getLogger("orkio")
+
+
+def _ao79a_request_id(request: Optional[Request] = None, prefix: str = "ao79a") -> str:
+    try:
+        if request is not None:
+            return ensure_request_id(request)
+    except Exception:
+        pass
+    return f"{prefix}_{uuid.uuid4().hex[:16]}"
+
+
+def _ao79a_email_ref(email: Optional[str]) -> str:
+    raw = (email or "").strip().lower()
+    if not raw:
+        return "email:none"
+    return "email_sha256:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+
+
+def _ao79a_db_pool_status() -> str:
+    try:
+        pool = getattr(ENGINE, "pool", None)
+        status = pool.status() if pool is not None and hasattr(pool, "status") else ""
+        return str(status or "unavailable")[:240]
+    except Exception:
+        return "unavailable"
+
+
+def _ao79a_is_db_infra_error(exc: BaseException) -> bool:
+    if isinstance(exc, (OperationalError, SQLAlchemyTimeoutError, DisconnectionError)):
+        return True
+    text = f"{exc.__class__.__name__} {str(exc)}".lower()
+    markers = (
+        "queuepool",
+        "connection pool",
+        "pool timeout",
+        "timeout",
+        "could not connect",
+        "connection refused",
+        "connection reset",
+        "server closed the connection",
+        "database is locked",
+        "too many connections",
+    )
+    return any(marker in text for marker in markers)
+
+
+def _ao79a_is_public_orkio_surface(user_payload: Optional[Dict[str, Any]]) -> bool:
+    payload = user_payload or {}
+    try:
+        if has_admin_console_access(payload):
+            return False
+    except Exception:
+        pass
+    role = str(payload.get("role") or "").strip().lower()
+    return role not in {"admin", "super_admin", "founder"}
+
+
+def _ao79a_scrub_public_internal_text(value: Any) -> Any:
+    if not isinstance(value, str) or not value:
+        return value
+    text_value = value
+    replacements = (
+        (r"\bChris\b", "Orkio"),
+        (r"\bCris\b", "Orkio"),
+        (r"\bOrion\b", "Orkio"),
+        (r"\bprovider\b", "runtime"),
+        (r"\btrace interno\b", "contexto interno"),
+    )
+    for pattern, replacement in replacements:
+        text_value = re.sub(pattern, replacement, text_value, flags=re.IGNORECASE)
+    return text_value
+
+
+def _ao79a_scrub_public_payload(value: Any) -> Any:
+    if isinstance(value, str):
+        return _ao79a_scrub_public_internal_text(value)
+    if isinstance(value, list):
+        return [_ao79a_scrub_public_payload(item) for item in value]
+    if isinstance(value, dict):
+        clean: Dict[str, Any] = {}
+        for key, item in value.items():
+            key_s = str(key)
+            if key_s in {"provider", "trace", "stack", "stack_trace", "raw_error"}:
+                continue
+            if key_s in {"lead_agent", "last_specialist_agent", "requested_agent", "resolved_agent"}:
+                clean[key] = "Orkio"
+            else:
+                clean[key] = _ao79a_scrub_public_payload(item)
+        return clean
+    return value
+
+
+def _ao79a_force_public_orkio_payload(
+    payload: Dict[str, Any],
+    *,
+    user_payload: Optional[Dict[str, Any]],
+    trace_id: str = "",
+    thread_id: str = "",
+    routing_source: str = "",
+) -> Dict[str, Any]:
+    if not isinstance(payload, dict) or not _ao79a_is_public_orkio_surface(user_payload):
+        return payload
+    blocked_agent = str(payload.get("agent_name") or payload.get("final_speaker") or payload.get("agent_id") or "").strip()
+    clean = _ao79a_scrub_public_payload(payload)
+    if not isinstance(clean, dict):
+        clean = dict(payload)
+    clean["agent_id"] = "orkio"
+    clean["agent_name"] = "Orkio"
+    clean["final_speaker"] = "Orkio"
+    clean["service"] = "orkio_public_surface"
+    runtime_hints = clean.get("runtime_hints") if isinstance(clean.get("runtime_hints"), dict) else {}
+    routing_hints = runtime_hints.get("routing") if isinstance(runtime_hints.get("routing"), dict) else {}
+    routing_hints = {
+        **routing_hints,
+        "routing_source": routing_hints.get("routing_source") or routing_source,
+        "ao79a_public_speaker_guard": True,
+        "lead_agent": "Orkio",
+        "last_specialist_agent": "Orkio",
+    }
+    runtime_hints["routing"] = routing_hints
+    clean["runtime_hints"] = runtime_hints
+    if blocked_agent and blocked_agent.lower() not in {"orkio", "none"}:
+        try:
+            logger.warning(
+                "AO79A_PUBLIC_SPEAKER_GUARD_APPLIED trace_id=%s thread_id=%s blocked_agent=%s source=%s",
+                trace_id,
+                thread_id,
+                blocked_agent[:40],
+                routing_source,
+            )
+        except Exception:
+            pass
+    return clean
 
 
 class _OperationalStdoutLogger:
@@ -6333,6 +6467,7 @@ def _create_user_session(db: Session, user_id: str, org: str, ip: str = "unknown
 
 def _send_otp_email(to_email: str, otp_code: str):
     """Send OTP code via Resend first, then SMTP fallback. Best-effort, never blocks auth flow."""
+    email_ref = _ao79a_email_ref(to_email)
     subject = f"Orkio — Seu código de verificação: {otp_code}"
     text_body = (
         "Seu código de verificação do Orkio é:\n\n"
@@ -6353,11 +6488,11 @@ def _send_otp_email(to_email: str, otp_code: str):
         if _clean_env(RESEND_API_KEY):
             ok = _send_resend_email(to_email, subject, text_body, html_body=html)
             if ok:
-                logger.info("OTP_EMAIL_SENT provider=resend to=%s", to_email)
+                logger.info("OTP_EMAIL_SENT provider=resend email_ref=%s", email_ref)
                 return True
-            logger.warning("OTP_EMAIL_RESEND_FAILED_FALLING_BACK_SMTP to=%s", to_email)
+            logger.warning("OTP_EMAIL_RESEND_FAILED_FALLING_BACK_SMTP email_ref=%s", email_ref)
     except Exception:
-        logger.exception("OTP_EMAIL_RESEND_EXCEPTION to=%s", to_email)
+        logger.exception("OTP_EMAIL_RESEND_EXCEPTION email_ref=%s", email_ref)
 
     # Fallback path: SMTP
     smtp_host = _clean_env(os.getenv("SMTP_HOST", ""), default="")
@@ -6372,7 +6507,7 @@ def _send_otp_email(to_email: str, otp_code: str):
         smtp_port = 587
 
     if not smtp_host or not smtp_user:
-        logger.warning("OTP_EMAIL_SEND_SKIPPED missing_email_provider_config to=%s", to_email)
+        logger.warning("OTP_EMAIL_SEND_SKIPPED missing_email_provider_config email_ref=%s", email_ref)
         return False
 
     try:
@@ -6388,10 +6523,10 @@ def _send_otp_email(to_email: str, otp_code: str):
             s.login(smtp_user, smtp_pass)
             s.sendmail(smtp_from, [to_email], msg.as_string())
 
-        logger.info("OTP_EMAIL_SENT provider=smtp to=%s", to_email)
+        logger.info("OTP_EMAIL_SENT provider=smtp email_ref=%s", email_ref)
         return True
     except Exception:
-        logger.exception("OTP_EMAIL_SEND_FAILED provider=smtp to=%s", to_email)
+        logger.exception("OTP_EMAIL_SEND_FAILED provider=smtp email_ref=%s", email_ref)
         return False
 
 def _get_feature_flag(db: Session, org: str, key: str) -> Optional[str]:
@@ -6464,13 +6599,16 @@ def register(inp: RegisterIn, request: Request = None, x_org_slug: Optional[str]
     ip = (request.client.host if request and request.client else "unknown")
     org = (get_org(x_org_slug) if x_org_slug else (inp.tenant or default_tenant())).strip()
     email = inp.email.lower().strip()
+    request_id = _ao79a_request_id(request, "register")
+    email_ref = _ao79a_email_ref(email)
     is_admin_email = email in admin_emails()
 
     try:
         logger.warning(
-            "REGISTER_ATTEMPT org=%s email=%s summit_mode=%s access_code_present=%s accept_terms=%s",
+            "REGISTER_ATTEMPT request_id=%s org=%s email_ref=%s summit_mode=%s access_code_present=%s accept_terms=%s",
+            request_id,
             org,
-            email,
+            email_ref,
             SUMMIT_MODE,
             bool(inp.access_code),
             bool(inp.accept_terms),
@@ -6613,7 +6751,7 @@ def register(inp: RegisterIn, request: Request = None, x_org_slug: Optional[str]
         if hasattr(u, "product_scope") and getattr(u, "product_scope", None) in (None, "", "basic", "orkio"):
             setattr(u, "product_scope", product_scope)
     except Exception:
-        logger.exception("REGISTER_INVESTOR_METADATA_FAILED email=%s", email)
+        logger.exception("REGISTER_INVESTOR_METADATA_FAILED request_id=%s email_ref=%s", request_id, email_ref)
 
     db.add(u)
     db.commit()
@@ -6653,12 +6791,12 @@ def register(inp: RegisterIn, request: Request = None, x_org_slug: Optional[str]
             org,
             u.id,
             "user.register",
-            request_id="reg",
+            request_id=request_id,
             path="/api/auth/register",
             status_code=200,
             latency_ms=0,
             meta={
-                "email": u.email,
+                "email_ref": email_ref,
                 "signup_code_label": signup_code_label,
                 "signup_source": getattr(u, "signup_source", None),
                 "usage_tier": getattr(u, "usage_tier", usage_tier),
@@ -6686,7 +6824,7 @@ def register(inp: RegisterIn, request: Request = None, x_org_slug: Optional[str]
 
     _create_user_session(db, u.id, org, ip, signup_code_label, usage_tier)
     try:
-        logger.warning("REGISTER_SUCCESS org=%s email=%s usage_tier=%s", org, email, usage_tier)
+        logger.warning("REGISTER_SUCCESS request_id=%s org=%s email_ref=%s usage_tier=%s", request_id, org, email_ref, usage_tier)
     except Exception:
         pass
 
@@ -6699,21 +6837,59 @@ def register(inp: RegisterIn, request: Request = None, x_org_slug: Optional[str]
 def login(inp: LoginIn, x_org_slug: Optional[str] = Header(default=None), db: Session = Depends(get_db), request: Request = None):
     login_started_at = time.perf_counter()
     ip = (request.client.host if request and request.client else "unknown")
+    request_id = _ao79a_request_id(request, "login")
     # F-10 FIX: rate limit brute-force
     if not _rate_limit_check(_login_rl_lock, _login_rl_calls, ip, _LOGIN_MAX_PER_MINUTE):
         raise HTTPException(status_code=429, detail="Muitas tentativas de login. Aguarde 1 minuto.")
 
     org = (get_org(x_org_slug) if x_org_slug else (inp.tenant or default_tenant())).strip()
     email = inp.email.lower().strip()
-    u = db.execute(select(User).where(User.org_slug == org, User.email == email)).scalar_one_or_none()
+    email_ref = _ao79a_email_ref(email)
+    try:
+        u = db.execute(select(User).where(User.org_slug == org, User.email == email)).scalar_one_or_none()
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        elapsed_ms = int((time.perf_counter() - login_started_at) * 1000)
+        if _ao79a_is_db_infra_error(e):
+            logger.exception(
+                "LOGIN_DB_INFRA_ERROR request_id=%s org=%s email_ref=%s status_code=503 elapsed_ms=%s db_pool=%s error=%s",
+                request_id,
+                org,
+                email_ref,
+                elapsed_ms,
+                _ao79a_db_pool_status(),
+                e.__class__.__name__,
+            )
+            raise HTTPException(status_code=503, detail="Autenticacao temporariamente indisponivel. Tente novamente em instantes.")
+        logger.exception(
+            "LOGIN_DB_QUERY_FAILED request_id=%s org=%s email_ref=%s status_code=500 elapsed_ms=%s error=%s",
+            request_id,
+            org,
+            email_ref,
+            elapsed_ms,
+            e.__class__.__name__,
+        )
+        raise HTTPException(status_code=500, detail="Falha temporaria no login. Tente novamente.")
     if not u or not verify_password(inp.password, u.salt, u.pw_hash):
+        logger.info(
+            "LOGIN_INVALID_CREDENTIALS request_id=%s org=%s email_ref=%s status_code=401 elapsed_ms=%s",
+            request_id,
+            org,
+            email_ref,
+            int((time.perf_counter() - login_started_at) * 1000),
+        )
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     logger.info(
-        "LOGIN_PASSWORD_OK email=%s org=%s elapsed_ms=%s",
-        email,
+        "LOGIN_PASSWORD_OK request_id=%s email_ref=%s org=%s status_code=200 elapsed_ms=%s db_pool=%s",
+        request_id,
+        email_ref,
         org,
         int((time.perf_counter() - login_started_at) * 1000),
+        _ao79a_db_pool_status(),
     )
 
     # PATCH0216C: structural admin sync (role + approved_at) for configured emails
@@ -6740,8 +6916,9 @@ def login(inp: LoginIn, x_org_slug: Optional[str] = Header(default=None), db: Se
     otp_for_admins = (os.getenv("SUMMIT_OTP_FOR_ADMINS", "false").lower() in ("1", "true", "yes"))
     if require_otp and (u.role != "admin" or otp_for_admins):
         logger.warning(
-            "OTP_BRANCH_ENTERED email=%s role=%s summit_mode=%s require_otp=%s otp_for_admins=%s",
-            email,
+            "OTP_BRANCH_ENTERED request_id=%s email_ref=%s role=%s summit_mode=%s require_otp=%s otp_for_admins=%s",
+            request_id,
+            email_ref,
             u.role,
             SUMMIT_MODE,
             require_otp,
@@ -6772,8 +6949,9 @@ def login(inp: LoginIn, x_org_slug: Optional[str] = Header(default=None), db: Se
             # Send email (fail-closed by default so the UI does not ask for a code that was never delivered)
             otp_send_started_at = time.perf_counter()
             logger.warning(
-                "OTP_SEND_ATTEMPT email=%s summit_mode=%s require_otp=%s elapsed_ms=%s",
-                email,
+                "OTP_SEND_ATTEMPT request_id=%s email_ref=%s summit_mode=%s require_otp=%s elapsed_ms=%s",
+                request_id,
+                email_ref,
                 SUMMIT_MODE,
                 os.getenv("SUMMIT_REQUIRE_OTP"),
                 int((otp_send_started_at - login_started_at) * 1000),
@@ -6783,23 +6961,24 @@ def login(inp: LoginIn, x_org_slug: Optional[str] = Header(default=None), db: Se
             try:
                 sent = _send_otp_email(email, otp_plain)
             except Exception as send_exc:
-                logger.exception("OTP_SEND_EXCEPTION email=%s error=%s", email, str(send_exc))
+                logger.exception("OTP_SEND_EXCEPTION request_id=%s email_ref=%s error=%s", request_id, email_ref, send_exc.__class__.__name__)
 
             logger.warning(
-                "OTP_SEND_RESULT email=%s sent=%s otp_send_ms=%s total_login_ms=%s",
-                email,
+                "OTP_SEND_RESULT request_id=%s email_ref=%s sent=%s otp_send_ms=%s total_login_ms=%s",
+                request_id,
+                email_ref,
                 sent,
                 int((time.perf_counter() - otp_send_started_at) * 1000),
                 int((time.perf_counter() - login_started_at) * 1000),
             )
 
             if not sent and os.getenv("SUMMIT_OTP_FAIL_OPEN", "false").lower() not in ("1", "true", "yes"):
-                logger.error("OTP_FAIL_CLOSED_TRIGGERED email=%s", email)
+                logger.error("OTP_FAIL_CLOSED_TRIGGERED request_id=%s email_ref=%s", request_id, email_ref)
                 raise HTTPException(status_code=500, detail="Falha ao enviar código de verificação. Tente novamente.")
 
             try:
-                audit(db, org, u.id, "login.otp_issued", request_id="login", path="/api/auth/login",
-                      status_code=200, latency_ms=0, meta={"email": email, "summit_mode": True})
+                audit(db, org, u.id, "login.otp_issued", request_id=request_id, path="/api/auth/login",
+                      status_code=200, latency_ms=0, meta={"email_ref": email_ref, "summit_mode": True})
             except Exception:
                 pass
         except Exception:
@@ -6808,8 +6987,9 @@ def login(inp: LoginIn, x_org_slug: Optional[str] = Header(default=None), db: Se
             if os.getenv("SUMMIT_OTP_FAIL_OPEN", "false").lower() not in ("1", "true", "yes"):
                 raise HTTPException(status_code=500, detail="Falha ao enviar código de verificação. Tente novamente.")
         logger.warning(
-            "LOGIN_PENDING_OTP_RETURN email=%s org=%s total_login_ms=%s",
-            email,
+            "LOGIN_PENDING_OTP_RETURN request_id=%s email_ref=%s org=%s total_login_ms=%s",
+            request_id,
+            email_ref,
             org,
             int((time.perf_counter() - login_started_at) * 1000),
         )
@@ -6823,8 +7003,9 @@ def login(inp: LoginIn, x_org_slug: Optional[str] = Header(default=None), db: Se
     _create_user_session(db, u.id, org, ip, getattr(u, "signup_code_label", None), usage_tier)
 
     logger.info(
-        "LOGIN_SUCCESS_RETURN email=%s org=%s total_login_ms=%s",
-        email,
+        "LOGIN_SUCCESS_RETURN request_id=%s email_ref=%s org=%s status_code=200 total_login_ms=%s",
+        request_id,
+        email_ref,
         org,
         int((time.perf_counter() - login_started_at) * 1000),
     )
@@ -26058,8 +26239,27 @@ async def upload(
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception("UPLOAD_FAILED filename=%s", getattr(file, "filename", None))
-        raise HTTPException(status_code=400, detail=f"upload_failed: {e.__class__.__name__}: {str(e)}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        if _ao79a_is_db_infra_error(e):
+            logger.exception(
+                "UPLOAD_INFRA_FAILED status_code=503 org=%s user_id=%s filename_present=%s db_pool=%s",
+                locals().get("org"),
+                locals().get("uid"),
+                bool(getattr(file, "filename", None)),
+                _ao79a_db_pool_status(),
+            )
+            raise HTTPException(status_code=503, detail="Servico temporariamente indisponivel. Tente novamente em instantes.")
+        logger.exception(
+            "UPLOAD_FAILED status_code=500 org=%s user_id=%s filename_present=%s error=%s",
+            locals().get("org"),
+            locals().get("uid"),
+            bool(getattr(file, "filename", None)),
+            e.__class__.__name__,
+        )
+        raise HTTPException(status_code=500, detail="Falha ao processar upload. Tente novamente.")
 
 @app.get("/api/files")
 def list_files(x_org_slug: Optional[str] = Header(default=None), user=Depends(get_current_user), db: Session = Depends(get_db)):
@@ -26523,7 +26723,7 @@ def billing_public_checkout(inp: BillingCheckoutIn, request: Request = None, x_o
             db.commit()
             checkout_id = f"tester_bypass_{getattr(bypass_user, 'id', '') or new_id()}"
             try:
-                logger.warning("TESTER_BILLING_BYPASS_GRANTED org=%s email=%s item_code=%s", org, email, item_code)
+                logger.warning("TESTER_BILLING_BYPASS_GRANTED org=%s email_ref=%s item_code=%s", org, _ao79a_email_ref(email), item_code)
                 audit(
                     db,
                     org,
@@ -30611,7 +30811,7 @@ def admin_approve_user(
     try:
         background_tasks.add_task(_send_approval_email, u.email, u.name)
     except Exception:
-        logger.exception("APPROVAL_EMAIL_SCHEDULE_FAILED user_id=%s email=%s", getattr(u, "id", None), getattr(u, "email", None))
+        logger.exception("APPROVAL_EMAIL_SCHEDULE_FAILED user_id=%s email_ref=%s", getattr(u, "id", None), _ao79a_email_ref(getattr(u, "email", None)))
     try:
         audit(
             db=db,
@@ -30622,7 +30822,7 @@ def admin_approve_user(
             path=f"/api/admin/users/{user_id}/approve",
             status_code=200,
             latency_ms=0,
-            meta={"user_id": u.id, "email": u.email},
+            meta={"user_id": u.id, "email_ref": _ao79a_email_ref(u.email)},
         )
     except Exception:
         pass
@@ -39979,11 +40179,11 @@ async def chat_stream(
         if ao68b_admin_internal_agent_bypass:
             try:
                 logger.warning(
-                    "AO68M_ADMIN_INTERNAL_AGENT_BYPASS_PUBLIC_FASTPATH trace_id=%s thread_id=%s requested_agent=%s email=%s",
+                    "AO68M_ADMIN_INTERNAL_AGENT_BYPASS_PUBLIC_FASTPATH trace_id=%s thread_id=%s requested_agent=%s email_ref=%s",
                     trace_id,
                     tid_seed,
                     ao68b_requested_internal_agent or "unknown",
-                    _ao68b_payload_email(user),
+                    _ao79a_email_ref(_ao68b_payload_email(user)),
                 )
             except Exception:
                 pass
@@ -40049,6 +40249,13 @@ async def chat_stream(
                         }
                     },
                 }
+            payload = _ao79a_force_public_orkio_payload(
+                payload,
+                user_payload=user,
+                trace_id=trace_id,
+                thread_id=tid_seed,
+                routing_source=routing_source,
+            )
             route_plan_safe = _ao20k_hf2_json_safe(route_plan if isinstance(route_plan, dict) else {})
 
             final_text = str(
@@ -40477,12 +40684,13 @@ async def chat_stream(
         if _ao75_public_fastpath_allowed and (not ao68b_admin_internal_agent_bypass) and isinstance(_public_chris_decision, dict) and _public_chris_decision.get("handled"):
             try:
                 final_text = str(_public_chris_decision.get("answer") or "").strip()
+                final_text = _ao79a_scrub_public_internal_text(final_text)
                 persisted = await asyncio.to_thread(
                     _persist_assistant_message,
                     text=final_text,
                     thread_id=tid_seed,
                     agent_id=None,
-                    agent_name="Chris",
+                    agent_name="Orkio",
                 )
                 payload = build_public_chris_stream_payload(_public_chris_decision, persisted=persisted)
                 logger.warning(
@@ -40514,12 +40722,13 @@ async def chat_stream(
         if _ao75_public_fastpath_allowed and (not ao68b_admin_internal_agent_bypass) and isinstance(_public_orion_decision, dict) and _public_orion_decision.get("handled"):
             try:
                 final_text = str(_public_orion_decision.get("answer") or "").strip()
+                final_text = _ao79a_scrub_public_internal_text(final_text)
                 persisted = await asyncio.to_thread(
                     _persist_assistant_message,
                     text=final_text,
                     thread_id=tid_seed,
                     agent_id=None,
-                    agent_name="Orion",
+                    agent_name="Orkio",
                 )
                 payload = build_public_orion_stream_payload(_public_orion_decision, persisted=persisted)
                 logger.warning(
@@ -43604,6 +43813,17 @@ async def chat_stream(
         if _ao45a_context:
             try:
                 final_text = _ao45a_build_chris_followup_answer(message, _ao45a_context)
+                ao79a_public_guard = _ao79a_is_public_orkio_surface(user) and not ao68b_admin_internal_agent_bypass
+                if ao79a_public_guard:
+                    final_text = _ao79a_scrub_public_internal_text(final_text)
+                    try:
+                        logger.warning(
+                            "AO79A_PUBLIC_SPEAKER_GUARD_LEGACY_BLOCKED trace_id=%s thread_id=%s source=ao45a",
+                            trace_id,
+                            tid_seed,
+                        )
+                    except Exception:
+                        pass
                 try:
                     logger.warning(
                         "AO45A_SHORT_FOLLOWUP_CHRIS_CONTEXT_PRESERVED trace_id=%s thread_id=%s domain=%s sector=%s source_message_id=%s",
@@ -43620,8 +43840,8 @@ async def chat_stream(
                     _persist_assistant_message,
                     text=final_text,
                     thread_id=tid_seed,
-                    agent_id="chris",
-                    agent_name="Chris",
+                    agent_id=None if ao79a_public_guard else "chris",
+                    agent_name="Orkio" if ao79a_public_guard else "Chris",
                 )
                 payload = {
                     **(persisted or {}),
@@ -43629,22 +43849,23 @@ async def chat_stream(
                     "answer": final_text,
                     "message": final_text,
                     "final_text": final_text,
-                    "agent_id": "chris",
-                    "agent_name": "Chris",
-                    "service": "ao45a_chris_context_continuity",
-                    "provider": "platform",
+                    "agent_id": "orkio" if ao79a_public_guard else "chris",
+                    "agent_name": "Orkio" if ao79a_public_guard else "Chris",
+                    "service": "orkio_public_surface" if ao79a_public_guard else "ao45a_chris_context_continuity",
+                    "provider": "platform" if not ao79a_public_guard else None,
                     "status": "done",
                     "runtime_hints": {
                         "routing": {
                             "routing_source": "stream_ao45a_chris_context_continuity_v1",
                             "route_applied": True,
                             "execution_lifecycle": "completed",
-                            "lead_agent": "Chris",
-                            "last_specialist_agent": "Chris",
+                            "lead_agent": "Orkio" if ao79a_public_guard else "Chris",
+                            "last_specialist_agent": "Orkio" if ao79a_public_guard else "Chris",
                             "last_specialist_domain": _ao45a_context.get("domain"),
                             "last_specialist_sector": _ao45a_context.get("sector"),
                             "last_specialist_answer_type": "contextual_followup",
                             "ao45a_context_preserved": True,
+                            "ao79a_public_speaker_guard": bool(ao79a_public_guard),
                             "dispatch_executed": True,
                             "write_executed": False,
                         }
@@ -46915,6 +47136,7 @@ def otp_request(inp: OtpRequestIn, request: Request = None, db: Session = Depend
         raise HTTPException(status_code=403, detail="Use o login com senha para receber o código de verificação.")
 
     email = inp.email.lower().strip()
+    email_ref = _ao79a_email_ref(email)
     u = db.execute(select(User).where(User.org_slug == org, User.email == email)).scalar_one_or_none()
     if not u:
         # Don't reveal if user exists
@@ -46948,7 +47170,7 @@ def otp_request(inp: OtpRequestIn, request: Request = None, db: Session = Depend
 
     try:
         audit(db, org, u.id, "otp.requested", request_id="otp", path="/api/auth/otp/request",
-              status_code=200, latency_ms=0, meta={"email": email})
+              status_code=200, latency_ms=0, meta={"email_ref": email_ref})
     except Exception:
         pass
 
@@ -46968,6 +47190,7 @@ def otp_verify(inp: OtpVerifyIn, request: Request = None, db: Session = Depends(
         raise HTTPException(status_code=403, detail="Fluxo de verificação inválido. Use a verificação do login.")
 
     email = inp.email.lower().strip()
+    email_ref = _ao79a_email_ref(email)
     u = db.execute(select(User).where(User.org_slug == org, User.email == email)).scalar_one_or_none()
     if not u:
         raise HTTPException(status_code=401, detail="Código inválido ou expirado.")
@@ -47013,7 +47236,7 @@ def otp_verify(inp: OtpVerifyIn, request: Request = None, db: Session = Depends(
 
     try:
         audit(db, org, u.id, "otp.verified", request_id="otp", path="/api/auth/otp/verify",
-              status_code=200, latency_ms=0, meta={"email": email})
+              status_code=200, latency_ms=0, meta={"email_ref": email_ref})
     except Exception:
         pass
 
@@ -47034,6 +47257,7 @@ def login_verify_otp(inp: OtpVerifyIn, request: Request = None, db: Session = De
 
     org = (inp.tenant or default_tenant()).strip()
     email = inp.email.lower().strip()
+    email_ref = _ao79a_email_ref(email)
     u = db.execute(select(User).where(User.org_slug == org, User.email == email)).scalar_one_or_none()
     if not u:
         raise HTTPException(status_code=401, detail="Código inválido ou expirado.")
@@ -47087,11 +47311,11 @@ def login_verify_otp(inp: OtpVerifyIn, request: Request = None, db: Session = De
             org,
             u.id,
             "login.otp_verified",
-            request_id="login",
+            request_id=_ao79a_request_id(request, "login_otp_verify"),
             path="/api/auth/login/verify-otp",
             status_code=200,
             latency_ms=0,
-            meta={"email": email, "summit_mode": SUMMIT_MODE},
+            meta={"email_ref": email_ref, "summit_mode": SUMMIT_MODE},
         )
     except Exception:
         pass
@@ -47126,6 +47350,7 @@ def forgot_password(inp: ForgotPasswordIn, x_org_slug: Optional[str] = Header(de
     if not _rate_limit_check(_rl_otp_lock, _rl_otp_calls, f"pwdreset:{ip}", _OTP_MAX_PER_MINUTE):
         raise HTTPException(status_code=429, detail="Too many password reset attempts. Please try again later.")
     email = inp.email.lower().strip()
+    email_ref = _ao79a_email_ref(email)
     u = db.execute(select(User).where(User.org_slug == org, User.email == email)).scalar_one_or_none()
     if u:
         try:
@@ -47138,15 +47363,15 @@ def forgot_password(inp: ForgotPasswordIn, x_org_slug: Optional[str] = Header(de
             ))
             db.commit()
             sent = _send_password_reset_email(email, raw)
-            logger.info("FORGOT_PASSWORD_EMAIL email=%s sent=%s", email, sent)
+            logger.info("FORGOT_PASSWORD_EMAIL email_ref=%s sent=%s", email_ref, sent)
             try:
-                audit(db, org, u.id, "auth.forgot_password", request_id="forgot", path="/api/auth/forgot-password", status_code=200, latency_ms=0, meta={"email": email})
+                audit(db, org, u.id, "auth.forgot_password", request_id="forgot", path="/api/auth/forgot-password", status_code=200, latency_ms=0, meta={"email_ref": email_ref})
             except Exception:
                 pass
         except Exception:
             try: db.rollback()
             except Exception: pass
-            logger.exception("FORGOT_PASSWORD_FAILED email=%s", email)
+            logger.exception("FORGOT_PASSWORD_FAILED email_ref=%s", email_ref)
     return {"ok": True, "message": "If this e-mail is registered, a reset link has been sent."}
 
 @app.post("/api/auth/reset-password")
@@ -47167,7 +47392,7 @@ def reset_password(inp: ResetPasswordIn, x_org_slug: Optional[str] = Header(defa
     prt.used_at = now_ts()
     db.add(u); db.add(prt); db.commit()
     try:
-        audit(db, org, u.id, "auth.reset_password", request_id="reset", path="/api/auth/reset-password", status_code=200, latency_ms=0, meta={"email": u.email})
+        audit(db, org, u.id, "auth.reset_password", request_id="reset", path="/api/auth/reset-password", status_code=200, latency_ms=0, meta={"email_ref": _ao79a_email_ref(u.email)})
     except Exception:
         pass
     try:
@@ -47208,7 +47433,7 @@ def change_password(inp: ChangePasswordIn, x_org_slug: Optional[str] = Header(de
     db.commit()
 
     try:
-        audit(db, org, uid, "auth.change_password", request_id="change_password", path="/api/auth/change-password", status_code=200, latency_ms=0, meta={"email": u.email})
+        audit(db, org, uid, "auth.change_password", request_id="change_password", path="/api/auth/change-password", status_code=200, latency_ms=0, meta={"email_ref": _ao79a_email_ref(u.email)})
     except Exception:
         pass
 
