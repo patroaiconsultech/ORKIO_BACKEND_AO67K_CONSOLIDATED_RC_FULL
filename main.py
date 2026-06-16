@@ -1565,13 +1565,42 @@ def fmt_ts(ts: int) -> str:
 
 
 # ORKIO_AO59C_FIRST_CONTACT_PREMIUM_PERSONA
-def _orkio_premium_first_contact_text() -> str:
+# AO80B/AO81A — Orkio Lord Voice + Grace.
+def _orkio_premium_first_contact_text(name: Optional[str] = None) -> str:
+    first_name = ((name or "").strip().split(" ")[0] if name else "").strip()
+    greeting = f"Efatà, {first_name}." if first_name else "Efatà."
     return (
-        "Efatà. Bem-vindo ao Orkio.\n\n"
-        "Eu sou o copiloto inteligente da PatroAI. Vou te ajudar a explorar a plataforma com clareza, segurança e propósito — "
-        "organizando ideias, entendendo seu objetivo e transformando perguntas em próximos passos.\n\n"
-        "Neste beta público, a experiência é focada no Orkio: simples, segura e direta. "
-        "Para começar, me diga o que você quer fazer agora: explorar a plataforma, organizar um plano, testar uma ideia, revisar um problema ou apenas conversar comigo."
+        f"{greeting}\n\n"
+        "Sou Orkio, o copiloto inteligente da PatroAI.\n\n"
+        "Estou aqui para organizar ideias, examinar documentos, estruturar decisões "
+        "e transformar conversas em próximos passos claros.\n\n"
+        "Diga-me o que deseja compreender, construir ou resolver agora."
+    )
+
+
+def _orkio_lord_grace_overlay() -> str:
+    return (
+        "ORKIO LORD VOICE AND GRACE. "
+        "Speak with calm executive elegance: precise, courteous, discreet and useful. "
+        "When Orkio fails, acknowledge it with sober humility, ask pardon briefly, explain in one sentence, and repair immediately. "
+        "When the user is mistaken, incomplete, confused, or asks something impossible, preserve the user's dignity: say that it is all right, organize the path forward, and offer the simplest next step. "
+        "Never blame the user, never sound like a call-center script, never say that an external action was done unless it was confirmed. "
+        "Inside a non-empty thread, do not deliver a first-contact welcome; continue the conversation."
+    )
+
+
+def _append_orkio_lord_grace_overlay(system_overlay: Optional[str]) -> str:
+    base = str(system_overlay or "").strip()
+    overlay = _orkio_lord_grace_overlay()
+    return f"{base}\n\n{overlay}" if base else overlay
+
+
+def _orkio_context_restore_fallback_text() -> str:
+    return (
+        "Peço perdão. Estou na mesma conversa, mas neste momento não recuperei com segurança "
+        "todo o contexto anterior.\n\n"
+        "Vou trabalhar com o que está visível nesta thread. Caso o documento não esteja disponível, "
+        "posso orientar a reconstrução do resumo ou a reabertura do anexo."
     )
 
 
@@ -7179,12 +7208,7 @@ def delete_thread(thread_id: str, x_org_slug: Optional[str] = Header(default=Non
 
 
 def _orkio_welcome_message(name: Optional[str]) -> str:
-    first_name = ((name or "").strip().split(" ")[0] if name else "") or "seja bem-vindo"
-    return (
-        f"Olá, {first_name}. Como vai seu dia?\n\n"
-        "Prazer em ter você aqui. Eu sou o Orkio. "
-        "Estou à sua disposição para orientar você na plataforma, esclarecer dúvidas e acelerar o que for prioridade para você agora."
-    )
+    return _orkio_premium_first_contact_text(name)
 
 
 @app.get("/api/messages")
@@ -14659,6 +14683,110 @@ def _load_recent_thread_context_messages(
     return out
 
 
+
+
+# AO80B — Restore thread context before any welcome/public fast-path.
+def _ao80_thread_id_hash(thread_id: Optional[str]) -> str:
+    raw = str(thread_id or "").strip()
+    if not raw:
+        return ""
+    try:
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+    except Exception:
+        return "hash_failed"
+
+
+def _ao80_count_thread_messages(
+    db: Session,
+    *,
+    org: str,
+    thread_id: str,
+) -> int:
+    if not thread_id:
+        return 0
+    try:
+        return int(
+            db.execute(
+                select(func.count(Message.id)).where(
+                    Message.org_slug == org,
+                    Message.thread_id == thread_id,
+                )
+            ).scalar() or 0
+        )
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return 0
+
+
+_AO80_CONTINUITY_TERMS = (
+    "continue",
+    "de onde paramos",
+    "de onde parou",
+    "depois do refresh",
+    "após o refresh",
+    "apos o refresh",
+    "pós-refresh",
+    "pos-refresh",
+    "documento",
+    "arquivo",
+    "anexo",
+    "analisamos",
+    "analisado",
+    "valor",
+    "bônus",
+    "bonus",
+    "lembra",
+    "lembrar",
+    "retome",
+    "retomar",
+)
+
+
+def _ao80_is_continuity_request(user_text: Any) -> bool:
+    normalized = re.sub(r"\s+", " ", str(user_text or "").strip().lower())
+    if not normalized:
+        return False
+    return any(term in normalized for term in _AO80_CONTINUITY_TERMS)
+
+
+def _ao80_build_thread_rehydration_snapshot(
+    db: Session,
+    *,
+    org: str,
+    thread_id: str,
+    recent_messages: Optional[List[Dict[str, str]]] = None,
+    file_ids: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    prior_message_count = _ao80_count_thread_messages(db, org=org, thread_id=thread_id)
+    recent = list(recent_messages or [])
+    docs = list(file_ids or [])
+    return {
+        "thread_id_hash": _ao80_thread_id_hash(thread_id),
+        "prior_message_count": prior_message_count,
+        "recent_message_count": len(recent),
+        "attached_docs_count": len(docs),
+        "document_context_available": bool(docs),
+        "context_rehydrated": bool(thread_id) and (prior_message_count > 0 or bool(recent) or bool(docs)),
+    }
+
+
+def _ao80_should_block_welcome_fastpath(
+    *,
+    message: Any,
+    rehydration: Optional[Dict[str, Any]],
+) -> bool:
+    snapshot = dict(rehydration or {})
+    prior_count = int(snapshot.get("prior_message_count") or 0)
+    has_docs = bool(snapshot.get("attached_docs_count") or 0)
+    continuity_intent = _ao80_is_continuity_request(message)
+    # A first-contact welcome is only safe for an empty thread. In a restored or
+    # document-bearing thread, prefer contextual runtime or a graceful fallback.
+    return bool(prior_count > 0 or has_docs or continuity_intent)
+
+
 def _append_ao75_task_first_overlay(
     runtime_enrichment: Optional[Dict[str, Any]],
     intent_contract: Optional[Dict[str, Any]],
@@ -14824,7 +14952,7 @@ def _build_thread_document_runtime_enrichment(
         "memory_snapshot": {},
         "trial_hints": {},
         "trial_analytics": {},
-        "system_overlay": overlay,
+        "system_overlay": _append_orkio_lord_grace_overlay(overlay),
         "runtime_hints": {
             "intent": "thread_document_analysis",
             "document_context": {
@@ -25711,7 +25839,9 @@ def _build_runtime_enrichment(
         continuity_hints=continuity_hints,
         memory_snapshot=memory_snapshot,
     )
-    system_overlay = build_system_overlay(intent_package, first_win_plan, continuity_hints, chain)
+    system_overlay = _append_orkio_lord_grace_overlay(
+        build_system_overlay(intent_package, first_win_plan, continuity_hints, chain)
+    )
     runtime_hints = build_runtime_hints(
         intent_package,
         continuity_hints,
@@ -34068,9 +34198,8 @@ async def chat_stream(
             return raw
         if _looks_like_internal_exception_text(raw):
             return (
-                "Encontrei uma falha interna no runtime desta resposta, mas ela foi encerrada com segurança. "
-                "Posso seguir pelo caminho estável: explicar minhas capacidades, continuar a conversa com o contexto do onboarding "
-                "ou registrar o diagnóstico técnico para correção."
+                "Peço perdão. Encontrei uma falha interna no runtime desta resposta, mas ela foi encerrada com segurança. "
+                "Vou seguir pelo caminho estável: posso continuar a conversa, organizar o diagnóstico ou preparar próximos passos sem expor detalhes técnicos internos."
             )
         internal_runtime_markers = [
             "PLATFORM_SELF_AUDIT_READY",
@@ -34087,9 +34216,8 @@ async def chat_stream(
             except Exception:
                 pass
             return (
-                "Recebi uma saída técnica interna do runtime, mas ela não é adequada para a conversa final. "
-                "Vou seguir pelo modo conversacional seguro: posso montar um plano, organizar próximos passos, "
-                "explicar capacidades ou registrar um diagnóstico técnico explícito se você pedir."
+                "Peço perdão. Recebi uma saída técnica interna que não é adequada para a conversa final. "
+                "Vou conduzir pelo modo seguro: posso montar um plano, organizar próximos passos ou registrar um diagnóstico técnico claro, se você pedir."
             )
         return raw
 
@@ -40316,7 +40444,7 @@ async def chat_stream(
             }
 
             if not final_text:
-                final_text = "O runtime principal concluiu sem texto final. O stream foi encerrado com segurança."
+                final_text = "Peço perdão. O runtime concluiu sem texto final. A tentativa foi encerrada com segurança, e posso retomar pelo último ponto confirmado."
             final_text = _sanitize_visible_stream_text(final_text)
 
             try:
@@ -40468,6 +40596,96 @@ async def chat_stream(
             "project_strategy",
             "product_design",
         }
+
+        # AO80B — rehydrate thread state before any public welcome/identity fast-path.
+        # The first request after browser refresh can arrive with the correct
+        # thread_id while the public fast-path still behaves as if the thread was
+        # empty. This snapshot is intentionally bounded and log-safe: only counts
+        # and hashes, never message/document contents.
+        try:
+            logger.info(
+                "AO80_THREAD_REHYDRATION_START trace_id=%s thread_id_hash=%s",
+                trace_id,
+                _ao80_thread_id_hash(tid_seed),
+            )
+        except Exception:
+            pass
+
+        try:
+            _ao80_thread_rehydration = _ao80_build_thread_rehydration_snapshot(
+                db,
+                org=org,
+                thread_id=tid_seed or "",
+                recent_messages=_ao75_recent_messages,
+                file_ids=_ao75_stream_file_ids,
+            )
+            logger.info(
+                "AO80_THREAD_REHYDRATION_SUCCESS trace_id=%s thread_id_hash=%s prior_message_count=%s attached_docs_count=%s document_context_available=%s context_rehydrated=%s",
+                trace_id,
+                _ao80_thread_rehydration.get("thread_id_hash"),
+                int(_ao80_thread_rehydration.get("prior_message_count") or 0),
+                int(_ao80_thread_rehydration.get("attached_docs_count") or 0),
+                bool(_ao80_thread_rehydration.get("document_context_available")),
+                bool(_ao80_thread_rehydration.get("context_rehydrated")),
+            )
+        except Exception:
+            _ao80_thread_rehydration = {
+                "thread_id_hash": _ao80_thread_id_hash(tid_seed),
+                "prior_message_count": len(list(_ao75_recent_messages or [])),
+                "recent_message_count": len(list(_ao75_recent_messages or [])),
+                "attached_docs_count": len(list(_ao75_stream_file_ids or [])),
+                "document_context_available": bool(_ao75_stream_file_ids),
+                "context_rehydrated": bool(_ao75_recent_messages or _ao75_stream_file_ids),
+            }
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            try:
+                logger.exception(
+                    "AO80_THREAD_REHYDRATION_FAIL trace_id=%s thread_id_hash=%s",
+                    trace_id,
+                    _ao80_thread_rehydration.get("thread_id_hash"),
+                )
+            except Exception:
+                pass
+
+        _ao80_continuity_request = _ao80_is_continuity_request(message)
+        _ao80_welcome_fastpath_blocked = _ao80_should_block_welcome_fastpath(
+            message=message,
+            rehydration=_ao80_thread_rehydration,
+        )
+        if _ao80_welcome_fastpath_blocked:
+            _ao75_public_fastpath_allowed = False
+            _ao75_force_context_runtime = True
+            try:
+                logger.warning(
+                    "AO80_WELCOME_FASTPATH_BLOCKED trace_id=%s thread_id_hash=%s prior_message_count=%s attached_docs_count=%s continuity_request=%s decision_reason=%s",
+                    trace_id,
+                    _ao80_thread_rehydration.get("thread_id_hash"),
+                    int(_ao80_thread_rehydration.get("prior_message_count") or 0),
+                    int(_ao80_thread_rehydration.get("attached_docs_count") or 0),
+                    bool(_ao80_continuity_request),
+                    "thread_not_empty_or_continuity_or_document",
+                )
+            except Exception:
+                pass
+
+        try:
+            logger.info(
+                "AO80_CONTEXT_PACK_READY trace_id=%s thread_id_hash=%s prior_message_count=%s attached_docs_count=%s document_context_available=%s welcome_fastpath_candidate=%s welcome_fastpath_blocked=%s decision_reason=%s",
+                trace_id,
+                _ao80_thread_rehydration.get("thread_id_hash"),
+                int(_ao80_thread_rehydration.get("prior_message_count") or 0),
+                int(_ao80_thread_rehydration.get("attached_docs_count") or 0),
+                bool(_ao80_thread_rehydration.get("document_context_available")),
+                True,
+                bool(_ao80_welcome_fastpath_blocked),
+                "thread_not_empty_or_continuity_or_document" if _ao80_welcome_fastpath_blocked else "empty_thread_fastpath_allowed",
+            )
+        except Exception:
+            pass
+
         try:
             logger.info(
                 "AO75_INTENT_CLASSIFIED trace_id=%s thread_id=%s intent=%s confidence=%s explicit=%s document_context=%s public_fastpath_allowed=%s",
