@@ -1,0 +1,69 @@
+EFATA 777 - ORKIO MCP AUDITOR READONLY FASE 1
+CHECKLIST DE VALIDACAO MANUAL
+
+Pre-validacao:
+
+[ ] Confirmar que producao permanece bloqueada.
+[ ] Confirmar que MCP Dev nao foi incluido.
+[ ] Confirmar que nenhum deploy foi executado.
+[ ] Confirmar que nenhuma migration foi executada.
+[ ] Confirmar que nenhum segredo foi versionado.
+[ ] Confirmar que o servidor MCP roda somente em ambiente local, staging controlado ou rede administrativa autorizada.
+[ ] Confirmar que ORKIO_MCP_AUDITOR_ENABLED esta false por padrao.
+[ ] Confirmar que ORKIO_MCP_AUDITOR_ROLE esta definido como readonly_auditor.
+[ ] Confirmar que ORKIO_MCP_AUDITOR_EXTERNAL_AUTH_REQUIRED esta true.
+[ ] Confirmar que o processo MCP usa credencial DB readonly quando acessar banco.
+
+Validacao estatica:
+
+[ ] Revisar que nao existem INSERT, UPDATE, DELETE, MERGE, ALTER, DROP, TRUNCATE ou CREATE nos arquivos do MCP Auditor.
+[ ] Revisar que queries.py nao seleciona colunas content, body, text, raw_text, extracted_text, chunk_text, embedding, password, token, secret ou cookie.
+[ ] Revisar que tools.py nao oferece ferramenta de escrita.
+[ ] Revisar que server.py registra apenas as sete ferramentas autorizadas.
+[ ] Revisar que sanitizers.py mascara e-mails, bearer tokens, cookies, senhas, chaves e URLs com query sensivel.
+[ ] Revisar que audit_trail.py nao grava argumentos brutos.
+[ ] Revisar que rbac.py nega ferramentas fora da allowlist.
+
+Validacao de testes:
+
+[ ] Instalar dependencias somente em ambiente local ou CI isolado.
+[ ] Executar testes unitarios dos sanitizers.
+[ ] Executar testes unitarios de RBAC/autenticacao operacional.
+[ ] Executar testes de contrato das tools com SQLite temporario.
+[ ] Executar teste anti-vazamento de conteudo bruto.
+[ ] Confirmar que testes nao exigem banco real, secrets reais ou staging.
+
+Validacao manual MCP:
+
+[ ] Iniciar o servidor MCP somente com ORKIO_MCP_AUDITOR_ENABLED=true em ambiente autorizado.
+[ ] Chamar get_health e confirmar que nao retorna URL de banco.
+[ ] Chamar get_runtime_flags e confirmar que valores sensiveis aparecem como redacted ou set.
+[ ] Chamar get_recent_logs_sanitized com logs de exemplo contendo e-mail, cookie e bearer token e confirmar mascaramento.
+[ ] Chamar get_thread_metadata para thread autorizada e confirmar que retorna metadata sem mensagens.
+[ ] Chamar get_message_counts para thread autorizada e confirmar contagens por role/status sem conteudo.
+[ ] Chamar get_file_refs para thread autorizada e confirmar refs sem texto extraido e sem conteudo de arquivo.
+[ ] Chamar get_audit_reports e confirmar que retorna metadados/listagem, nao relatorio integral.
+[ ] Confirmar que cada chamada gera evento no audit trail local.
+
+Validacao de isolamento:
+
+[ ] Configurar ORKIO_MCP_AUDITOR_ALLOWED_ORG_IDS com um org_id especifico.
+[ ] Confirmar que org_id diferente retorna erro de permissao.
+[ ] Confirmar que ausencia de org_id nao amplia acesso quando escopo restrito for exigido pela instalacao.
+[ ] Confirmar que filenames potencialmente sensiveis sao retornados como hash/extensao.
+[ ] Confirmar que user_id e organization_id nao sao expostos como PII livre quando configurados como refs.
+
+Rollback:
+
+[ ] Remover entrada do servidor MCP da configuracao do cliente/conector.
+[ ] Definir ORKIO_MCP_AUDITOR_ENABLED=false.
+[ ] Parar processo MCP.
+[ ] Remover variaveis ORKIO_MCP_AUDITOR_* do ambiente.
+[ ] Remover credencial readonly de banco criada para o MCP, se houver.
+[ ] Arquivar audit trail local conforme politica interna.
+[ ] Confirmar zero impacto em producao.
+
+Veredito de fase:
+
+[ ] GO Fase 1 somente se todos os testes locais e revisoes de seguranca passarem.
+[ ] NO-GO Fase 1 se houver vazamento de conteudo bruto, escrita em dados de produto, ausencia de audit trail ou falta de autenticacao externa.

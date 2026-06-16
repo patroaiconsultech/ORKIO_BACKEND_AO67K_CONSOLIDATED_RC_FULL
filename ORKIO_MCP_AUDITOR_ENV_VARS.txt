@@ -1,0 +1,103 @@
+EFATA 777 - ORKIO MCP AUDITOR READONLY FASE 1
+ENV VARS NECESSARIAS
+
+Obrigatorias para ativacao controlada:
+
+ORKIO_MCP_AUDITOR_ENABLED
+Valores aceitos: true, false.
+Valor recomendado antes de validacao: false.
+Valor para execucao manual controlada: true.
+
+ORKIO_MCP_AUDITOR_EXTERNAL_AUTH_REQUIRED
+Valores aceitos: true, false.
+Valor recomendado: true.
+Quando true, o servidor deve ficar atras de autenticacao externa obrigatoria do conector, gateway, VPN, reverse proxy ou mecanismo equivalente.
+
+ORKIO_MCP_AUDITOR_PRINCIPAL_ID
+Identificador operacional do ator auditor.
+Nao deve conter e-mail pessoal, telefone, token, cookie ou segredo.
+Valor recomendado: mcp_auditor_readonly.
+
+ORKIO_MCP_AUDITOR_ROLE
+Papel operacional aceito pela camada RBAC.
+Valor obrigatorio: readonly_auditor.
+
+ORKIO_MCP_AUDITOR_ALLOWED_TOOLS
+Lista separada por virgulas das ferramentas permitidas.
+Valor recomendado:
+get_health,get_recent_logs_sanitized,get_thread_metadata,get_message_counts,get_file_refs,get_runtime_flags,get_audit_reports
+
+ORKIO_MCP_AUDITOR_ALLOWED_ORG_IDS
+Lista separada por virgulas de organizacoes permitidas.
+Use * somente em ambiente administrativo isolado e com autorizacao humana.
+Para escopo restrito, informar os IDs internos autorizados separados por virgula.
+
+ORKIO_MCP_AUDITOR_AUDIT_LOG_PATH
+Caminho local do audit trail JSONL do MCP Auditor.
+Nao usar caminho publico servido pela aplicacao.
+Valor recomendado para ambiente local:
+./audit/mcp_auditor_readonly.jsonl
+
+Opcionais de banco e introspeccao:
+
+ORKIO_MCP_AUDITOR_DATABASE_URL
+URL de banco para usuario readonly.
+Recomendado apenas quando o servidor MCP nao puder importar o engine existente da aplicacao.
+Deve usar credencial readonly de banco.
+Nao versionar o valor.
+
+DATABASE_URL
+Fallback aceito somente se o ambiente ja usa essa variavel e a credencial for readonly para o processo MCP.
+
+ORKIO_MCP_AUDITOR_TABLE_THREADS
+Nome da tabela de threads.
+Padrao: threads.
+
+ORKIO_MCP_AUDITOR_TABLE_MESSAGES
+Nome da tabela de mensagens.
+Padrao: messages.
+
+ORKIO_MCP_AUDITOR_TABLE_FILES
+Nome da tabela de arquivos/anexos.
+Padrao: files.
+
+ORKIO_MCP_AUDITOR_TABLE_AUDIT_REPORTS
+Nome da tabela de relatorios de auditoria, quando existir.
+Padrao: audit_reports.
+
+ORKIO_MCP_AUDITOR_LOG_PATHS
+Lista separada por ponto e virgula de arquivos de log locais autorizados para leitura sanitizada.
+Quando vazio, get_recent_logs_sanitized retorna source_configured=false.
+
+ORKIO_MCP_AUDITOR_REPORTS_DIR
+Diretorio local autorizado para listar metadados de relatorios.
+Nao retorna conteudo integral dos relatorios.
+Padrao: ./outputs.
+
+Limites:
+
+ORKIO_MCP_AUDITOR_MAX_LOG_LINES
+Numero maximo de linhas sanitizadas por chamada.
+Padrao: 100.
+
+ORKIO_MCP_AUDITOR_MAX_FILE_REFS
+Numero maximo de referencias de arquivos por chamada.
+Padrao: 50.
+
+ORKIO_MCP_AUDITOR_MAX_AUDIT_REPORTS
+Numero maximo de relatorios por chamada.
+Padrao: 50.
+
+ORKIO_MCP_AUDITOR_MAX_RUNTIME_FLAGS
+Numero maximo de flags retornadas por chamada.
+Padrao: 100.
+
+Prefixos e filtros:
+
+ORKIO_MCP_AUDITOR_RUNTIME_FLAG_PREFIXES
+Lista separada por virgulas de prefixos permitidos para flags nao sensiveis.
+Padrao: ORKIO_,FEATURE_,AO_.
+
+ORKIO_MCP_AUDITOR_PUBLIC_FLAG_ALLOWLIST
+Lista separada por virgulas de nomes exatos de flags que podem ter valor booleano exibido.
+Valores nao booleanos continuam redigidos como set.
