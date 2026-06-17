@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -173,6 +174,173 @@ def _safe_getattr(obj: Any, name: str, default: Any = None) -> Any:
         return getattr(obj, name, default)
     except Exception:
         return default
+
+
+
+
+# RTB-02 — Realtime Orchestration Bridge minimal safe gate.
+# Backend responsibility: detect only technical final user transcripts and return
+# a bridge candidate to the frontend. It must not call /api/chat/stream internally,
+# must not write files, must not create proposals, and must not execute patches.
+_RTB02_BRIDGE_SEEN: dict[str, float] = {}
+_RTB02_BRIDGE_TTL_SECONDS = 180
+
+
+def _rtb02_norm_text(value: Any) -> str:
+    return " ".join(str(value or "").strip().split())
+
+
+def _rtb02_dict_get(source: Any, key: str, default: Any = None) -> Any:
+    try:
+        if isinstance(source, dict):
+            return source.get(key, default)
+    except Exception:
+        pass
+    return default
+
+
+def _rtb02_extract_transcript_text(event: Any) -> str:
+    payload = _safe_getattr(event, "payload", {}) or {}
+    meta = _safe_getattr(event, "meta", {}) or {}
+
+    candidates = [
+        _safe_getattr(event, "transcript", None),
+        _safe_getattr(event, "text", None),
+        _safe_getattr(event, "content", None),
+        _safe_getattr(event, "message", None),
+        _rtb02_dict_get(payload, "transcript"),
+        _rtb02_dict_get(payload, "text"),
+        _rtb02_dict_get(payload, "content"),
+        _rtb02_dict_get(payload, "message"),
+        _rtb02_dict_get(meta, "transcript"),
+        _rtb02_dict_get(meta, "text"),
+        _rtb02_dict_get(meta, "content"),
+        _rtb02_dict_get(meta, "message"),
+    ]
+
+    for item in candidates:
+        text = _rtb02_norm_text(item)
+        if text:
+            return text
+
+    return ""
+
+
+def _rtb02_is_final_user_transcript_event(event: Any) -> bool:
+    payload = _safe_getattr(event, "payload", {}) or {}
+    meta = _safe_getattr(event, "meta", {}) or {}
+
+    name = str(
+        _safe_getattr(event, "name", None)
+        or _safe_getattr(event, "event", None)
+        or _safe_getattr(event, "type", None)
+        or _rtb02_dict_get(payload, "event_type")
+        or _rtb02_dict_get(meta, "event_type")
+        or ""
+    ).strip().lower()
+
+    role = str(
+        _safe_getattr(event, "role", None)
+        or _rtb02_dict_get(payload, "role")
+        or _rtb02_dict_get(meta, "role")
+        or ""
+    ).strip().lower()
+
+    if role and role not in {"user", "human", "speaker"}:
+        return False
+
+    if not name:
+        return False
+
+    assistant_markers = (
+        "response.audio_transcript",
+        "response.final",
+        "assistant",
+        "output_audio",
+    )
+    if any(marker in name for marker in assistant_markers):
+        return False
+
+    final_markers = (
+        "input_audio_transcription.completed",
+        "conversation.item.input_audio_transcription.completed",
+        "transcript.final",
+        "transcription.final",
+        "speech.final",
+    )
+    return any(marker in name for marker in final_markers)
+
+
+def _rtb02_is_technical_voice_command(text: str) -> bool:
+    normalized = _rtb02_norm_text(text).lower()
+    if len(normalized) < 12:
+        return False
+
+    explicit_markers = (
+        "orchestration_audit",
+        "@orion",
+        "@orkio",
+        "aciona orion",
+        "chama orion",
+        "auditoria técnica",
+        "auditoria tecnica",
+        "auditoria readonly",
+        "modo readonly",
+        "proposal only",
+        "proposal_only",
+    )
+
+    technical_terms = (
+        "realtime",
+        "sse",
+        "router",
+        "route_family",
+        "guard",
+        "backend",
+        "frontend",
+        "endpoint",
+        "stream",
+        "patch",
+        "rollback",
+        "deploy",
+        "migration",
+        "execution graph",
+        "trace lite",
+        "orion",
+        "chris",
+        "logs",
+        "codex",
+        "manus",
+    )
+
+    if any(marker in normalized for marker in explicit_markers):
+        return True
+
+    hits = sum(1 for term in technical_terms if term in normalized)
+    return hits >= 2
+
+
+def _rtb02_bridge_key(session_id: str, text: str) -> str:
+    digest = hashlib.sha256(_rtb02_norm_text(text).lower().encode("utf-8")).hexdigest()[:16]
+    return f"{session_id}:{digest}"
+
+
+def _rtb02_already_seen(session_id: str, text: str) -> bool:
+    now = time.time()
+
+    expired = [
+        key for key, ts in _RTB02_BRIDGE_SEEN.items()
+        if now - float(ts or 0) > _RTB02_BRIDGE_TTL_SECONDS
+    ]
+    for key in expired:
+        _RTB02_BRIDGE_SEEN.pop(key, None)
+
+    key = _rtb02_bridge_key(session_id, text)
+    if key in _RTB02_BRIDGE_SEEN:
+        return True
+
+    _RTB02_BRIDGE_SEEN[key] = now
+    return False
 
 
 def _json_safe(value: Any) -> Any:
@@ -930,11 +1098,63 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         except Exception:
             pass
 
+        bridge_candidate = None
+        session_id = str(_safe_getattr(body, "session_id", "") or "").strip()
+
+        for ev in events:
+            if not _rtb02_is_final_user_transcript_event(ev):
+                continue
+
+            transcript_text = _rtb02_extract_transcript_text(ev)
+            if not transcript_text:
+                continue
+
+            if not _rtb02_is_technical_voice_command(transcript_text):
+                continue
+
+            if _rtb02_already_seen(session_id, transcript_text):
+                bridge_candidate = {
+                    "status": "deduped",
+                    "session_id": session_id,
+                    "route_family": "orchestration_audit",
+                    "source": "realtime_transcript_final",
+                    "write_executed": False,
+                    "proposal_created": False,
+                }
+                break
+
+            bridge_candidate = {
+                "status": "candidate",
+                "session_id": session_id,
+                "route_family": "orchestration_audit",
+                "agent_id": "orkio",
+                "requested_orchestrator": "Orion",
+                "text": transcript_text,
+                "source": "realtime_transcript_final",
+                "write_executed": False,
+                "proposal_created": False,
+            }
+            break
+
+        try:
+            if bridge_candidate:
+                logger.warning(
+                    "RTB02_REALTIME_ORCHESTRATION_BRIDGE_CANDIDATE org=%s session_id=%s status=%s route_family=%s text_len=%s",
+                    org,
+                    session_id,
+                    bridge_candidate.get("status"),
+                    bridge_candidate.get("route_family"),
+                    len(str(bridge_candidate.get("text") or "")),
+                )
+        except Exception:
+            pass
+
         return {
             "ok": True,
             "session_id": _safe_getattr(body, "session_id", None),
             "received": len(events),
             "recovery_router": True,
+            "rtb02_bridge": bridge_candidate,
         }
 
     @router.get("/api/realtime/{session_id}")
