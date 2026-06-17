@@ -12,8 +12,8 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{12,}\b", re.IGNORECASE)
 COOKIE_RE = re.compile(r"\b(cookie|set-cookie)\s*[:=]\s*[^;\n\r]+", re.IGNORECASE)
-PASSWORD_RE = re.compile(r"\b(password|passwd|pwd|senha)\s*[:=]\s*[^,\s}\]\n\r]+", re.IGNORECASE)
-TOKEN_RE = re.compile(r"\b(token|access_token|refresh_token|id_token|api_key|apikey|secret)\s*[:=]\s*[^,\s}\]\n\r]+", re.IGNORECASE)
+PASSWORD_RE = re.compile(r"\b(password|passwd|pwd|senha)\s*[:=]\s*[^,&\s}\]\n\r]+", re.IGNORECASE)
+TOKEN_RE = re.compile(r"\b(token|access_token|refresh_token|id_token|api_key|apikey|secret)\s*[:=]\s*[^,&\s}\]\n\r]+", re.IGNORECASE)
 JWT_RE = re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b")
 HEX_SECRET_RE = re.compile(r"\b[a-f0-9]{32,}\b", re.IGNORECASE)
 QUERY_SECRET_KEYS = {"token", "access_token", "refresh_token", "id_token", "api_key", "apikey", "secret", "password", "senha", "cookie"}
