@@ -51,6 +51,15 @@ from .summit_prompt import build_summit_instructions
 from .summit_metrics import assess_realtime_session, merge_human_review
 from .runtime import get_capability_registry, build_intent_package, build_first_win_plan, build_continuity_hints, build_arcangelic_chain, build_system_overlay, build_runtime_hints, build_trial_hints, build_planner_snapshot, score_memory_candidate, build_memory_snapshot, build_trial_analytics, build_dag_execution_snapshot
 from .runtime.capability_registry import get_team_roster, get_full_agent_roster, get_agent_roster, format_team_roster_answer, is_team_roster_question_text, is_presence_status_question_text, is_war_room_readonly_architecture_plan_text, is_readonly_implementation_plan_text
+try:
+    from .runtime.chat_stream_specialist_readonly_guard import (
+        should_run_specialist_readonly_audit,
+    )
+except Exception:  # pragma: no cover - hook fallback must not break app boot
+    def should_run_specialist_readonly_audit(*, readonly_audit: bool, normalized_text: Any = "") -> bool:
+        lowered = str(normalized_text or "").lower()
+        return bool(readonly_audit and any(x in lowered for x in ("@orion", "@chris", "@orkio")))
+
 from .runtime.public_orkio_policy import (
     build_public_orkio_policy_decision,
     build_public_orkio_stream_payload,
@@ -42637,10 +42646,10 @@ async def chat_stream(
                     "sem aprovação humana explícita."
                 )
 
-            elif (
+            elif should_run_specialist_readonly_audit(
                 # AO42C_SPECIALIST_PRECEDENCE_REFINEMENT
-                _ao01_readonly_audit
-                and any(x in lowered for x in ("@orion", "@chris", "@orkio"))
+                readonly_audit=_ao01_readonly_audit,
+                normalized_text=_ao01_norm,
             ):
                 _hf4k_kind = "specialist_readonly_audit"
                 _hf4k_final_text = (
