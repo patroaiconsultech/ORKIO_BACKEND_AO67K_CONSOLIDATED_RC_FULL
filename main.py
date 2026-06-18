@@ -51,15 +51,6 @@ from .summit_prompt import build_summit_instructions
 from .summit_metrics import assess_realtime_session, merge_human_review
 from .runtime import get_capability_registry, build_intent_package, build_first_win_plan, build_continuity_hints, build_arcangelic_chain, build_system_overlay, build_runtime_hints, build_trial_hints, build_planner_snapshot, score_memory_candidate, build_memory_snapshot, build_trial_analytics, build_dag_execution_snapshot
 from .runtime.capability_registry import get_team_roster, get_full_agent_roster, get_agent_roster, format_team_roster_answer, is_team_roster_question_text, is_presence_status_question_text, is_war_room_readonly_architecture_plan_text, is_readonly_implementation_plan_text
-try:
-    from .runtime.chat_stream_specialist_readonly_guard import (
-        should_run_specialist_readonly_audit,
-    )
-except Exception:  # pragma: no cover - hook fallback must not break app boot
-    def should_run_specialist_readonly_audit(*, readonly_audit: bool, normalized_text: Any = "") -> bool:
-        lowered = str(normalized_text or "").lower()
-        return bool(readonly_audit and any(x in lowered for x in ("@orion", "@chris", "@orkio")))
-
 from .runtime.public_orkio_policy import (
     build_public_orkio_policy_decision,
     build_public_orkio_stream_payload,
@@ -79,6 +70,45 @@ from .runtime.amcham_public_journey_policy import (
     build_amcham_public_journey_decision,
     build_amcham_public_journey_stream_payload,
 )
+# P0-RS01 — fail-open stream runtime stabilizer.
+# Keep pure helpers outside the AppConsole/main monolith; if the module is absent,
+# production must still boot and the legacy route remains active.
+try:
+    from .runtime.chat_stream_runtime_stabilizer import (
+        p0rs01_should_use_stream_lite,
+        p0rs01_effective_stream_timeout,
+        p0rs01_build_system_prompt,
+        p0rs01_build_provider_failure_text,
+        p0rs01_normalize_agent_slug,
+    )
+except Exception:  # pragma: no cover - fail-open partial deploy protection
+    def p0rs01_should_use_stream_lite(*args, **kwargs):
+        return {"handled": False, "reason": "p0rs01_import_failed"}
+
+    def p0rs01_effective_stream_timeout(env_timeout, env_cap, *, candidate=None):
+        try:
+            return max(30, min(int(str(env_timeout or "45").strip() or "45"), 180))
+        except Exception:
+            return 45
+
+    def p0rs01_build_system_prompt(*, agent_name="Orkio", mode="plain_useful_lite", base_system_prompt=None):
+        return (base_system_prompt or f"Você é {agent_name}. Responda com clareza e segurança operacional.")
+
+    def p0rs01_build_provider_failure_text(*, agent_name="Orkio", code="", detail=""):
+        return f"{agent_name} recebeu sua solicitação, mas o provedor de IA não concluiu esta chamada. Código: {code or 'LLM_ERROR'}."
+
+    def p0rs01_normalize_agent_slug(value, *, default="orkio"):
+        raw = str(value or "").strip().lower().lstrip("@")
+        if "orion" in raw:
+            return "orion"
+        if "chris" in raw:
+            return "chris"
+        if "team" in raw or raw == "time":
+            return "team"
+        if "orkio" in raw:
+            return "orkio"
+        return default
+
 # AO67F — minimal, reversible gateway wiring.
 # Keep this import fail-open so a partial overlay cannot break startup.
 try:
@@ -40288,6 +40318,219 @@ async def chat_stream(
             except Exception:
                 pass
 
+    def _rs01_run_stream_lite_in_isolated_session(rs01_decision: Dict[str, Any]) -> Dict[str, Any]:
+        """P0-RS01: direct user-facing LLM path for UAT runtime stabilization.
+
+        This does not execute tools, GitHub writes, migrations or realtime.
+        It persists the user message and assistant message like /api/chat, but
+        bypasses the heavy orchestration/fanout path that Manus observed timing out.
+        """
+        db2 = SessionLocal()
+        try:
+            org2 = _resolve_org(user, x_org_slug)
+            uid2 = user.get("sub") if isinstance(user, dict) else None
+
+            db_user2 = db2.execute(
+                select(User).where(User.id == uid2, User.org_slug == org2)
+            ).scalar_one_or_none()
+            if not db_user2:
+                raise HTTPException(status_code=401, detail="Not authenticated")
+
+            try:
+                auth_status2 = _auth_status_for_user(db_user2)
+                if db_user2.role != "admin" and auth_status2 == "pending_approval":
+                    raise HTTPException(status_code=403, detail="User pending approval")
+            except HTTPException:
+                raise
+            except Exception:
+                pass
+
+            tid2 = (inp.thread_id or "").strip() or None
+            if not tid2:
+                t2 = Thread(id=new_id(), org_slug=org2, title="Nova conversa", created_at=now_ts())
+                db2.add(t2)
+                db2.commit()
+                tid2 = t2.id
+                _ensure_thread_owner(db2, org2, tid2, uid2)
+            else:
+                if user.get("role") != "admin":
+                    _require_thread_member(db2, org2, tid2, uid2)
+
+            try:
+                _wallet_guard_for_chat(
+                    db2,
+                    org2,
+                    user,
+                    route="/api/chat/stream",
+                    action_key=f"chat_stream_rs01:{tid2}:{getattr(inp, 'client_message_id', None) or trace_id}",
+                )
+            except Exception:
+                # Preserve legacy behavior if wallet guard has an unexpected issue.
+                try:
+                    logger.exception("P0RS01_WALLET_GUARD_FAILED trace_id=%s thread_id=%s", trace_id, tid2)
+                except Exception:
+                    pass
+
+            m_user2, _created2 = _get_or_create_user_message(
+                db2,
+                org2,
+                tid2,
+                user,
+                inp.message,
+                getattr(inp, "client_message_id", None),
+            )
+
+            prev2 = db2.execute(
+                select(Message)
+                .where(Message.org_slug == org2, Message.thread_id == tid2, Message.id != m_user2.id)
+                .order_by(Message.created_at.asc())
+            ).scalars().all()
+            prev2 = list(prev2 or [])[-12:]
+
+            history2: List[Dict[str, str]] = []
+            for pm in prev2:
+                role2 = "assistant" if getattr(pm, "role", None) == "assistant" else ("system" if getattr(pm, "role", None) == "system" else "user")
+                content2 = str(getattr(pm, "content", "") or "").strip()
+                if content2:
+                    history2.append({"role": role2, "content": content2})
+
+            raw_slug = str((rs01_decision or {}).get("agent_slug") or "").strip()
+            agent_slug = p0rs01_normalize_agent_slug(raw_slug, default="orkio")
+            if agent_slug == "team":
+                agent_slug = "orkio"
+
+            display_hint = {
+                "orkio": "Orkio",
+                "orion": "Orion",
+                "chris": "Chris",
+            }.get(agent_slug, "Orkio")
+
+            agent2 = None
+            try:
+                agent2 = (
+                    db2.execute(
+                        select(Agent)
+                        .where(Agent.org_slug == org2)
+                        .where(Agent.name.ilike(f"%{display_hint}%"))
+                        .limit(1)
+                    )
+                    .scalars()
+                    .first()
+                )
+            except Exception:
+                try:
+                    db2.rollback()
+                except Exception:
+                    pass
+                agent2 = None
+
+            agent_name2 = str(getattr(agent2, "name", None) or display_hint)
+            base_system2 = str(getattr(agent2, "system_prompt", None) or "").strip() or None
+            mode2 = str((rs01_decision or {}).get("mode") or "plain_useful_lite").strip() or "plain_useful_lite"
+            system_prompt2 = p0rs01_build_system_prompt(
+                agent_name=agent_name2,
+                mode=mode2,
+                base_system_prompt=base_system2,
+            )
+
+            temperature2 = None
+            try:
+                if agent2 is not None and getattr(agent2, "temperature", None) is not None:
+                    temperature2 = float(getattr(agent2, "temperature"))
+            except Exception:
+                temperature2 = None
+
+            try:
+                logger.warning(
+                    "P0RS01_STREAM_LITE_OPENAI_START trace_id=%s thread_id=%s mode=%s agent=%s history_count=%s",
+                    trace_id,
+                    tid2,
+                    mode2,
+                    agent_name2,
+                    len(history2),
+                )
+            except Exception:
+                pass
+
+            ans_obj2 = _openai_answer(
+                inp.message,
+                [],
+                history=history2,
+                system_prompt=system_prompt2,
+                model_override=(getattr(agent2, "model", None) if agent2 is not None else None),
+                temperature=temperature2,
+            )
+
+            final_text2 = ""
+            if isinstance(ans_obj2, dict):
+                final_text2 = str(ans_obj2.get("text") or "").strip()
+
+            if not final_text2:
+                final_text2 = p0rs01_build_provider_failure_text(
+                    agent_name=agent_name2,
+                    code=str((ans_obj2 or {}).get("code") or "LLM_ERROR") if isinstance(ans_obj2, dict) else "LLM_ERROR",
+                    detail=str((ans_obj2 or {}).get("message") or (ans_obj2 or {}).get("error") or "") if isinstance(ans_obj2, dict) else "",
+                )
+
+            m_ass2 = Message(
+                id=new_id(),
+                org_slug=org2,
+                thread_id=tid2,
+                role="assistant",
+                content=final_text2,
+                agent_id=getattr(agent2, "id", None) if agent2 is not None else None,
+                agent_name=agent_name2,
+                created_at=now_ts(),
+            )
+            db2.add(m_ass2)
+            db2.commit()
+
+            try:
+                logger.warning(
+                    "P0RS01_STREAM_LITE_DONE trace_id=%s thread_id=%s message_id=%s chars=%s",
+                    trace_id,
+                    tid2,
+                    getattr(m_ass2, "id", None),
+                    len(final_text2),
+                )
+            except Exception:
+                pass
+
+            return {
+                "thread_id": tid2,
+                "answer": final_text2,
+                "message": final_text2,
+                "final_text": final_text2,
+                "content": final_text2,
+                "citations": [],
+                "agent_id": getattr(agent2, "id", None) if agent2 is not None else None,
+                "agent_name": agent_name2,
+                "voice_id": resolve_agent_voice(agent2) if agent2 is not None else None,
+                "avatar_url": getattr(agent2, "avatar_url", None) if agent2 is not None else None,
+                "assistant_persisted": True,
+                "assistant_message_id": getattr(m_ass2, "id", None),
+                "runtime_hints": {
+                    "routing": {
+                        "routing_source": "stream_p0rs01_lite_runtime",
+                        "execution_lifecycle": "completed",
+                        "route_applied": True,
+                        "stabilization_patch": "P0-RS01",
+                        "mode": mode2,
+                        "reason": (rs01_decision or {}).get("reason"),
+                    },
+                    "p0rs01": {
+                        "heavy_runtime_bypassed": True,
+                        "tools_executed": False,
+                        "write_executed": False,
+                    },
+                },
+            }
+        finally:
+            try:
+                db2.close()
+            except Exception:
+                pass
+
     # AO-29C_CHAT_STREAM_OBSERVABILITY
     try:
         logger.warning("AO29_CHAT_STREAM_REQUEST_ENTER trace_id=%s thread_id=%s", trace_id, tid_seed)
@@ -42646,10 +42889,10 @@ async def chat_stream(
                     "sem aprovação humana explícita."
                 )
 
-            elif should_run_specialist_readonly_audit(
+            elif (
                 # AO42C_SPECIALIST_PRECEDENCE_REFINEMENT
-                readonly_audit=_ao01_readonly_audit,
-                normalized_text=_ao01_norm,
+                _ao01_readonly_audit
+                and any(x in lowered for x in ("@orion", "@chris", "@orkio"))
             ):
                 _hf4k_kind = "specialist_readonly_audit"
                 _hf4k_final_text = (
@@ -44369,6 +44612,59 @@ async def chat_stream(
                     pass
                 # Se a persistência do baseline falhar, seguimos para o runtime protegido.
 
+        # P0-RS01_STREAM_LITE_RUNTIME_STABILIZER
+        # Manus UAT found that useful prompts and direct @Team/@Orkio paths can
+        # hit the heavy runtime and timeout around the terminal guard. For safe
+        # user-facing prompts, answer through a small single-provider path before
+        # falling back to the legacy heavy runtime.
+        rs01_stream_lite_candidate = {"handled": False, "reason": "not_evaluated"}
+        try:
+            rs01_stream_lite_candidate = p0rs01_should_use_stream_lite(
+                message,
+                visible_agent=getattr(inp, "visible_agent", None),
+                target_agent_slug=getattr(inp, "target_agent_slug", None),
+                dest_mode=getattr(inp, "dest_mode", None),
+                route_plan=route_plan_safe if isinstance(route_plan_safe, dict) else {},
+            )
+        except Exception:
+            rs01_stream_lite_candidate = {"handled": False, "reason": "classifier_exception"}
+
+        if isinstance(rs01_stream_lite_candidate, dict) and bool(rs01_stream_lite_candidate.get("handled")):
+            try:
+                logger.warning(
+                    "P0RS01_STREAM_LITE_SELECTED trace_id=%s thread_id=%s mode=%s reason=%s",
+                    trace_id,
+                    tid_seed,
+                    rs01_stream_lite_candidate.get("mode"),
+                    rs01_stream_lite_candidate.get("reason"),
+                )
+            except Exception:
+                pass
+            yield _metatron_sse("status", {
+                **base,
+                "status": "Runtime principal estabilizado: preparando resposta direta.",
+                "phase": "p0rs01_stream_lite_start",
+                "mode": rs01_stream_lite_candidate.get("mode"),
+            })
+            try:
+                payload = await asyncio.to_thread(
+                    _rs01_run_stream_lite_in_isolated_session,
+                    rs01_stream_lite_candidate,
+                )
+                async for ev in _emit_result_payload(payload, routing_source="stream_p0rs01_lite_runtime"):
+                    yield ev
+                return
+            except Exception:
+                try:
+                    logger.exception("P0RS01_STREAM_LITE_FAILED_FALLING_BACK trace_id=%s thread_id=%s", trace_id, tid_seed)
+                except Exception:
+                    pass
+                yield _metatron_sse("status", {
+                    **base,
+                    "status": "Rota leve indisponível; seguindo para runtime protegido.",
+                    "phase": "p0rs01_stream_lite_fallback_to_legacy",
+                })
+
         # AO-29C_BEFORE_DIRECT_RUNTIME_OBSERVABILITY
         try:
             logger.warning("AO29_BEFORE_DIRECT_RUNTIME trace_id=%s thread_id=%s", trace_id, tid_seed)
@@ -44381,19 +44677,22 @@ async def chat_stream(
             pass
         keepalive_i = 0
 
+        # P0-RS01_RUNTIME_TIMEOUT_FLOOR
+        # Avoid the observed ~16s UAT terminal guard for useful prompts while
+        # keeping a bounded cap and preserving observability.
         try:
-            max_wait_s = int(os.getenv("CHAT_STREAM_RUNTIME_TIMEOUT_S", "45") or "45")
+            max_wait_s = p0rs01_effective_stream_timeout(
+                os.getenv("CHAT_STREAM_RUNTIME_TIMEOUT_S", "45"),
+                os.getenv("CHAT_STREAM_RUNTIME_TIMEOUT_CAP_S", "180"),
+                candidate=locals().get("rs01_stream_lite_candidate") if isinstance(locals().get("rs01_stream_lite_candidate"), dict) else None,
+            )
         except Exception:
             max_wait_s = 45
-        # AO-25_RUNTIME_TIMEOUT_CAP_CONFIGURABLE
-        # Railway may set CHAT_STREAM_RUNTIME_TIMEOUT_S above 60s for heavier governed/runtime flows.
-        # Keep a safety cap, but make the cap configurable and observable instead of hard-clamping to 60.
         try:
             max_cap_s = int(os.getenv("CHAT_STREAM_RUNTIME_TIMEOUT_CAP_S", "180") or "180")
         except Exception:
             max_cap_s = 180
         max_cap_s = max(30, min(max_cap_s, 300))
-        max_wait_s = max(15, min(max_wait_s, max_cap_s))
         try:
             logger.info(
                 "CHAT_STREAM_RUNTIME_TIMEOUT_CONFIG trace_id=%s env_raw=%r cap_s=%s effective_timeout_s=%s",
