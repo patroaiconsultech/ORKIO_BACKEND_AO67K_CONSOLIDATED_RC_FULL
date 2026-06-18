@@ -65,24 +65,10 @@ except Exception:  # pragma: no cover
         language_profile: Optional[str] = None
         language: Optional[str] = None
         agent_id: Optional[str] = None
-        agent_slug: Optional[str] = None
-        agent_name: Optional[str] = None
-        visible_agent: Optional[str] = None
-        target_agent_slug: Optional[str] = None
-        conversation_context: Optional[Dict[str, Any]] = None
-        context_summary: Optional[str] = None
-        no_efata_runtime_rule: Optional[bool] = True
         thread_id: Optional[str] = None
 
     class RealtimeStartReq(BaseModel):
         agent_id: Optional[str] = None
-        agent_slug: Optional[str] = None
-        agent_name: Optional[str] = None
-        visible_agent: Optional[str] = None
-        target_agent_slug: Optional[str] = None
-        conversation_context: Optional[Dict[str, Any]] = None
-        context_summary: Optional[str] = None
-        no_efata_runtime_rule: Optional[bool] = True
         thread_id: Optional[str] = None
         voice: Optional[str] = None
         model: Optional[str] = None
@@ -665,149 +651,7 @@ def _extract_secret_value(secret_obj: Any) -> tuple[Optional[str], Any]:
     return value, _json_safe(session)
 
 
-def _normalize_agent_slug(value: Any) -> str:
-    raw = str(value or "").strip().lower()
-    if not raw:
-        return ""
-    normalized = raw.encode("ascii", "ignore").decode("ascii")
-    out = []
-    last_us = False
-    for ch in normalized:
-        if ch.isalnum():
-            out.append(ch)
-            last_us = False
-        else:
-            if not last_us:
-                out.append("_")
-                last_us = True
-    return "".join(out).strip("_")
-
-
-def _agent_identity_from_body(deps: SimpleNamespace, db: Any, org: str, body: Any) -> Dict[str, Any]:
-    raw_id = str(_safe_getattr(body, "agent_id", "") or "").strip()
-    raw_slug = str(
-        _safe_getattr(body, "agent_slug", None)
-        or _safe_getattr(body, "target_agent_slug", None)
-        or ""
-    ).strip()
-    raw_name = str(
-        _safe_getattr(body, "agent_name", None)
-        or _safe_getattr(body, "visible_agent", None)
-        or ""
-    ).strip()
-
-    Agent = getattr(deps, "Agent", None)
-    if db is not None and Agent is not None and select is not None and raw_id:
-        try:
-            row = (
-                db.execute(
-                    select(Agent).where(
-                        Agent.id == raw_id,
-                        Agent.org_slug == org,
-                    ).limit(1)
-                )
-                .scalars()
-                .first()
-            )
-            if row is not None:
-                raw_name = raw_name or str(getattr(row, "name", "") or "").strip()
-                raw_slug = raw_slug or str(
-                    getattr(row, "slug", None)
-                    or getattr(row, "key", None)
-                    or getattr(row, "name", "")
-                    or ""
-                ).strip()
-        except Exception:
-            pass
-
-    slug = _normalize_agent_slug(raw_slug or raw_name or raw_id or "orkio") or "orkio"
-    if not raw_name:
-        if slug == "orion":
-            raw_name = "Orion"
-        elif slug == "chris":
-            raw_name = "Chris"
-        elif slug == "warren":
-            raw_name = "Warren"
-        else:
-            raw_name = "Orkio"
-
-    return {
-        "id": raw_id or None,
-        "slug": slug,
-        "name": raw_name,
-    }
-
-
-def _context_from_realtime_body(body: Any) -> str:
-    raw_context = _safe_getattr(body, "context_summary", "") or ""
-    if not raw_context:
-        context_obj = _safe_getattr(body, "conversation_context", {}) or {}
-        if isinstance(context_obj, dict):
-            raw_context = context_obj.get("text") or context_obj.get("summary") or ""
-    text = " ".join(str(raw_context or "").split())
-    if not text:
-        return ""
-    return text[-3600:]
-
-
-def _agent_specific_realtime_instructions(
-    *,
-    agent: Dict[str, Any],
-    language_profile: str,
-    context_text: str = "",
-) -> str:
-    name = str(agent.get("name") or "Orkio").strip() or "Orkio"
-    slug = str(agent.get("slug") or "orkio").strip().lower() or "orkio"
-    lang = str(language_profile or "pt").strip().lower()
-
-    if slug == "orion":
-        role = (
-            "Você é Orion, agente CTO técnico interno da plataforma Orkio/PatroAI. "
-            "Atue em arquitetura, backend, frontend, realtime, router, governança, risco, deploy seguro e auditoria readonly."
-        )
-    elif slug == "chris":
-        role = (
-            "Você é Chris, agente de estratégia e finanças da plataforma Orkio/PatroAI. "
-            "Atue em leitura executiva, contexto de negócio, viabilidade e prioridades."
-        )
-    elif slug == "warren":
-        role = (
-            "Você é Warren, agente de mercado e investimentos da plataforma Orkio/PatroAI. "
-            "Atue em tese, cenário, risco e oportunidade."
-        )
-    else:
-        role = (
-            "Você é Orkio, copiloto executivo da PatroAI. "
-            "Atue com clareza, continuidade, sobriedade e próximos passos úteis."
-        )
-
-    language_rule = (
-        "Responda em português do Brasil."
-        if lang.startswith("pt") or lang == "auto"
-        else "Responda no idioma do usuário, preservando clareza e concisão."
-    )
-
-    context_rule = (
-        f"\n\nCONTEXTO RECENTE DO CHAT ANTES DO REALTIME:\n{context_text}"
-        if context_text
-        else "\n\nCONTEXTO RECENTE DO CHAT ANTES DO REALTIME: nenhum contexto textual recebido."
-    )
-
-    return (
-        "IDENTIDADE OBRIGATÓRIA DO REALTIME\n"
-        f"- Agente selecionado no console: {name}.\n"
-        f"- agent_slug: {slug}.\n"
-        f"- {role}\n"
-        f"- {language_rule}\n"
-        "- Nunca diga, escreva ou use a saudação interna privada em respostas ao usuário.\n"
-        "- Não se apresente como Orkio quando o agente selecionado for Orion, Chris ou outro agente interno.\n"
-        "- Preserve governança: readonly por padrão; não declare escrita, commit, PR, deploy, migration ou execução sem evidência confirmada.\n"
-        "- Use o contexto recente abaixo como memória de curto prazo da sessão de voz."
-        f"{context_rule}"
-    )
-
-
-def _build_instructions(deps: SimpleNamespace, *, mode: str, response_profile: str, language_profile: str, agent: Optional[Dict[str, Any]] = None, context_text: str = "") -> str:
+def _build_instructions(deps: SimpleNamespace, *, mode: str, response_profile: str, language_profile: str) -> str:
     builder = getattr(deps, "build_summit_instructions", None)
     sensitive_guard = getattr(deps, "_sensitive_guard_instruction", None)
 
@@ -817,10 +661,11 @@ def _build_instructions(deps: SimpleNamespace, *, mode: str, response_profile: s
             instructions = str(
                 builder(
                     mode=mode,
-                    agent_instructions=_agent_specific_realtime_instructions(
-                        agent=agent or {"name": "Orkio", "slug": "orkio"},
-                        language_profile=language_profile,
-                        context_text=context_text,
+                    agent_instructions=(
+                        "IDENTIDADE OBRIGATÓRIA DO REALTIME\n"
+                        "- Você é Orkio, agente da plataforma PatroAI.\n"
+                        "- Responda sempre em português do Brasil.\n"
+                        "- Seja claro, executivo, útil e seguro.\n"
                     ),
                     language_profile=language_profile,
                     response_profile=response_profile,
@@ -831,10 +676,9 @@ def _build_instructions(deps: SimpleNamespace, *, mode: str, response_profile: s
             instructions = ""
 
     if not instructions:
-        instructions = _agent_specific_realtime_instructions(
-            agent=agent or {"name": "Orkio", "slug": "orkio"},
-            language_profile=language_profile,
-            context_text=context_text,
+        instructions = (
+            "Você é Orkio, agente executivo da plataforma PatroAI. "
+            "Responda sempre em português do Brasil, com clareza, objetividade e segurança."
         )
 
     if callable(sensitive_guard):
@@ -1091,15 +935,11 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             or "pt"
         ).strip().lower() or "pt"
 
-        agent_identity = _agent_identity_from_body(deps, db, org, body)
-        context_text = _context_from_realtime_body(body)
         instructions = _build_instructions(
             deps,
             mode=mode,
             response_profile=response_profile,
             language_profile=language_profile,
-            agent=agent_identity,
-            context_text=context_text,
         )
         secret = await _mint_client_secret(
             deps,
@@ -1151,15 +991,11 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         except Exception:
             pass
 
-        agent_identity = _agent_identity_from_body(deps, db, org, body)
-        context_text = _context_from_realtime_body(body)
         instructions = _build_instructions(
             deps,
             mode=mode,
             response_profile=response_profile,
             language_profile=language_profile,
-            agent=agent_identity,
-            context_text=context_text,
         )
 
         secret = await _mint_client_secret(
@@ -1220,13 +1056,6 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             "ok": True,
             "session_id": session_id,
             "thread_id": thread_id,
-            "agent_id": agent_identity.get("id"),
-            "agent_slug": agent_identity.get("slug"),
-            "agent_name": agent_identity.get("name"),
-            "visible_agent": agent_identity.get("name"),
-            "resolved_agent": agent_identity.get("name"),
-            "context_carryover": bool(context_text),
-            "no_efata_runtime_rule": True,
             "client_secret": safe_secret,
             "client_secret_value": safe_secret.get("value") if isinstance(safe_secret, dict) else None,
             "value": safe_secret.get("value") if isinstance(safe_secret, dict) else None,
