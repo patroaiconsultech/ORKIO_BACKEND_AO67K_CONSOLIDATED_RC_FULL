@@ -5938,7 +5938,14 @@ async def cors_preflight_passthrough(full_path: str):
 
 
 def rag_fallback_recent_chunks(db: Session, org: str, file_ids: List[str], top_k: int = 6) -> List[Dict[str, Any]]:
-    """Fallback: when keyword retrieval yields nothing, return early chunks from the most recent file."""
+    """Fallback: when keyword retrieval yields nothing, return early chunks from the most recent file.
+
+    RTB-06:
+    - Keep the existing FileChunk path.
+    - If chunking failed but FileText exists, use bounded FileText excerpts.
+    - This prevents "documento anexado, mas sem acesso" when extraction succeeded
+      but the chunk table is empty or temporarily inconsistent.
+    """
     if not file_ids:
         return []
     row = db.execute(
@@ -5947,17 +5954,57 @@ def rag_fallback_recent_chunks(db: Session, org: str, file_ids: List[str], top_k
     if not row or not row[0]:
         return []
     fid = row[0]
-    chunks = db.execute(
-        select(FileChunk).where(FileChunk.org_slug == org, FileChunk.file_id == fid).order_by(FileChunk.idx.asc()).limit(top_k)
-    ).scalars().all()
-    if not chunks:
-        return []
     f = db.get(File, fid)
-    filename = f.filename if f else fid
+    filename = getattr(f, "filename", None) or fid
+
+    try:
+        chunks = db.execute(
+            select(FileChunk).where(FileChunk.org_slug == org, FileChunk.file_id == fid).order_by(FileChunk.idx.asc()).limit(top_k)
+        ).scalars().all()
+    except Exception:
+        chunks = []
+
     out: List[Dict[str, Any]] = []
-    for c in chunks:
-        out.append({"file_id": fid, "filename": filename, "content": c.content, "score": 0.0, "idx": getattr(c, "idx", None), "fallback": True})
-    return out
+    for c in chunks or []:
+        content = str(getattr(c, "content", "") or "").strip()
+        if content:
+            out.append({"file_id": fid, "filename": filename, "content": content, "score": 0.0, "idx": getattr(c, "idx", None), "fallback": True})
+    if out:
+        return out
+
+    # RTB-06 fallback: extracted text exists but chunks are missing.
+    try:
+        ft = db.execute(
+            select(FileText)
+            .where(FileText.org_slug == org, FileText.file_id == fid)
+            .order_by(FileText.created_at.desc())
+            .limit(1)
+        ).scalars().first()
+    except Exception:
+        ft = None
+
+    raw_text = str(getattr(ft, "text", "") or "").strip() if ft is not None else ""
+    if not raw_text:
+        return []
+
+    try:
+        max_chars = int(os.getenv("FILE_CONTEXT_MAX_CHARS", "8000") or "8000")
+    except Exception:
+        max_chars = 8000
+    max_chars = max(1000, min(max_chars, 20000))
+    excerpt = raw_text[:max_chars].rstrip()
+    if len(raw_text) > len(excerpt):
+        excerpt += "\n\n[...texto extraído truncado...]"
+
+    return [{
+        "file_id": fid,
+        "filename": filename,
+        "content": excerpt,
+        "score": 0.0,
+        "idx": 0,
+        "fallback": True,
+        "source": "file_text_fallback",
+    }]
 
 
 
@@ -14626,60 +14673,116 @@ def _get_thread_chat_file_ids(
     thread_id: str,
     max_files: int = 8,
 ) -> List[str]:
+    """Return files that are contextually attached to a chat thread.
+
+    RTB-06:
+    The previous implementation only looked for origin="chat". In production,
+    the upload modal can register a file in the thread while storing it as
+    agent/institutional/global knowledge. The UI then shows "arquivo anexado",
+    but RAG sees zero thread files.
+
+    This resolver accepts every safe thread association used by this codebase:
+    - files.scope_thread_id == thread_id
+    - files.thread_id == thread_id
+    - files.origin_thread_id == thread_id, when the column/model field exists
+    - ORKIO_EVENT file_id stored in the thread system message
+    """
     if not thread_id:
         return []
 
-    rows: List[Any] = []
-    try:
-        rows = db.execute(
-            select(File.id)
-            .where(
-                File.org_slug == org,
-                File.scope_thread_id == thread_id,
-                File.origin == "chat",
-            )
-            .order_by(File.created_at.desc())
-            .limit(max(1, int(max_files or 8)))
-        ).all()
-    except Exception:
-        try:
-            db.rollback()
-        except Exception:
-            pass
-        rows = []
+    limit = max(1, int(max_files or 8))
+    out: List[str] = []
+    seen: set = set()
 
-    # Compatibility with older rows that populated thread_id but not
-    # scope_thread_id.
-    if not rows:
+    def _add_file_id(value: Any) -> None:
+        file_id = str(value or "").strip()
+        if not file_id or file_id in seen:
+            return
+        # Validate org ownership before returning an id parsed from messages.
         try:
-            rows = db.execute(
-                select(File.id)
-                .where(
-                    File.org_slug == org,
-                    File.thread_id == thread_id,
-                    File.origin == "chat",
-                )
-                .order_by(File.created_at.desc())
-                .limit(max(1, int(max_files or 8)))
-            ).all()
+            f = db.get(File, file_id)
+            if f is not None and getattr(f, "org_slug", None) != org:
+                return
         except Exception:
             try:
                 db.rollback()
             except Exception:
                 pass
-            rows = []
+        out.append(file_id)
+        seen.add(file_id)
 
-    out: List[str] = []
-    seen: set = set()
-    for row in list(rows or []):
+    def _query_by_column(column_name: str) -> None:
+        if len(out) >= limit:
+            return
+        col = getattr(File, column_name, None)
+        if col is None:
+            return
         try:
-            file_id = str(row[0] or "").strip()
+            rows = (
+                db.execute(
+                    select(File.id)
+                    .where(File.org_slug == org, col == thread_id)
+                    .order_by(File.created_at.desc())
+                    .limit(limit)
+                )
+                .all()
+            )
         except Exception:
-            file_id = ""
-        if file_id and file_id not in seen:
-            out.append(file_id)
-            seen.add(file_id)
-    return out
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            return
+        for row in list(rows or []):
+            try:
+                _add_file_id(row[0])
+            except Exception:
+                pass
+            if len(out) >= limit:
+                break
+
+    # Prefer direct DB associations.
+    for column_name in ("scope_thread_id", "thread_id", "origin_thread_id"):
+        _query_by_column(column_name)
+        if len(out) >= limit:
+            return out[:limit]
+
+    # Last-mile compatibility: the upload event stored in messages contains
+    # ORKIO_EVENT with file_id even when the File row was not scoped correctly.
+    try:
+        msg_rows = (
+            db.execute(
+                select(Message.content)
+                .where(Message.org_slug == org, Message.thread_id == thread_id)
+                .order_by(Message.created_at.desc())
+                .limit(80)
+            )
+            .all()
+        )
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        msg_rows = []
+
+    for row in list(msg_rows or []):
+        try:
+            content = str(row[0] or "")
+        except Exception:
+            content = ""
+        if "ORKIO_EVENT:" not in content:
+            continue
+        raw = content.split("ORKIO_EVENT:", 1)[1].strip()
+        try:
+            payload = json.loads(raw)
+        except Exception:
+            continue
+        _add_file_id(payload.get("file_id"))
+        if len(out) >= limit:
+            break
+
+    return out[:limit]
 
 
 def _load_recent_thread_context_messages(
@@ -26202,6 +26305,17 @@ async def upload(
             is_institutional=is_institutional,
             created_at=now_ts(),
         )
+        # RTB-06: preserve thread affinity even when the upload is also linked
+        # to an agent/institutional scope. Without this, the UI shows the file
+        # inside the thread, but chat/RAG cannot rediscover it later.
+        try:
+            if effective_thread_id:
+                setattr(f, "origin_thread_id", effective_thread_id)
+                if effective_intent == "chat":
+                    setattr(f, "thread_id", effective_thread_id)
+                    setattr(f, "scope_thread_id", effective_thread_id)
+        except Exception:
+            pass
         db.add(f)
         db.commit()
         _log_upload_stage("UPLOAD_SAVED", file_id=f.id, filename=f.filename, size_bytes=f.size_bytes, origin=effective_intent, thread_id=effective_thread_id)
@@ -26401,6 +26515,8 @@ async def upload(
             "thread_id": effective_thread_id,
             "extracted_chars": extracted_chars,
             "chunks_created": chunks_created,
+            "has_extracted_text": bool(text_content),
+            "extraction_status": "extracted" if text_content else ("failed" if bool(getattr(f, "extraction_failed", False)) else "empty"),
             "extraction_failed": bool(getattr(f, "extraction_failed", False)),
             "linked_agent_ids": resolved_agent_ids,
             "linked_agent_id": resolved_agent_id,
@@ -40452,9 +40568,57 @@ async def chat_stream(
             except Exception:
                 pass
 
+            # RTB-06: stream-lite also needs the thread document bridge.
+            # Otherwise a document-analysis prompt can bypass the full chat route
+            # and still answer "não consigo acessar o documento".
+            citations2: List[Dict[str, Any]] = []
+            try:
+                thread_file_ids2 = _get_thread_chat_file_ids(
+                    db2,
+                    org=org2,
+                    thread_id=tid2,
+                    max_files=8,
+                )
+                if thread_file_ids2:
+                    try:
+                        citations2 = keyword_retrieve(
+                            db2,
+                            org_slug=org2,
+                            query=inp.message,
+                            top_k=8,
+                            file_ids=thread_file_ids2,
+                        )
+                    except Exception:
+                        try:
+                            db2.rollback()
+                        except Exception:
+                            pass
+                        citations2 = []
+                    if not citations2:
+                        citations2 = rag_fallback_recent_chunks(
+                            db2,
+                            org=org2,
+                            file_ids=thread_file_ids2,
+                            top_k=8,
+                        )
+                    file_ctx2 = _build_file_context_block(citations2)
+                    if file_ctx2.get("file_context_block"):
+                        system_prompt2 = (
+                            (system_prompt2 or "").strip()
+                            + "\n\nDOCUMENT ANALYSIS MODE — READONLY. "
+                              "Use the attached-thread document evidence below. "
+                              "Do not claim that the file is unavailable while evidence is present.\n"
+                            + str(file_ctx2.get("file_context_block") or "")
+                        ).strip()
+            except Exception:
+                try:
+                    logger.exception("RTB06_STREAM_LITE_DOCUMENT_CONTEXT_FAILED trace_id=%s thread_id=%s", trace_id, tid2)
+                except Exception:
+                    pass
+
             ans_obj2 = _openai_answer(
                 inp.message,
-                [],
+                citations2,
                 history=history2,
                 system_prompt=system_prompt2,
                 model_override=(getattr(agent2, "model", None) if agent2 is not None else None),
