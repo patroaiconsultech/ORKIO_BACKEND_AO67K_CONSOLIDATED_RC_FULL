@@ -1,4 +1,4 @@
-# ORKIO_RTB03_REALTIME_THREAD_CONTEXT_BRIDGE_FOUNDER_GUARD
+# ORKIO_RTB06_REALTIME_FINALS_MESSAGES_BRIDGE
 # Backend-only PATCH_MINIMUM for routes/realtime.py
 #
 # Purpose:
@@ -11,11 +11,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
 import time
 import uuid
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -1128,6 +1130,365 @@ def _maybe_mark_realtime_session_ended(
         return False
 
 
+
+# ORKIO_RTB06_REALTIME_FINALS_MESSAGES_BRIDGE
+def _rtb06_event_dict(event: Any) -> Dict[str, Any]:
+    data = _json_safe(event)
+    return data if isinstance(data, dict) else {}
+
+
+def _rtb06_collect_text_candidates(value: Any, depth: int = 0) -> List[str]:
+    if value is None or depth > 5:
+        return []
+
+    if isinstance(value, (str, int, float)):
+        text = str(value or "").strip()
+        if not text:
+            return []
+        low = text.lower()
+        if low in {"true", "false", "completed", "done", "ok", "success", "event"}:
+            return []
+        if low.startswith("telemetry."):
+            return []
+        return [text]
+
+    if isinstance(value, list):
+        out: List[str] = []
+        for item in value:
+            out.extend(_rtb06_collect_text_candidates(item, depth + 1))
+        return out
+
+    if not isinstance(value, dict):
+        return []
+
+    preferred_keys = (
+        "transcript_punct",
+        "transcript_text",
+        "transcript",
+        "input_transcript",
+        "inputTranscript",
+        "output_text",
+        "outputText",
+        "final_text",
+        "finalText",
+        "assistant_text",
+        "assistantText",
+        "text",
+        "content",
+        "message",
+        "answer",
+    )
+    out: List[str] = []
+
+    for key in preferred_keys:
+        if key in value:
+            out.extend(_rtb06_collect_text_candidates(value.get(key), depth + 1))
+
+    nested_keys = (
+        "payload",
+        "meta",
+        "data",
+        "item",
+        "event",
+        "response",
+        "message",
+        "content",
+        "delta",
+        "output",
+        "outputs",
+        "transcript",
+    )
+    for key in nested_keys:
+        nested = value.get(key)
+        if isinstance(nested, (dict, list)):
+            out.extend(_rtb06_collect_text_candidates(nested, depth + 1))
+
+    return out
+
+
+def _rtb06_extract_final_text(event: Any) -> str:
+    texts = _rtb06_collect_text_candidates(_rtb06_event_dict(event))
+    texts = [t for t in texts if len(t.strip()) >= 2]
+    if not texts:
+        return ""
+    selected = max(texts, key=len)
+    return _sanitize_context_text(selected, max_chars=8000)
+
+
+def _rtb06_event_hash(session_id: str, event_name: str, role: str, text: str) -> str:
+    raw = f"{session_id}|{event_name}|{role}|{text}".encode("utf-8", errors="ignore")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _rtb06_get_session_context(
+    deps: SimpleNamespace,
+    db: Any,
+    *,
+    session_id: str,
+    fallback_org: str,
+    fallback_user_id: Optional[str],
+) -> Dict[str, Any]:
+    context: Dict[str, Any] = {
+        "org": fallback_org or "public",
+        "user_id": fallback_user_id,
+        "thread_id": None,
+        "agent_id": None,
+        "found": False,
+    }
+    RealtimeSession = getattr(deps, "RealtimeSession", None)
+    if db is None or RealtimeSession is None or select is None or not session_id:
+        return context
+
+    try:
+        rs = (
+            db.execute(select(RealtimeSession).where(RealtimeSession.id == session_id))
+            .scalar_one_or_none()
+        )
+        if not rs:
+            return context
+        context["found"] = True
+        context["org"] = str(_safe_getattr(rs, "org_slug", None) or context["org"] or "public")
+        context["user_id"] = str(_safe_getattr(rs, "user_id", None) or context["user_id"] or "") or None
+        context["thread_id"] = str(_safe_getattr(rs, "thread_id", None) or "") or None
+        context["agent_id"] = str(_safe_getattr(rs, "agent_id", None) or "") or None
+    except Exception:
+        return context
+
+    return context
+
+
+def _rtb06_message_has_existing(
+    deps: SimpleNamespace,
+    db: Any,
+    *,
+    org: str,
+    thread_id: str,
+    role: str,
+    text: str,
+) -> bool:
+    Message = getattr(deps, "Message", None)
+    if db is None or Message is None or select is None or not thread_id or not text:
+        return False
+
+    try:
+        query = select(Message).where(
+            Message.org_slug == org,
+            Message.thread_id == thread_id,
+            Message.role == role,
+            Message.content == text,
+        ).limit(1)
+        return bool(db.execute(query).scalar_one_or_none())
+    except Exception:
+        return False
+
+
+def _rtb06_set_if_possible(obj: Any, key: str, value: Any) -> None:
+    try:
+        setattr(obj, key, value)
+    except Exception:
+        pass
+
+
+def _rtb06_create_message_instance(
+    Message: Any,
+    *,
+    message_id: str,
+    org: str,
+    thread_id: str,
+    user_id: Optional[str],
+    role: str,
+    content: str,
+    agent_name: Optional[str],
+    event_hash: str,
+    session_id: str,
+    event_name: str,
+) -> Any:
+    msg = Message()
+    now = datetime.now(timezone.utc)
+    metadata_json = json.dumps(
+        {
+            "source": "realtime",
+            "patch": "RTB06",
+            "realtime_session_id": session_id,
+            "event_name": event_name,
+            "event_hash": event_hash,
+        },
+        ensure_ascii=False,
+    )
+
+    values = {
+        "id": message_id,
+        "org_slug": org,
+        "thread_id": thread_id,
+        "user_id": user_id,
+        "role": role,
+        "content": content,
+        "text": content,
+        "message": content,
+        "agent_name": agent_name if role == "assistant" else None,
+        "speaker_name": agent_name if role == "assistant" else None,
+        "created_at": now,
+        "updated_at": now,
+        "source": "realtime",
+        "channel": "realtime",
+        "realtime_session_id": session_id,
+        "idempotency_key": event_hash,
+        "client_event_id": event_hash,
+        "metadata": metadata_json,
+        "meta": metadata_json,
+    }
+
+    for key, value in values.items():
+        if value is not None:
+            _rtb06_set_if_possible(msg, key, value)
+
+    return msg
+
+
+def _rtb06_insert_message(
+    deps: SimpleNamespace,
+    db: Any,
+    *,
+    org: str,
+    thread_id: str,
+    user_id: Optional[str],
+    role: str,
+    content: str,
+    agent_name: Optional[str],
+    session_id: str,
+    event_name: str,
+    event_hash: str,
+) -> bool:
+    Message = getattr(deps, "Message", None)
+    if db is None or Message is None or not thread_id or not content:
+        return False
+
+    if _rtb06_message_has_existing(
+        deps,
+        db,
+        org=org,
+        thread_id=thread_id,
+        role=role,
+        text=content,
+    ):
+        return False
+
+    def build_msg(use_epoch: bool = False) -> Any:
+        msg = _rtb06_create_message_instance(
+            Message,
+            message_id=f"msg_rt_{uuid.uuid4().hex}",
+            org=org,
+            thread_id=thread_id,
+            user_id=user_id,
+            role=role,
+            content=content,
+            agent_name=agent_name,
+            event_hash=event_hash,
+            session_id=session_id,
+            event_name=event_name,
+        )
+        if use_epoch:
+            for key in ("created_at", "updated_at"):
+                _rtb06_set_if_possible(msg, key, int(time.time()))
+        return msg
+
+    for use_epoch in (False, True):
+        try:
+            db.add(build_msg(use_epoch=use_epoch))
+            db.commit()
+            return True
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
+    return False
+
+
+def _rtb06_promote_realtime_finals_to_messages(
+    deps: SimpleNamespace,
+    db: Any,
+    *,
+    org: str,
+    user_id: Optional[str],
+    session_id: str,
+    events: List[Any],
+    logger: logging.Logger,
+) -> Dict[str, Any]:
+    result: Dict[str, Any] = {
+        "attempted": 0,
+        "inserted": 0,
+        "skipped": 0,
+        "thread_id": None,
+    }
+
+    if not events or not session_id:
+        return result
+
+    session_ctx = _rtb06_get_session_context(
+        deps,
+        db,
+        session_id=session_id,
+        fallback_org=org,
+        fallback_user_id=user_id,
+    )
+    effective_org = str(session_ctx.get("org") or org or "public")
+    effective_user_id = str(session_ctx.get("user_id") or user_id or "") or None
+    thread_id = str(session_ctx.get("thread_id") or "") or None
+    result["thread_id"] = thread_id
+
+    if not thread_id:
+        return result
+
+    for ev in events:
+        event_name = _event_name(ev).strip()
+        event_key = event_name.lower()
+        if event_key not in {"transcript.final", "response.final"}:
+            continue
+
+        role = "user" if event_key == "transcript.final" else "assistant"
+        text = _rtb06_extract_final_text(ev)
+        if not text:
+            result["skipped"] += 1
+            continue
+
+        event_hash = _rtb06_event_hash(session_id, event_key, role, text)
+        result["attempted"] += 1
+        ok = _rtb06_insert_message(
+            deps,
+            db,
+            org=effective_org,
+            thread_id=thread_id,
+            user_id=effective_user_id,
+            role=role,
+            content=text,
+            agent_name=("Orkio" if role == "assistant" else None),
+            session_id=session_id,
+            event_name=event_key,
+            event_hash=event_hash,
+        )
+        if ok:
+            result["inserted"] += 1
+        else:
+            result["skipped"] += 1
+
+    if result["attempted"]:
+        try:
+            logger.warning(
+                "RTB06_REALTIME_FINALS_PROMOTION session_id=%s thread_id=%s attempted=%s inserted=%s skipped=%s",
+                session_id,
+                thread_id,
+                result["attempted"],
+                result["inserted"],
+                result["skipped"],
+            )
+        except Exception:
+            pass
+
+    return result
+
+
 def _event_name(event: Any) -> str:
     payload = _safe_getattr(event, "payload", {}) or {}
     meta = _safe_getattr(event, "meta", {}) or {}
@@ -1145,7 +1506,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
     """Build Realtime router using dependencies injected by app/main.py."""
 
     router = APIRouter()
-    logger = getattr(deps, "logger", None) or logging.getLogger("orkio.realtime.rtb03")
+    logger = getattr(deps, "logger", None) or logging.getLogger("orkio.realtime.rtb06")
     get_current_user = getattr(deps, "get_current_user", None) or _default_current_user
     get_db = getattr(deps, "get_db", None) or _default_db
 
@@ -1227,8 +1588,9 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 **_json_safe(secret),
                 "org": org,
                 "rtb03": True,
+                "rtb06": True,
                 "context": overlay_meta,
-                "serialization_safe": "RTB03",
+                "serialization_safe": "RTB03_RTB06",
             }
         )
 
@@ -1310,7 +1672,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         usage_advisory = _build_esg_usage_advisory()
 
         session_meta = {
-            "patch": "RTB03",
+            "patch": "RTB03_RTB06",
             "mode": mode,
             "response_profile": response_profile,
             "language_profile": language_profile,
@@ -1360,8 +1722,9 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 "usage_advisory": _json_safe(usage_advisory),
                 "started_at": started_at,
                 "rtb03": True,
+                "rtb06": True,
                 "context": overlay_meta,
-                "serialization_safe": "RTB03",
+                "serialization_safe": "RTB03_RTB06",
                 "timebox_policy": "advisory_only_esg",
             }
         )
@@ -1375,23 +1738,37 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
     ) -> Dict[str, Any]:
         org = _resolve_org_safe(deps, user, x_org_slug)
         events = list(_safe_getattr(body, "events", []) or [])
+        session_id = str(_safe_getattr(body, "session_id", "") or "").strip()
+        uid = str(_safe_getattr(user, "sub", None) or _safe_getattr(user, "id", "") or "").strip() or None
 
         try:
             logger.warning(
-                "RTB03_REALTIME_EVENTS_BATCH org=%s session_id=%s count=%s names=%s",
+                "RTB06_REALTIME_EVENTS_BATCH org=%s session_id=%s count=%s names=%s",
                 org,
-                _safe_getattr(body, "session_id", None),
+                session_id,
                 len(events),
                 ",".join([_event_name(ev) for ev in events[:20]]),
             )
         except Exception:
             pass
 
+        promotion = _rtb06_promote_realtime_finals_to_messages(
+            deps,
+            db,
+            org=org,
+            user_id=uid,
+            session_id=session_id,
+            events=events,
+            logger=logger,
+        )
+
         return {
             "ok": True,
-            "session_id": _safe_getattr(body, "session_id", None),
+            "session_id": session_id,
             "received": len(events),
             "rtb03": True,
+            "rtb06": True,
+            "finals_promoted": promotion,
         }
 
     @router.get("/api/realtime/{session_id}")
@@ -1425,7 +1802,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 "turns": [],
             },
             "rtb03": True,
-            "serialization_safe": "RTB03",
+            "serialization_safe": "RTB03_RTB06",
             "compatibility_endpoint": "GET /api/realtime/{session_id}",
         }
 
