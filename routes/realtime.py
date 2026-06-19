@@ -1,49 +1,32 @@
-# ORKIO_AO64D_HF4_BACKEND_REALTIME_NO_HARD_TIMEBOX_ESG_ADVISORY_SAFE
-# Backend recovery + Realtime client_secret GA payload + JSON serialization + no hard public timebox for app/routes/realtime.py
+# ORKIO_RTB03_REALTIME_THREAD_CONTEXT_BRIDGE_FOUNDER_GUARD
+# Backend-only PATCH_MINIMUM for routes/realtime.py
 #
-# PURPOSE
-# Restore Python syntax and FastAPI router boot after a frontend React hook was
-# accidentally pasted into app/routes/realtime.py.
-#
-# SCOPE
-# - Backend only.
-# - Exposes build_realtime_router(deps), expected by app/main.py.
-# - Keeps /api/realtime/start, /api/realtime/end, /api/realtime/events:batch,
-#   /api/realtime/guard and /api/realtime/{session_id} alive.
-# - Does not modify frontend, AppConsole, WebRTC, SDP or DataChannel.
-# - Converts hard public timebox/cooldown into advisory-only ESG guidance.
-#
-# IMPORTANT
-# This is a safe recovery router, not a premium refactor. Its first job is to
-# make the API boot again. After backend health is restored, compare with Git
-# history and replace with the last known-good full router when available.
+# Purpose:
+# - Preserve existing Realtime endpoints.
+# - Inject recent thread context into Realtime instructions for every authenticated
+#   user who is authorized to access the thread.
+# - Inject Founder/CEO identity only for the two explicit founder admin emails:
+#   daniel@patroai.com and dangraebin@gmail.com
+# - Fail open: if context loading fails, Realtime still starts.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
 import time
 import uuid
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-
 try:
     from sqlalchemy import select  # type: ignore
 except Exception:  # pragma: no cover
     select = None  # type: ignore
-
-
-try:
-    from sqlalchemy.orm import Session  # type: ignore
-except Exception:  # pragma: no cover
-    Session = Any  # type: ignore
 
 
 try:
@@ -98,8 +81,19 @@ except Exception:  # pragma: no cover
     def normalize_realtime_voice(raw: Any, default: str = "cedar") -> str:
         voice = str(raw or "").strip().lower()
         allowed = {
-            "alloy", "ash", "ballad", "cedar", "coral", "echo", "fable",
-            "marin", "nova", "onyx", "sage", "shimmer", "verse",
+            "alloy",
+            "ash",
+            "ballad",
+            "cedar",
+            "coral",
+            "echo",
+            "fable",
+            "marin",
+            "nova",
+            "onyx",
+            "sage",
+            "shimmer",
+            "verse",
         }
         aliases = {"marine": "marin"}
         voice = aliases.get(voice, voice)
@@ -115,10 +109,17 @@ except Exception:  # pragma: no cover
     build_openai_realtime_client_secret_payload = None  # type: ignore
 
     def realtime_session_debug_snapshot(payload: Dict[str, Any]) -> Dict[str, Any]:
+        session = payload.get("session") if isinstance(payload, dict) else {}
+        session = session if isinstance(session, dict) else {}
+        audio = session.get("audio") if isinstance(session, dict) else {}
+        audio = audio if isinstance(audio, dict) else {}
+        output = audio.get("output") if isinstance(audio, dict) else {}
+        output = output if isinstance(output, dict) else {}
         return {
             "has_payload": bool(payload),
-            "model": payload.get("model") or payload.get("session", {}).get("model"),
-            "voice": payload.get("voice") or payload.get("session", {}).get("voice"),
+            "model": payload.get("model") or session.get("model"),
+            "voice": payload.get("voice") or output.get("voice"),
+            "has_instructions": bool(session.get("instructions") or payload.get("instructions")),
         }
 
 
@@ -151,12 +152,6 @@ REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS = _positive_int_env(
     "ORKIO_REALTIME_PUBLIC_BETA_COOLDOWN_SECONDS",
     600,
 )
-
-# AO64D-HF4:
-# Public/user time limits are no longer enforced as hard blockers in this recovery
-# router. We still expose advisory metadata so the frontend/product can recommend
-# shorter sessions for cost, data, battery and ESG efficiency without interrupting
-# a useful voice conversation.
 REALTIME_ADVISORY_RECOMMENDED_SECONDS = _positive_int_env(
     "ORKIO_REALTIME_ADVISORY_RECOMMENDED_SECONDS",
     120,
@@ -165,6 +160,19 @@ REALTIME_CLIENT_SECRET_TTL_SECONDS = _positive_int_env(
     "ORKIO_REALTIME_CLIENT_SECRET_TTL_SECONDS",
     3600,
 )
+REALTIME_THREAD_CONTEXT_LIMIT = _positive_int_env(
+    "ORKIO_REALTIME_THREAD_CONTEXT_LIMIT",
+    18,
+)
+REALTIME_THREAD_CONTEXT_MAX_CHARS = _positive_int_env(
+    "ORKIO_REALTIME_THREAD_CONTEXT_MAX_CHARS",
+    6000,
+)
+
+FOUNDER_ADMIN_EMAILS = {
+    "daniel@patroai.com",
+    "dangraebin@gmail.com",
+}
 
 
 def _safe_getattr(obj: Any, name: str, default: Any = None) -> Any:
@@ -176,182 +184,9 @@ def _safe_getattr(obj: Any, name: str, default: Any = None) -> Any:
         return default
 
 
-
-
-# RTB-02 — Realtime Orchestration Bridge minimal safe gate.
-# Backend responsibility: detect only technical final user transcripts and return
-# a bridge candidate to the frontend. It must not call /api/chat/stream internally,
-# must not write files, must not create proposals, and must not execute patches.
-_RTB02_BRIDGE_SEEN: dict[str, float] = {}
-_RTB02_BRIDGE_TTL_SECONDS = 180
-
-
-def _rtb02_norm_text(value: Any) -> str:
-    return " ".join(str(value or "").strip().split())
-
-
-def _rtb02_dict_get(source: Any, key: str, default: Any = None) -> Any:
-    try:
-        if isinstance(source, dict):
-            return source.get(key, default)
-    except Exception:
-        pass
-    return default
-
-
-def _rtb02_extract_transcript_text(event: Any) -> str:
-    payload = _safe_getattr(event, "payload", {}) or {}
-    meta = _safe_getattr(event, "meta", {}) or {}
-
-    candidates = [
-        _safe_getattr(event, "transcript", None),
-        _safe_getattr(event, "text", None),
-        _safe_getattr(event, "content", None),
-        _safe_getattr(event, "message", None),
-        _rtb02_dict_get(payload, "transcript"),
-        _rtb02_dict_get(payload, "text"),
-        _rtb02_dict_get(payload, "content"),
-        _rtb02_dict_get(payload, "message"),
-        _rtb02_dict_get(meta, "transcript"),
-        _rtb02_dict_get(meta, "text"),
-        _rtb02_dict_get(meta, "content"),
-        _rtb02_dict_get(meta, "message"),
-    ]
-
-    for item in candidates:
-        text = _rtb02_norm_text(item)
-        if text:
-            return text
-
-    return ""
-
-
-def _rtb02_is_final_user_transcript_event(event: Any) -> bool:
-    payload = _safe_getattr(event, "payload", {}) or {}
-    meta = _safe_getattr(event, "meta", {}) or {}
-
-    name = str(
-        _safe_getattr(event, "name", None)
-        or _safe_getattr(event, "event", None)
-        or _safe_getattr(event, "type", None)
-        or _rtb02_dict_get(payload, "event_type")
-        or _rtb02_dict_get(meta, "event_type")
-        or ""
-    ).strip().lower()
-
-    role = str(
-        _safe_getattr(event, "role", None)
-        or _rtb02_dict_get(payload, "role")
-        or _rtb02_dict_get(meta, "role")
-        or ""
-    ).strip().lower()
-
-    if role and role not in {"user", "human", "speaker"}:
-        return False
-
-    if not name:
-        return False
-
-    assistant_markers = (
-        "response.audio_transcript",
-        "response.final",
-        "assistant",
-        "output_audio",
-    )
-    if any(marker in name for marker in assistant_markers):
-        return False
-
-    final_markers = (
-        "input_audio_transcription.completed",
-        "conversation.item.input_audio_transcription.completed",
-        "transcript.final",
-        "transcription.final",
-        "speech.final",
-    )
-    return any(marker in name for marker in final_markers)
-
-
-def _rtb02_is_technical_voice_command(text: str) -> bool:
-    normalized = _rtb02_norm_text(text).lower()
-    if len(normalized) < 12:
-        return False
-
-    explicit_markers = (
-        "orchestration_audit",
-        "@orion",
-        "@orkio",
-        "aciona orion",
-        "chama orion",
-        "auditoria técnica",
-        "auditoria tecnica",
-        "auditoria readonly",
-        "modo readonly",
-        "proposal only",
-        "proposal_only",
-    )
-
-    technical_terms = (
-        "realtime",
-        "sse",
-        "router",
-        "route_family",
-        "guard",
-        "backend",
-        "frontend",
-        "endpoint",
-        "stream",
-        "patch",
-        "rollback",
-        "deploy",
-        "migration",
-        "execution graph",
-        "trace lite",
-        "orion",
-        "chris",
-        "logs",
-        "codex",
-        "manus",
-    )
-
-    if any(marker in normalized for marker in explicit_markers):
-        return True
-
-    hits = sum(1 for term in technical_terms if term in normalized)
-    return hits >= 2
-
-
-def _rtb02_bridge_key(session_id: str, text: str) -> str:
-    digest = hashlib.sha256(_rtb02_norm_text(text).lower().encode("utf-8")).hexdigest()[:16]
-    return f"{session_id}:{digest}"
-
-
-def _rtb02_already_seen(session_id: str, text: str) -> bool:
-    now = time.time()
-
-    expired = [
-        key for key, ts in _RTB02_BRIDGE_SEEN.items()
-        if now - float(ts or 0) > _RTB02_BRIDGE_TTL_SECONDS
-    ]
-    for key in expired:
-        _RTB02_BRIDGE_SEEN.pop(key, None)
-
-    key = _rtb02_bridge_key(session_id, text)
-    if key in _RTB02_BRIDGE_SEEN:
-        return True
-
-    _RTB02_BRIDGE_SEEN[key] = now
-    return False
-
-
 def _json_safe(value: Any) -> Any:
-    """Convert SDK/Pydantic/SQLAlchemy-ish objects into JSON-safe primitives.
+    """Convert SDK/Pydantic/SQLAlchemy-ish objects into JSON-safe primitives."""
 
-    AO64D-HF4:
-    FastAPI/Pydantic v2 can crash during response serialization when an SDK model
-    or partially mocked serializer object is returned inside a dict:
-    TypeError: 'MockValSer' object cannot be converted to 'SchemaSerializer'.
-    This helper prevents leaking those objects into route responses.
-    """
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
 
@@ -361,7 +196,6 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, (list, tuple, set)):
         return [_json_safe(v) for v in value]
 
-    # Pydantic v2 / OpenAI SDK models.
     for method_name in ("model_dump", "dict"):
         method = getattr(value, method_name, None)
         if callable(method):
@@ -372,7 +206,6 @@ def _json_safe(value: Any) -> Any:
             except Exception:
                 pass
 
-    # Some SDK objects expose to_dict/to_json.
     method = getattr(value, "to_dict", None)
     if callable(method):
         try:
@@ -387,7 +220,6 @@ def _json_safe(value: Any) -> Any:
         except Exception:
             pass
 
-    # Fallback to public attributes only. Avoid private serializer internals.
     try:
         attrs = {
             str(k): _json_safe(v)
@@ -429,28 +261,71 @@ def _build_esg_usage_advisory() -> Dict[str, Any]:
     }
 
 
+def _normalize_email(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _user_email_candidates(user: Any, db_user: Any = None) -> List[str]:
+    values: List[str] = []
+    for source in (user, db_user):
+        for key in (
+            "email",
+            "user_email",
+            "preferred_username",
+            "login",
+            "username",
+            "upn",
+        ):
+            raw = _normalize_email(_safe_getattr(source, key, ""))
+            if raw and "@" in raw and raw not in values:
+                values.append(raw)
+
+    # Some auth payloads keep email inside nested claims/profile dictionaries.
+    for source in (user, db_user):
+        for key in ("claims", "profile", "raw", "payload"):
+            nested = _safe_getattr(source, key, None)
+            if isinstance(nested, dict):
+                for nested_key in ("email", "user_email", "preferred_username", "upn"):
+                    raw = _normalize_email(nested.get(nested_key))
+                    if raw and "@" in raw and raw not in values:
+                        values.append(raw)
+
+    return values
+
+
+def _is_daniel_founder_identity(user: Any, db_user: Any = None) -> bool:
+    """Strict Founder/Admin identity guard.
+
+    This intentionally checks only authenticated email claims.
+    It does not grant founder identity by display name, org, role or user_id.
+    """
+
+    emails = set(_user_email_candidates(user, db_user))
+    return bool(emails.intersection(FOUNDER_ADMIN_EMAILS))
+
+
 def _is_admin_user(user: Any, db_user: Any = None) -> bool:
     roles = {"admin", "owner", "superadmin", "super_admin", "founder", "dev", "developer"}
     user_role = str(_safe_getattr(user, "role", "") or "").strip().lower()
     db_role = str(_safe_getattr(db_user, "role", "") or "").strip().lower()
     user_scope = str(_safe_getattr(user, "scope", "") or "").strip().lower()
     db_scope = str(_safe_getattr(db_user, "scope", "") or "").strip().lower()
-    user_email = str(_safe_getattr(user, "email", "") or _safe_getattr(user, "user_email", "") or "").strip().lower()
-    db_email = str(_safe_getattr(db_user, "email", "") or _safe_getattr(db_user, "user_email", "") or "").strip().lower()
 
-    admin_email_env = ",".join([
-        os.getenv("ORKIO_SUPER_ADMIN_EMAILS", ""),
-        os.getenv("ORKIO_ADMIN_EMAILS", ""),
-        os.getenv("SUPER_ADMIN_EMAILS", ""),
-        os.getenv("ADMIN_EMAILS", ""),
-        os.getenv("VITE_ADMIN_EMAILS", ""),
-        "daniel@patroai.com",
-    ])
-    admin_emails = {
-        item.strip().lower()
-        for item in admin_email_env.split(",")
-        if item.strip()
-    }
+    user_email = _normalize_email(_safe_getattr(user, "email", "") or _safe_getattr(user, "user_email", ""))
+    db_email = _normalize_email(_safe_getattr(db_user, "email", "") or _safe_getattr(db_user, "user_email", ""))
+
+    admin_email_env = ",".join(
+        [
+            os.getenv("ORKIO_SUPER_ADMIN_EMAILS", ""),
+            os.getenv("ORKIO_ADMIN_EMAILS", ""),
+            os.getenv("SUPER_ADMIN_EMAILS", ""),
+            os.getenv("ADMIN_EMAILS", ""),
+            os.getenv("VITE_ADMIN_EMAILS", ""),
+            "daniel@patroai.com",
+            "dangraebin@gmail.com",
+        ]
+    )
+    admin_emails = {item.strip().lower() for item in admin_email_env.split(",") if item.strip()}
 
     return bool(
         user_role in roles
@@ -498,6 +373,7 @@ def _resolve_org_safe(deps: SimpleNamespace, user: Any, x_org_slug: Optional[str
 def _lookup_db_user(deps: SimpleNamespace, db: Any, user: Any, org: str) -> Any:
     User = getattr(deps, "User", None)
     uid = _safe_getattr(user, "sub", None) or _safe_getattr(user, "id", None)
+
     if db is None or User is None or select is None or not uid:
         return None
 
@@ -515,6 +391,355 @@ def _lookup_db_user(deps: SimpleNamespace, db: Any, user: Any, org: str) -> Any:
         return None
 
 
+def _call_thread_access_helper(
+    helper: Any,
+    db: Any,
+    org: str,
+    thread_id: str,
+    uid: Optional[str],
+) -> Tuple[bool, Optional[str]]:
+    if not callable(helper):
+        return False, "helper_not_callable"
+
+    call_patterns = (
+        (db, org, thread_id, uid),
+        (db, org, thread_id),
+        (db, thread_id, uid),
+        (thread_id, uid),
+    )
+    for args in call_patterns:
+        try:
+            helper(*args)
+            return True, None
+        except TypeError:
+            continue
+        except HTTPException as exc:
+            return False, f"http_{exc.status_code}"
+        except Exception as exc:
+            return False, str(exc)[:120] or "helper_error"
+
+    return False, "signature_mismatch"
+
+
+def _thread_access_allowed(
+    deps: SimpleNamespace,
+    db: Any,
+    *,
+    org: str,
+    thread_id: str,
+    uid: Optional[str],
+    user: Any,
+    db_user: Any,
+) -> bool:
+    """Return True only when the current authenticated user can read the thread."""
+
+    if not thread_id:
+        return False
+
+    if _is_admin_user(user, db_user):
+        return True
+
+    for helper_name in ("_require_thread_member", "_ensure_thread_owner"):
+        ok, reason = _call_thread_access_helper(
+            getattr(deps, helper_name, None),
+            db,
+            org,
+            thread_id,
+            uid,
+        )
+        if ok:
+            return True
+        # If a helper explicitly denies with HTTP 403/404, fail closed.
+        if reason in {"http_403", "http_404"}:
+            return False
+
+    Thread = getattr(deps, "Thread", None)
+    if db is None or Thread is None or select is None or not uid:
+        return False
+
+    try:
+        thread = (
+            db.execute(
+                select(Thread).where(
+                    Thread.id == thread_id,
+                    Thread.org_slug == org,
+                )
+            )
+            .scalar_one_or_none()
+        )
+        if not thread:
+            return False
+
+        owner_id = (
+            _safe_getattr(thread, "user_id", None)
+            or _safe_getattr(thread, "owner_id", None)
+            or _safe_getattr(thread, "created_by", None)
+        )
+        return bool(owner_id and str(owner_id) == str(uid))
+    except Exception:
+        return False
+
+
+def _message_content(message: Any) -> str:
+    candidates = (
+        _safe_getattr(message, "content", None),
+        _safe_getattr(message, "text", None),
+        _safe_getattr(message, "message", None),
+        _safe_getattr(message, "transcript_punct", None),
+        _safe_getattr(message, "transcript_raw", None),
+    )
+    for item in candidates:
+        text = str(item or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _message_role(message: Any) -> str:
+    role = str(
+        _safe_getattr(message, "role", None)
+        or _safe_getattr(message, "speaker_type", None)
+        or "user"
+    ).strip().lower()
+
+    if role in {"assistant", "agent", "ai", "orkio"}:
+        return "assistant"
+    if role in {"system", "developer"}:
+        return "system"
+    return "user"
+
+
+def _message_label(message: Any) -> str:
+    role = _message_role(message)
+    if role == "assistant":
+        agent_name = str(_safe_getattr(message, "agent_name", "") or "").strip()
+        return agent_name or "Orkio"
+    if role == "system":
+        return "Sistema"
+    user_name = str(_safe_getattr(message, "user_name", "") or "").strip()
+    return user_name or "Usuário"
+
+
+def _sanitize_context_text(value: Any, *, max_chars: int = 900) -> str:
+    text = " ".join(str(value or "").replace("\r", " ").replace("\n", " ").split())
+    if not text:
+        return ""
+    # Avoid injecting obvious secrets into Realtime instructions.
+    forbidden_markers = (
+        "bearer ",
+        "authorization:",
+        "api_key",
+        "apikey",
+        "secret=",
+        "password=",
+        "token=",
+        "set-cookie",
+        "cookie:",
+    )
+    lowered = text.lower()
+    if any(marker in lowered for marker in forbidden_markers):
+        return "[conteúdo omitido por segurança]"
+    if len(text) > max_chars:
+        return text[: max_chars - 1].rstrip() + "…"
+    return text
+
+
+def _load_recent_thread_messages(
+    deps: SimpleNamespace,
+    db: Any,
+    *,
+    org: str,
+    thread_id: str,
+    limit: int,
+) -> List[Any]:
+    Message = getattr(deps, "Message", None)
+    if db is None or Message is None or select is None or not thread_id:
+        return []
+
+    safe_limit = max(1, min(int(limit or 18), 24))
+
+    try:
+        rows = (
+            db.execute(
+                select(Message)
+                .where(
+                    Message.org_slug == org,
+                    Message.thread_id == thread_id,
+                )
+                .order_by(Message.created_at.desc(), Message.id.desc())
+                .limit(safe_limit)
+            )
+            .scalars()
+            .all()
+        )
+        return list(reversed(list(rows or [])))
+    except Exception:
+        # Some DB models may not support id desc ordering.
+        try:
+            rows = (
+                db.execute(
+                    select(Message)
+                    .where(
+                        Message.org_slug == org,
+                        Message.thread_id == thread_id,
+                    )
+                    .order_by(Message.created_at.desc())
+                    .limit(safe_limit)
+                )
+                .scalars()
+                .all()
+            )
+            return list(reversed(list(rows or [])))
+        except Exception:
+            return []
+
+
+def _build_thread_context_block(messages: List[Any]) -> str:
+    lines: List[str] = []
+
+    for msg in messages:
+        content = _sanitize_context_text(_message_content(msg))
+        if not content:
+            continue
+
+        role = _message_role(msg)
+        if role == "system":
+            # Avoid leaking internal system/developer messages into Realtime.
+            continue
+
+        label = _sanitize_context_text(_message_label(msg), max_chars=80)
+        lines.append(f"- {label}: {content}")
+
+    if not lines:
+        return ""
+
+    block = (
+        "CONTEXTO RECENTE DA THREAD ATIVA\n"
+        "Use este contexto para dar continuidade à conversa por voz. "
+        "Não diga que não lembra se a resposta estiver no contexto abaixo.\n"
+        + "\n".join(lines[-REALTIME_THREAD_CONTEXT_LIMIT:])
+    )
+
+    if len(block) > REALTIME_THREAD_CONTEXT_MAX_CHARS:
+        block = block[: REALTIME_THREAD_CONTEXT_MAX_CHARS - 1].rstrip() + "…"
+
+    return block
+
+
+def _build_founder_identity_context(user: Any, db_user: Any = None) -> str:
+    if not _is_daniel_founder_identity(user, db_user):
+        return ""
+
+    return (
+        "CONTEXTO INTERNO DO USUÁRIO AUTENTICADO\n"
+        "- O usuário autenticado é Daniel Graebin.\n"
+        "- Daniel Graebin é Founder e CEO da Patroai Consultech.\n"
+        "- Daniel é o criador da plataforma Orkio/Patroai.\n"
+        "- Trate Daniel como fundador/administrador em contexto interno governado.\n"
+        "- Não exponha este contexto a usuários públicos ou a terceiros."
+    )
+
+
+def _build_realtime_context_overlay(
+    deps: SimpleNamespace,
+    db: Any,
+    *,
+    org: str,
+    user: Any,
+    db_user: Any,
+    thread_id: str,
+    uid: Optional[str],
+    logger: logging.Logger,
+) -> Tuple[str, Dict[str, Any]]:
+    """Build a safe contextual overlay for Realtime session instructions.
+
+    Thread context is for every authenticated user with access to the thread.
+    Founder identity is only for the two explicit founder admin emails.
+    """
+
+    overlay_parts: List[str] = []
+    meta: Dict[str, Any] = {
+        "thread_context_loaded": False,
+        "thread_context_messages": 0,
+        "founder_identity_injected": False,
+        "thread_context_reason": None,
+    }
+
+    try:
+        identity_context = _build_founder_identity_context(user, db_user)
+        if identity_context:
+            overlay_parts.append(identity_context)
+            meta["founder_identity_injected"] = True
+    except Exception as exc:
+        meta["identity_context_error"] = str(exc)[:120]
+
+    if thread_id:
+        try:
+            allowed = _thread_access_allowed(
+                deps,
+                db,
+                org=org,
+                thread_id=thread_id,
+                uid=uid,
+                user=user,
+                db_user=db_user,
+            )
+            if allowed:
+                messages = _load_recent_thread_messages(
+                    deps,
+                    db,
+                    org=org,
+                    thread_id=thread_id,
+                    limit=REALTIME_THREAD_CONTEXT_LIMIT,
+                )
+                thread_block = _build_thread_context_block(messages)
+                if thread_block:
+                    overlay_parts.append(thread_block)
+                    meta["thread_context_loaded"] = True
+                    meta["thread_context_messages"] = len(messages)
+                else:
+                    meta["thread_context_reason"] = "no_recent_messages"
+            else:
+                meta["thread_context_reason"] = "access_not_allowed"
+        except Exception as exc:
+            # Fail open: Realtime must still start.
+            meta["thread_context_reason"] = f"load_failed:{str(exc)[:80]}"
+            try:
+                logger.warning(
+                    "RTB03_THREAD_CONTEXT_LOAD_FAILED org=%s thread_id=%s user_id=%s error=%s",
+                    org,
+                    thread_id,
+                    uid,
+                    str(exc),
+                )
+            except Exception:
+                pass
+
+    if not overlay_parts:
+        return "", meta
+
+    overlay = (
+        "RTB-03 — PONTE DE CONTEXTO REALTIME\n"
+        "As informações abaixo foram carregadas de forma autorizada no início da sessão de voz.\n\n"
+        + "\n\n".join(overlay_parts)
+        + "\n\nINSTRUÇÃO DE CONTINUIDADE\n"
+        "- Se o usuário perguntar se você lembra, responda usando o contexto recente acima.\n"
+        "- Se algo não estiver no contexto, diga com honestidade que não tem esse detalhe na sessão atual.\n"
+        "- Não invente fatos não presentes no contexto."
+    )
+
+    return overlay, meta
+
+
+def _append_instruction_overlay(base_instructions: str, overlay: str) -> str:
+    base = str(base_instructions or "").strip()
+    if not overlay:
+        return base
+    if not base:
+        return overlay
+    return f"{base}\n\n{overlay}"
+
+
 def _build_basic_realtime_payload(
     *,
     model: Optional[str],
@@ -523,21 +748,17 @@ def _build_basic_realtime_payload(
     instructions: Optional[str],
     resolved_language: Optional[str],
 ) -> Dict[str, Any]:
-    # AO64D-HF2_REALTIME_CLIENT_SECRET_GA_PAYLOAD
-    # Fallback payload aligned with the GA Realtime client_secrets shape:
-    # - expires_after at the top level
-    # - session.type = "realtime"
-    # - output voice under session.audio.output.voice
-    # - VAD/transcription under session.audio.input
     selected_model = (
         str(model or "").strip()
         or os.getenv("OPENAI_REALTIME_MODEL", "").strip()
         or "gpt-4o-realtime-preview"
     )
+
     selected_voice = normalize_realtime_voice(
         voice or os.getenv("OPENAI_REALTIME_VOICE_DEFAULT", "cedar"),
         default=os.getenv("OPENAI_REALTIME_VOICE_DEFAULT", "cedar"),
     )
+
     ttl = max(10, min(7200, int(ttl_seconds or 120)))
     language = str(resolved_language or "pt").strip().lower() or "pt"
 
@@ -550,7 +771,10 @@ def _build_basic_realtime_payload(
             "type": "realtime",
             "model": selected_model,
             "instructions": instructions
-            or "Você é Orkio, agente executivo da PatroAI. Responda em português do Brasil, com objetividade e segurança.",
+            or (
+                "Você é Orkio, agente executivo da plataforma PatroAI. "
+                "Responda em português do Brasil, com objetividade e segurança."
+            ),
             "output_modalities": ["audio"],
             "audio": {
                 "output": {
@@ -598,8 +822,6 @@ def _payload_looks_ga_compatible(payload: Any) -> bool:
     if not isinstance(audio_input.get("turn_detection"), dict):
         return False
 
-    # expires_after is the GA client secret TTL contract. Without it, the SDK/REST
-    # may still default, but for this recovery patch we keep it explicit.
     if not isinstance(payload.get("expires_after"), dict):
         return False
 
@@ -615,12 +837,16 @@ def _normalize_realtime_payload_for_ga(
     instructions: Optional[str],
     resolved_language: Optional[str],
 ) -> Dict[str, Any]:
-    # If a local builder already emits a GA-compatible payload, keep it.
     if _payload_looks_ga_compatible(payload):
+        # Ensure patched instructions are not dropped by a stale builder.
+        try:
+            session = payload.get("session")
+            if isinstance(session, dict) and instructions:
+                session["instructions"] = instructions
+        except Exception:
+            pass
         return payload
 
-    # Otherwise, rebuild the minimal known-good GA shape. This protects recovery
-    # from stale beta/legacy builders or the simplified ttl_seconds/modalities shape.
     return _build_basic_realtime_payload(
         model=model,
         voice=voice,
@@ -630,14 +856,18 @@ def _normalize_realtime_payload_for_ga(
     )
 
 
-def _extract_secret_value(secret_obj: Any) -> tuple[Optional[str], Any]:
+def _extract_secret_value(secret_obj: Any) -> Tuple[Optional[str], Any]:
     if secret_obj is None:
         return None, None
 
     safe_obj = _json_safe(secret_obj)
 
     if isinstance(safe_obj, dict):
-        client_secret = safe_obj.get("client_secret") if isinstance(safe_obj.get("client_secret"), dict) else {}
+        client_secret = (
+            safe_obj.get("client_secret")
+            if isinstance(safe_obj.get("client_secret"), dict)
+            else {}
+        )
         return (
             safe_obj.get("value")
             or client_secret.get("value")
@@ -651,11 +881,18 @@ def _extract_secret_value(secret_obj: Any) -> tuple[Optional[str], Any]:
     return value, _json_safe(session)
 
 
-def _build_instructions(deps: SimpleNamespace, *, mode: str, response_profile: str, language_profile: str) -> str:
+def _build_instructions(
+    deps: SimpleNamespace,
+    *,
+    mode: str,
+    response_profile: str,
+    language_profile: str,
+) -> str:
     builder = getattr(deps, "build_summit_instructions", None)
     sensitive_guard = getattr(deps, "_sensitive_guard_instruction", None)
 
     instructions = ""
+
     if callable(builder):
         try:
             instructions = str(
@@ -707,7 +944,8 @@ async def _mint_client_secret(
 
     model = str(_safe_getattr(body, "model", "") or "").strip() or None
     voice = normalize_realtime_voice(
-        _safe_getattr(body, "voice", None) or os.getenv("OPENAI_REALTIME_VOICE_DEFAULT", "cedar"),
+        _safe_getattr(body, "voice", None)
+        or os.getenv("OPENAI_REALTIME_VOICE_DEFAULT", "cedar"),
         default=os.getenv("OPENAI_REALTIME_VOICE_DEFAULT", "cedar"),
     )
     ttl_seconds = int(_safe_getattr(body, "ttl_seconds", None) or REALTIME_PUBLIC_BETA_MAX_SECONDS)
@@ -751,7 +989,7 @@ async def _mint_client_secret(
 
     try:
         logger.warning(
-            "AO64D_HF4_REALTIME_CLIENT_SECRET_GA_PAYLOAD %s",
+            "RTB03_REALTIME_CLIENT_SECRET_PAYLOAD %s",
             json.dumps(realtime_session_debug_snapshot(payload), ensure_ascii=False, sort_keys=True),
         )
     except Exception:
@@ -767,7 +1005,7 @@ async def _mint_client_secret(
                 return {"value": value, "session": session}
         except Exception as sdk_err:
             try:
-                logger.warning("AO64D_REALTIME_RECOVERY_SDK_SECRET_FAILED %s", sdk_err)
+                logger.warning("RTB03_REALTIME_SDK_SECRET_FAILED %s", sdk_err)
             except Exception:
                 pass
 
@@ -785,16 +1023,17 @@ async def _mint_client_secret(
         )
         with urllib.request.urlopen(req, timeout=20) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-        value, session = _extract_secret_value(data)
-        if not value:
-            raise RuntimeError("Realtime client secret missing in REST response")
-        return {"value": value, "session": session, "sdk_fallback": True}
+            value, session = _extract_secret_value(data)
+            if not value:
+                raise RuntimeError("Realtime client secret missing in REST response")
+            return {"value": value, "session": session, "sdk_fallback": True}
     except Exception as rest_err:
         try:
-            logger.exception("AO64D_REALTIME_RECOVERY_REST_SECRET_FAILED %s", rest_err)
+            logger.exception("RTB03_REALTIME_REST_SECRET_FAILED %s", rest_err)
         except Exception:
             pass
-        raise HTTPException(status_code=502, detail="Failed to mint Realtime client secret")
+
+    raise HTTPException(status_code=502, detail="Failed to mint Realtime client secret")
 
 
 def _maybe_persist_realtime_session(
@@ -807,6 +1046,8 @@ def _maybe_persist_realtime_session(
     thread_id: Optional[str],
     started_at: int,
     mode: str,
+    agent_id: Optional[str] = None,
+    meta: Optional[Dict[str, Any]] = None,
 ) -> None:
     RealtimeSession = getattr(deps, "RealtimeSession", None)
     if db is None or RealtimeSession is None:
@@ -814,19 +1055,25 @@ def _maybe_persist_realtime_session(
 
     try:
         rs = RealtimeSession()
-        for key, value in {
+        values = {
             "id": session_id,
             "org_slug": org,
             "user_id": user_id,
             "thread_id": thread_id,
+            "agent_id": agent_id,
             "started_at": started_at,
             "mode": mode,
             "status": "active",
-        }.items():
+        }
+        if meta is not None:
+            values["meta"] = json.dumps(meta, ensure_ascii=False)
+
+        for key, value in values.items():
             try:
                 setattr(rs, key, value)
             except Exception:
                 pass
+
         db.add(rs)
         db.commit()
     except Exception:
@@ -869,6 +1116,7 @@ def _maybe_mark_realtime_session_ended(
                 setattr(rs, key, value)
             except Exception:
                 pass
+
         db.add(rs)
         db.commit()
         return True
@@ -880,17 +1128,24 @@ def _maybe_mark_realtime_session_ended(
         return False
 
 
-def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
-    """Build a safe Realtime router using injected app/main.py dependencies.
+def _event_name(event: Any) -> str:
+    payload = _safe_getattr(event, "payload", {}) or {}
+    meta = _safe_getattr(event, "meta", {}) or {}
+    return str(
+        _safe_getattr(event, "name", None)
+        or _safe_getattr(event, "event", None)
+        or _safe_getattr(event, "type", None)
+        or (payload.get("event_type") if isinstance(payload, dict) else None)
+        or (meta.get("event_type") if isinstance(meta, dict) else None)
+        or "event"
+    )
 
-    This function intentionally accepts partial deps so that backend import/boot
-    does not fail during recovery. Runtime errors are converted to explicit HTTP
-    responses instead of crashing Uvicorn at startup.
-    """
+
+def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
+    """Build Realtime router using dependencies injected by app/main.py."""
 
     router = APIRouter()
-    logger = getattr(deps, "logger", None) or logging.getLogger("orkio.realtime.recovery")
-
+    logger = getattr(deps, "logger", None) or logging.getLogger("orkio.realtime.rtb03")
     get_current_user = getattr(deps, "get_current_user", None) or _default_current_user
     get_db = getattr(deps, "get_db", None) or _default_db
 
@@ -903,8 +1158,8 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
     ) -> Dict[str, Any]:
         org = _resolve_org_safe(deps, user, x_org_slug)
         guard_fn = getattr(deps, "_guard_realtime_message", None)
-
         blocked_reply = None
+
         if callable(guard_fn):
             try:
                 blocked_reply = guard_fn(_safe_getattr(body, "message", ""))
@@ -916,7 +1171,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             "blocked": bool(blocked_reply),
             "reply": blocked_reply,
             "org": org,
-            "recovery_router": True,
+            "rtb03": True,
         }
 
     @router.post("/api/realtime/client_secret")
@@ -925,8 +1180,11 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         x_org_slug: Optional[str] = Header(default=None),
         user: Any = Depends(get_current_user),
         db: Any = Depends(get_db),
-    ) -> Dict[str, Any]:
+    ) -> JSONResponse:
         org = _resolve_org_safe(deps, user, x_org_slug)
+        db_user = _lookup_db_user(deps, db, user, org)
+        uid = str(_safe_getattr(user, "sub", None) or _safe_getattr(user, "id", "") or "").strip() or None
+
         mode = str(_safe_getattr(body, "mode", "") or "platform").strip().lower()
         response_profile = str(_safe_getattr(body, "response_profile", "") or "natural").strip().lower()
         language_profile = str(
@@ -935,12 +1193,26 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             or "pt"
         ).strip().lower() or "pt"
 
-        instructions = _build_instructions(
+        base_instructions = _build_instructions(
             deps,
             mode=mode,
             response_profile=response_profile,
             language_profile=language_profile,
         )
+
+        thread_id = str(_safe_getattr(body, "thread_id", "") or "").strip()
+        overlay, overlay_meta = _build_realtime_context_overlay(
+            deps,
+            db,
+            org=org,
+            user=user,
+            db_user=db_user,
+            thread_id=thread_id,
+            uid=uid,
+            logger=logger,
+        )
+        instructions = _append_instruction_overlay(base_instructions, overlay)
+
         secret = await _mint_client_secret(
             deps,
             body,
@@ -949,12 +1221,16 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             summit_runtime=(mode == "summit"),
             logger=logger,
         )
-        return _json_response({
-            **_json_safe(secret),
-            "org": org,
-            "recovery_router": True,
-            "serialization_safe": "AO64D_HF4",
-        })
+
+        return _json_response(
+            {
+                **_json_safe(secret),
+                "org": org,
+                "rtb03": True,
+                "context": overlay_meta,
+                "serialization_safe": "RTB03",
+            }
+        )
 
     @router.post("/api/realtime/start")
     async def realtime_start(
@@ -962,7 +1238,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         x_org_slug: Optional[str] = Header(default=None),
         user: Any = Depends(get_current_user),
         db: Any = Depends(get_db),
-    ) -> Dict[str, Any]:
+    ) -> JSONResponse:
         org = _resolve_org_safe(deps, user, x_org_slug)
         db_user = _lookup_db_user(deps, db, user, org)
         uid = str(_safe_getattr(user, "sub", None) or _safe_getattr(user, "id", "") or "").strip() or None
@@ -976,27 +1252,38 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             or "pt"
         ).strip().lower() or "pt"
 
-        # AO64D-HF4_NO_HARD_TIMEBOX_ESG_ADVISORY
-        # The Realtime client secret still needs a practical TTL, but the product
-        # no longer enforces a hard user-facing session timebox/cooldown here.
         ttl_requested = int(
             _safe_getattr(body, "ttl_seconds", None)
             or REALTIME_CLIENT_SECRET_TTL_SECONDS
         )
         effective_ttl = max(60, min(ttl_requested, REALTIME_CLIENT_SECRET_TTL_SECONDS))
 
-        # Mutate body only when possible, preserving existing Pydantic object contract.
         try:
             body.ttl_seconds = effective_ttl
         except Exception:
             pass
 
-        instructions = _build_instructions(
+        thread_id = str(_safe_getattr(body, "thread_id", "") or "").strip() or _new_id("thread")
+        agent_id = str(_safe_getattr(body, "agent_id", "") or "").strip() or None
+
+        base_instructions = _build_instructions(
             deps,
             mode=mode,
             response_profile=response_profile,
             language_profile=language_profile,
         )
+
+        overlay, overlay_meta = _build_realtime_context_overlay(
+            deps,
+            db,
+            org=org,
+            user=user,
+            db_user=db_user,
+            thread_id=thread_id,
+            uid=uid,
+            logger=logger,
+        )
+        instructions = _append_instruction_overlay(base_instructions, overlay)
 
         secret = await _mint_client_secret(
             deps,
@@ -1008,24 +1295,8 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         )
 
         session_id = _new_id("rt")
-        thread_id = str(_safe_getattr(body, "thread_id", "") or "").strip() or _new_id("thread")
         started_at = _now_ts()
 
-        _maybe_persist_realtime_session(
-            deps,
-            db,
-            session_id=session_id,
-            org=org,
-            user_id=uid,
-            thread_id=thread_id,
-            started_at=started_at,
-            mode=mode,
-        )
-
-        # AO64D-HF4:
-        # Hard timebox/cooldown disabled for all users in this recovery router.
-        # Admin is still identified for logs/governance, but non-admin users are
-        # no longer interrupted by max_seconds/cooldown here.
         timebox = {
             "limited": False,
             "admin_bypass": bool(is_admin),
@@ -1038,34 +1309,62 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         }
         usage_advisory = _build_esg_usage_advisory()
 
+        session_meta = {
+            "patch": "RTB03",
+            "mode": mode,
+            "response_profile": response_profile,
+            "language_profile": language_profile,
+            "context": overlay_meta,
+        }
+
+        _maybe_persist_realtime_session(
+            deps,
+            db,
+            session_id=session_id,
+            org=org,
+            user_id=uid,
+            thread_id=thread_id,
+            started_at=started_at,
+            mode=mode,
+            agent_id=agent_id,
+            meta=session_meta,
+        )
+
         try:
             logger.warning(
-                "AO64D_HF4_REALTIME_START_OK_NO_HARD_TIMEBOX user_id=%s org=%s session_id=%s thread_id=%s admin=%s timebox=%s",
+                "RTB03_REALTIME_START_OK user_id=%s org=%s session_id=%s thread_id=%s "
+                "admin=%s founder_identity=%s thread_context=%s messages=%s",
                 uid,
                 org,
                 session_id,
                 thread_id,
                 bool(is_admin),
-                json.dumps(timebox, ensure_ascii=False, sort_keys=True),
+                bool(overlay_meta.get("founder_identity_injected")),
+                bool(overlay_meta.get("thread_context_loaded")),
+                overlay_meta.get("thread_context_messages"),
             )
         except Exception:
             pass
 
         safe_secret = _json_safe(secret)
-        return _json_response({
-            "ok": True,
-            "session_id": session_id,
-            "thread_id": thread_id,
-            "client_secret": safe_secret,
-            "client_secret_value": safe_secret.get("value") if isinstance(safe_secret, dict) else None,
-            "value": safe_secret.get("value") if isinstance(safe_secret, dict) else None,
-            "timebox": _json_safe(timebox),
-            "usage_advisory": _json_safe(usage_advisory),
-            "started_at": started_at,
-            "recovery_router": True,
-            "serialization_safe": "AO64D_HF4",
-            "timebox_policy": "advisory_only_esg",
-        })
+
+        return _json_response(
+            {
+                "ok": True,
+                "session_id": session_id,
+                "thread_id": thread_id,
+                "client_secret": safe_secret,
+                "client_secret_value": safe_secret.get("value") if isinstance(safe_secret, dict) else None,
+                "value": safe_secret.get("value") if isinstance(safe_secret, dict) else None,
+                "timebox": _json_safe(timebox),
+                "usage_advisory": _json_safe(usage_advisory),
+                "started_at": started_at,
+                "rtb03": True,
+                "context": overlay_meta,
+                "serialization_safe": "RTB03",
+                "timebox_policy": "advisory_only_esg",
+            }
+        )
 
     @router.post("/api/realtime/events:batch")
     def realtime_events_batch(
@@ -1079,73 +1378,12 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
 
         try:
             logger.warning(
-                "AO64D_REALTIME_RECOVERY_EVENTS_BATCH org=%s session_id=%s count=%s names=%s",
+                "RTB03_REALTIME_EVENTS_BATCH org=%s session_id=%s count=%s names=%s",
                 org,
                 _safe_getattr(body, "session_id", None),
                 len(events),
-                ",".join(
-                    [
-                        str(
-                            _safe_getattr(ev, "name", None)
-                            or _safe_getattr(ev, "event", None)
-                            or _safe_getattr(ev, "type", None)
-                            or "event"
-                        )
-                        for ev in events[:20]
-                    ]
-                ),
+                ",".join([_event_name(ev) for ev in events[:20]]),
             )
-        except Exception:
-            pass
-
-        bridge_candidate = None
-        session_id = str(_safe_getattr(body, "session_id", "") or "").strip()
-
-        for ev in events:
-            if not _rtb02_is_final_user_transcript_event(ev):
-                continue
-
-            transcript_text = _rtb02_extract_transcript_text(ev)
-            if not transcript_text:
-                continue
-
-            if not _rtb02_is_technical_voice_command(transcript_text):
-                continue
-
-            if _rtb02_already_seen(session_id, transcript_text):
-                bridge_candidate = {
-                    "status": "deduped",
-                    "session_id": session_id,
-                    "route_family": "orchestration_audit",
-                    "source": "realtime_transcript_final",
-                    "write_executed": False,
-                    "proposal_created": False,
-                }
-                break
-
-            bridge_candidate = {
-                "status": "candidate",
-                "session_id": session_id,
-                "route_family": "orchestration_audit",
-                "agent_id": "orkio",
-                "requested_orchestrator": "Orion",
-                "text": transcript_text,
-                "source": "realtime_transcript_final",
-                "write_executed": False,
-                "proposal_created": False,
-            }
-            break
-
-        try:
-            if bridge_candidate:
-                logger.warning(
-                    "RTB02_REALTIME_ORCHESTRATION_BRIDGE_CANDIDATE org=%s session_id=%s status=%s route_family=%s text_len=%s",
-                    org,
-                    session_id,
-                    bridge_candidate.get("status"),
-                    bridge_candidate.get("route_family"),
-                    len(str(bridge_candidate.get("text") or "")),
-                )
         except Exception:
             pass
 
@@ -1153,8 +1391,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             "ok": True,
             "session_id": _safe_getattr(body, "session_id", None),
             "received": len(events),
-            "recovery_router": True,
-            "rtb02_bridge": bridge_candidate,
+            "rtb03": True,
         }
 
     @router.get("/api/realtime/{session_id}")
@@ -1165,17 +1402,10 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         user: Any = Depends(get_current_user),
         db: Any = Depends(get_db),
     ) -> JSONResponse:
-        """Compatibility read endpoint used by the frontend after Realtime close.
-
-        The recovery router may not have access to the full persisted event/final
-        transcript model. Returning 200 prevents noisy 405 loops while preserving
-        a safe empty structure. Full transcript recovery should be restored from
-        the last known-good router in a later premium patch.
-        """
         org = _resolve_org_safe(deps, user, x_org_slug)
         session_id_clean = str(session_id or "").strip()
-        snapshot = None
 
+        snapshot = None
         try:
             snapshot_fn = getattr(deps, "get_realtime_session_snapshot", None)
             if callable(snapshot_fn):
@@ -1194,14 +1424,14 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 "assistant_text": "",
                 "turns": [],
             },
-            "recovery_router": True,
-            "serialization_safe": "AO64D_HF4",
+            "rtb03": True,
+            "serialization_safe": "RTB03",
             "compatibility_endpoint": "GET /api/realtime/{session_id}",
         }
 
         try:
             logger.warning(
-                "AO64D_HF4_REALTIME_GET_SESSION_COMPAT org=%s session_id=%s finals_only=%s has_snapshot=%s",
+                "RTB03_REALTIME_GET_SESSION_COMPAT org=%s session_id=%s finals_only=%s has_snapshot=%s",
                 org,
                 session_id_clean,
                 bool(finals_only),
@@ -1234,7 +1464,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
 
         try:
             logger.warning(
-                "AO64D_REALTIME_RECOVERY_END org=%s session_id=%s reason=%s persisted=%s",
+                "RTB03_REALTIME_END org=%s session_id=%s reason=%s persisted=%s",
                 org,
                 session_id,
                 reason,
@@ -1248,7 +1478,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             "session_id": session_id,
             "ended_at": ended_at,
             "persisted": bool(persisted),
-            "recovery_router": True,
+            "rtb03": True,
         }
 
     return router
