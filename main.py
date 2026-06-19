@@ -2951,6 +2951,57 @@ class ContactIn(BaseModel):
     terms_version: str = Field(default=TERMS_VERSION, min_length=1, max_length=64)
 
 
+
+
+# RTB09_PUBLIC_STRATEGIC_INTAKE — qualified pre-onboarding contracts.
+# Registration is never platform access. All submissions remain under manual review.
+class StrategicIntakeIn(BaseModel):
+    intake_type: str = Field(min_length=1, max_length=32)  # company | investor | consultant
+    locale: Optional[str] = Field(default="pt", max_length=12)
+    source: Optional[str] = Field(default="grupo_patroai_public_landing", max_length=120)
+
+    full_name: str = Field(min_length=1, max_length=200)
+    email: EmailStr
+    whatsapp: Optional[str] = Field(default=None, max_length=64)
+    company: Optional[str] = Field(default=None, max_length=220)
+    role: Optional[str] = Field(default=None, max_length=160)
+    city: Optional[str] = Field(default=None, max_length=120)
+    state: Optional[str] = Field(default=None, max_length=120)
+    country: Optional[str] = Field(default=None, max_length=120)
+    website: Optional[str] = Field(default=None, max_length=300)
+    linkedin: Optional[str] = Field(default=None, max_length=300)
+
+    segment: Optional[str] = Field(default=None, max_length=220)
+    company_size: Optional[str] = Field(default=None, max_length=120)
+    challenge: Optional[str] = Field(default=None, max_length=4000)
+    interest_area: Optional[str] = Field(default=None, max_length=120)
+
+    investor_type: Optional[str] = Field(default=None, max_length=160)
+    capital_range: Optional[str] = Field(default=None, max_length=160)
+    sectors: Optional[str] = Field(default=None, max_length=800)
+
+    expertise: Optional[str] = Field(default=None, max_length=220)
+    years_experience: Optional[str] = Field(default=None, max_length=80)
+    availability: Optional[str] = Field(default=None, max_length=220)
+    ai_experience: Optional[str] = Field(default=None, max_length=2500)
+    esg_focus: Optional[str] = Field(default=None, max_length=2500)
+
+    message: Optional[str] = Field(default=None, max_length=4000)
+    consent_terms: bool
+    consent_data_review: bool
+    consent_contact: bool
+    consent_marketing: bool = False
+
+    # Honeypot: humans never fill this. Bots can be silently discarded.
+    website_url: Optional[str] = Field(default=None, max_length=300)
+
+
+class StrategicIntakeAdminUpdateIn(BaseModel):
+    status: str = Field(min_length=1, max_length=80)
+    internal_notes: Optional[str] = Field(default=None, max_length=4000)
+    reviewer_action: Optional[str] = Field(default=None, max_length=120)
+
+
 class BetaWaitlistIn(BaseModel):
     """Public closed-beta waitlist contract used by BetaAccessGate."""
 
@@ -48319,6 +48370,364 @@ def public_contact(inp: ContactIn, request: Request = None, db: Session = Depend
             else {"status": "unknown", "configured": False, "contact_id": cr.id}
         ),
     }
+
+
+
+
+
+# RTB09_PUBLIC_STRATEGIC_INTAKE — qualified pre-onboarding.
+# This endpoint intentionally does NOT create users, invitations, signup codes or platform sessions.
+def _strategic_intake_locale(inp: StrategicIntakeIn) -> str:
+    raw = str(getattr(inp, "locale", "") or "").strip().lower()
+    return "en" if raw.startswith("en") else "pt"
+
+
+def _strategic_intake_public_message(inp: StrategicIntakeIn) -> str:
+    if _strategic_intake_locale(inp) == "en":
+        return (
+            "Registration received. Grupo Patroai will review the information internally "
+            "and may contact you if there is fit with our criteria, projects or opportunities."
+        )
+    return (
+        "Cadastro recebido. O Grupo Patroai analisará as informações internamente "
+        "e poderá entrar em contato caso exista aderência com nossos critérios, projetos ou oportunidades."
+    )
+
+
+def _strategic_intake_type(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+    allowed = {"company", "investor", "consultant"}
+    if normalized not in allowed:
+        raise HTTPException(status_code=400, detail="Tipo de cadastro inválido.")
+    return normalized
+
+
+def _strategic_intake_score(payload: Dict[str, Any]) -> Dict[str, Any]:
+    score = 0
+    flags: List[str] = []
+
+    email = str(payload.get("email") or "").strip().lower()
+    website = str(payload.get("website") or "").strip()
+    linkedin = str(payload.get("linkedin") or "").strip()
+    company = str(payload.get("company") or "").strip()
+    whatsapp = str(payload.get("whatsapp") or "").strip()
+    message = str(payload.get("message") or payload.get("challenge") or "").strip()
+
+    if company:
+        score += 15
+    if linkedin:
+        score += 15
+    if website:
+        score += 10
+    if whatsapp:
+        score += 10
+    if len(message) >= 80:
+        score += 15
+    if payload.get("consent_contact"):
+        score += 10
+    if payload.get("consent_data_review"):
+        score += 10
+    if payload.get("esg_focus"):
+        score += 5
+
+    if re.search(r"@(gmail|hotmail|outlook|yahoo)\.", email):
+        flags.append("personal_email")
+    if not linkedin and payload.get("intake_type") in {"investor", "consultant"}:
+        flags.append("linkedin_missing")
+    if payload.get("intake_type") == "investor" and not payload.get("capital_range"):
+        flags.append("capital_range_missing")
+    if payload.get("intake_type") == "consultant" and not payload.get("expertise"):
+        flags.append("expertise_missing")
+
+    score = max(0, min(score, 100))
+    tier = "low"
+    if score >= 70:
+        tier = "high"
+    elif score >= 40:
+        tier = "medium"
+
+    return {"score": score, "tier": tier, "flags": flags}
+
+
+@app.post("/api/public/intake")
+def public_strategic_intake(
+    inp: StrategicIntakeIn,
+    x_org_slug: Optional[str] = Header(default=None),
+    request: Request = None,
+    db: Session = Depends(get_db),
+):
+    """Public qualified intake for companies, investors and associated consultants.
+
+    Security principle: cadastro não é acesso. This stores a reviewable submission
+    and returns a receipt only. No account, invite, signup code or platform access
+    is created here.
+    """
+    org = get_org(x_org_slug)
+    ip = _client_ip(request) if request else "unknown"
+    ua = (request.headers.get("user-agent", "") if request else "")
+    normalized_email = str(inp.email).lower().strip()
+    email_rate_hash = hashlib.sha256(normalized_email.encode("utf-8")).hexdigest()
+
+    # Honeypot: silently acknowledge without storing, so bots do not learn the rule.
+    if str(inp.website_url or "").strip():
+        return {
+            "ok": True,
+            "intake_id": "received",
+            "status": "received",
+            "access_granted": False,
+            "message": _strategic_intake_public_message(inp),
+        }
+
+    intake_type = _strategic_intake_type(inp.intake_type)
+
+    if not inp.consent_terms or not inp.consent_data_review or not inp.consent_contact:
+        raise HTTPException(
+            status_code=400,
+            detail="É necessário aceitar os termos, a análise de dados e o contato institucional.",
+        )
+
+    if not _rate_limit_check(
+        _rl_contact_lock,
+        _rl_contact_calls,
+        f"intake-ip:{ip}",
+        _CONTACT_MAX_PER_WINDOW,
+        window=_CONTACT_RATE_WINDOW_SECONDS,
+    ):
+        raise HTTPException(
+            status_code=429,
+            detail="Muitas solicitações. Aguarde alguns minutos e tente novamente.",
+            headers={"Retry-After": str(_CONTACT_RATE_WINDOW_SECONDS)},
+        )
+
+    if not _rate_limit_check(
+        _rl_contact_lock,
+        _rl_contact_calls,
+        f"intake-email:{email_rate_hash}",
+        _CONTACT_EMAIL_MAX_PER_WINDOW,
+        window=_CONTACT_RATE_WINDOW_SECONDS,
+    ):
+        raise HTTPException(
+            status_code=429,
+            detail="Muitas solicitações para este contato. Aguarde alguns minutos e tente novamente.",
+            headers={"Retry-After": str(_CONTACT_RATE_WINDOW_SECONDS)},
+        )
+
+    raw_payload = inp.dict()
+    raw_payload.pop("website_url", None)
+    review = _strategic_intake_score({**raw_payload, "intake_type": intake_type, "email": normalized_email})
+    stored_payload = {
+        "rtb": "RTB09_PUBLIC_STRATEGIC_INTAKE",
+        "access_policy": "manual_review_only",
+        "access_granted": False,
+        "invite_created": False,
+        "signup_code_created": False,
+        "review_status": "under_review",
+        "review": review,
+        "submitted": {
+            **raw_payload,
+            "intake_type": intake_type,
+            "email": normalized_email,
+        },
+        "request": {
+            "ip": ip,
+            "user_agent": ua,
+            "received_at": now_ts(),
+            "terms_version": TERMS_VERSION,
+        },
+    }
+
+    intake_id = new_id()
+    message_text = json.dumps(stored_payload, ensure_ascii=False, sort_keys=True)
+
+    cr = ContactRequest(
+        id=intake_id,
+        full_name=inp.full_name.strip(),
+        email=normalized_email,
+        whatsapp=(inp.whatsapp or "").strip() or None,
+        subject=f"strategic_intake:{intake_type}",
+        message=message_text,
+        privacy_request_type=None,
+        consent_terms=bool(inp.consent_terms),
+        consent_marketing=bool(inp.consent_marketing),
+        ip_address=ip,
+        user_agent=ua,
+        terms_version=TERMS_VERSION,
+        status="under_review",
+        retention_until=now_ts() + (5 * 365 * 86400),
+        created_at=now_ts(),
+    )
+    db.add(cr)
+    db.commit()
+
+    if inp.consent_marketing:
+        try:
+            db.add(MarketingConsent(
+                id=new_id(),
+                contact_id=cr.id,
+                channel="email",
+                opt_in_date=now_ts(),
+                ip=ip,
+                source=f"strategic_intake:{intake_type}",
+                created_at=now_ts(),
+            ))
+            db.commit()
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            logger.exception("RTB09_MARKETING_CONSENT_INTAKE_FAILED intake_id=%s", intake_id)
+
+    try:
+        audit(
+            db,
+            org,
+            None,
+            "strategic_intake.submitted",
+            request_id=ensure_request_id(request),
+            path="/api/public/intake",
+            status_code=200,
+            latency_ms=0,
+            meta={
+                "intake_id": intake_id,
+                "intake_type": intake_type,
+                "score": review.get("score"),
+                "tier": review.get("tier"),
+                "access_granted": False,
+            },
+        )
+    except Exception:
+        logger.warning("RTB09_STRATEGIC_INTAKE_AUDIT_FAILED intake_id=%s", intake_id)
+
+    logger.error(
+        "RTB09_STRATEGIC_INTAKE_RECEIVED intake_id=%s type=%s score=%s tier=%s access_granted=False",
+        intake_id,
+        intake_type,
+        review.get("score"),
+        review.get("tier"),
+    )
+
+    return {
+        "ok": True,
+        "intake_id": intake_id,
+        "status": "under_review",
+        "access_granted": False,
+        "manual_review_required": True,
+        "message": _strategic_intake_public_message(inp),
+        "review": {
+            "tier": review.get("tier"),
+        },
+    }
+
+
+def _strategic_intake_row_to_dict(row: ContactRequest) -> Dict[str, Any]:
+    parsed: Dict[str, Any] = {}
+    try:
+        parsed = json.loads(getattr(row, "message", "") or "{}")
+        if not isinstance(parsed, dict):
+            parsed = {}
+    except Exception:
+        parsed = {}
+
+    submitted = parsed.get("submitted") if isinstance(parsed.get("submitted"), dict) else {}
+    review = parsed.get("review") if isinstance(parsed.get("review"), dict) else {}
+
+    return {
+        "id": row.id,
+        "status": row.status,
+        "intake_type": str(row.subject or "").split(":", 1)[1] if ":" in str(row.subject or "") else None,
+        "full_name": row.full_name,
+        "email": row.email,
+        "whatsapp": row.whatsapp,
+        "company": submitted.get("company"),
+        "role": submitted.get("role"),
+        "city": submitted.get("city"),
+        "state": submitted.get("state"),
+        "country": submitted.get("country"),
+        "linkedin": submitted.get("linkedin"),
+        "website": submitted.get("website"),
+        "score": review.get("score"),
+        "tier": review.get("tier"),
+        "flags": review.get("flags") or [],
+        "access_granted": False,
+        "created_at": row.created_at,
+        "payload": parsed,
+    }
+
+
+@app.get("/api/admin/intake/submissions")
+def admin_list_strategic_intake_submissions(
+    status: Optional[str] = None,
+    intake_type: Optional[str] = None,
+    limit: int = 100,
+    _admin=Depends(require_admin_access),
+    db: Session = Depends(get_db),
+):
+    limit = max(1, min(int(limit or 100), 500))
+    stmt = select(ContactRequest).where(ContactRequest.subject.like("strategic_intake:%"))
+    if status:
+        stmt = stmt.where(ContactRequest.status == str(status).strip())
+    if intake_type:
+        stmt = stmt.where(ContactRequest.subject == f"strategic_intake:{_strategic_intake_type(intake_type)}")
+    rows = db.execute(stmt.order_by(ContactRequest.created_at.desc()).limit(limit)).scalars().all()
+    return {"ok": True, "items": [_strategic_intake_row_to_dict(r) for r in rows]}
+
+
+@app.patch("/api/admin/intake/submissions/{intake_id}")
+def admin_update_strategic_intake_submission(
+    intake_id: str,
+    inp: StrategicIntakeAdminUpdateIn,
+    _admin=Depends(require_admin_access),
+    db: Session = Depends(get_db),
+):
+    allowed = {
+        "under_review",
+        "qualified",
+        "meeting_requested",
+        "approved_for_private_access",
+        "rejected",
+        "archived",
+    }
+    status = str(inp.status or "").strip().lower()
+    if status not in allowed:
+        raise HTTPException(status_code=400, detail="Status inválido para intake.")
+
+    row = db.execute(
+        select(ContactRequest).where(
+            ContactRequest.id == intake_id,
+            ContactRequest.subject.like("strategic_intake:%"),
+        )
+    ).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Cadastro não encontrado.")
+
+    parsed: Dict[str, Any] = {}
+    try:
+        parsed = json.loads(row.message or "{}")
+        if not isinstance(parsed, dict):
+            parsed = {}
+    except Exception:
+        parsed = {}
+
+    parsed["review_status"] = status
+    parsed["access_granted"] = False
+    parsed["invite_created"] = False
+    parsed["signup_code_created"] = False
+    parsed.setdefault("admin_review", {})
+    parsed["admin_review"].update({
+        "status": status,
+        "internal_notes": inp.internal_notes,
+        "reviewer_action": inp.reviewer_action,
+        "updated_at": now_ts(),
+    })
+
+    row.status = status
+    row.message = json.dumps(parsed, ensure_ascii=False, sort_keys=True)
+    db.add(row)
+    db.commit()
+
+    logger.error("RTB09_STRATEGIC_INTAKE_STATUS_UPDATED intake_id=%s status=%s access_granted=False", intake_id, status)
+    return {"ok": True, "item": _strategic_intake_row_to_dict(row)}
 
 
 @app.get("/api/public/legal/terms-version")
