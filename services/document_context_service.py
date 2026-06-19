@@ -411,6 +411,82 @@ def build_file_context_block(citations: Optional[List[Dict[str, Any]]] = None) -
     }
 
 
+
+def _file_exists_in_org(db: Session, *, org: str, file_id: str) -> bool:
+    fid = _safe_str(file_id)
+    if not fid:
+        return False
+    try:
+        f = db.get(File, fid)
+        return bool(f is not None and _safe_str(getattr(f, "org_slug", "")) == _safe_str(org))
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return False
+
+
+def _file_context_diagnostic(db: Session, *, org: str, file_id: str) -> Dict[str, Any]:
+    fid = _safe_str(file_id)
+    out: Dict[str, Any] = {
+        "file_id": fid,
+        "filename": "",
+        "exists": False,
+        "mime_type": "",
+        "extraction_failed": None,
+        "has_file_text": False,
+        "file_text_chars": 0,
+        "chunk_count": 0,
+    }
+    if not fid:
+        return out
+
+    try:
+        f = db.get(File, fid)
+        if f is not None and _safe_str(getattr(f, "org_slug", "")) == _safe_str(org):
+            out["exists"] = True
+            out["filename"] = _safe_str(getattr(f, "filename", "")) or fid
+            out["mime_type"] = _safe_str(getattr(f, "mime_type", ""))
+            out["extraction_failed"] = bool(getattr(f, "extraction_failed", False))
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+    try:
+        text = _latest_file_text(db, org=org, file_id=fid)
+        out["has_file_text"] = bool(text)
+        out["file_text_chars"] = len(text or "")
+    except Exception:
+        pass
+
+    try:
+        out["chunk_count"] = int(
+            db.execute(
+                select(FileChunk.id)
+                .where(FileChunk.org_slug == org, FileChunk.file_id == fid)
+                .limit(500)
+            ).rowcount or 0
+        )
+    except Exception:
+        # SQLAlchemy rowcount is not reliable for SELECT across drivers; retry with materialized rows.
+        try:
+            rows = db.execute(
+                select(FileChunk.id)
+                .where(FileChunk.org_slug == org, FileChunk.file_id == fid)
+                .limit(500)
+            ).all()
+            out["chunk_count"] = len(rows or [])
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+    return out
+
+
 def load_thread_document_citations(
     db: Session,
     *,
@@ -419,16 +495,37 @@ def load_thread_document_citations(
     query: str,
     top_k: int = 8,
     preferred_file_id: Optional[str] = None,
+    strict_preferred_file_id: bool = False,
 ) -> Dict[str, Any]:
-    file_ids = get_thread_chat_file_ids(db, org=org, thread_id=thread_id, max_files=8)
+    """Load document citations for a thread.
+
+    RTB-08 important behavior:
+    When preferred_file_id is provided with strict_preferred_file_id=True, this
+    function must NOT fall back to older documents in the same thread. The prior
+    RTB-07 behavior could attach DOCX context after a PDF upload failed, making
+    Orkio answer from the old DOCX while the user asked about the new PDF.
+    """
+    thread_file_ids = get_thread_chat_file_ids(db, org=org, thread_id=thread_id, max_files=12)
     preferred = _safe_str(preferred_file_id)
-    if preferred and preferred in set(file_ids):
-        file_ids = [preferred] + [fid for fid in file_ids if fid != preferred]
+    preferred_in_thread = bool(preferred and preferred in set(thread_file_ids))
+    preferred_exists = _file_exists_in_org(db, org=org, file_id=preferred) if preferred else False
+
+    if preferred:
+        if strict_preferred_file_id:
+            # Strict means: only the selected upload may provide context.
+            # If it is not associated with this thread, return no context.
+            file_ids = [preferred] if preferred_in_thread else []
+        else:
+            if preferred_in_thread:
+                file_ids = [preferred] + [fid for fid in thread_file_ids if fid != preferred]
+            else:
+                file_ids = list(thread_file_ids)
+    else:
+        file_ids = list(thread_file_ids)
 
     citations: List[Dict[str, Any]] = []
+    retrieval_error: Optional[str] = None
     if file_ids:
-        # If the query contains specific terms, FileText excerpt search is usually
-        # more reliable for DOCX/PDF CVs than vector-less keyword chunk retrieval.
         try:
             citations = rag_fallback_recent_chunks(
                 db,
@@ -437,15 +534,16 @@ def load_thread_document_citations(
                 top_k=max(1, int(top_k or 8)),
                 query=query,
             )
-        except Exception:
-            logger.exception("RTB07_DOCUMENT_FALLBACK_FAILED thread_id=%s", thread_id)
+        except Exception as e:
+            logger.exception("RTB08_DOCUMENT_FALLBACK_FAILED thread_id=%s preferred=%s", thread_id, preferred)
+            retrieval_error = e.__class__.__name__
             try:
                 db.rollback()
             except Exception:
                 pass
             citations = []
 
-        if not citations:
+        if not citations and not strict_preferred_file_id:
             try:
                 from ..retrieval import keyword_retrieve
                 citations = keyword_retrieve(
@@ -455,7 +553,8 @@ def load_thread_document_citations(
                     top_k=max(1, int(top_k or 8)),
                     file_ids=file_ids,
                 )
-            except Exception:
+            except Exception as e:
+                retrieval_error = e.__class__.__name__
                 try:
                     db.rollback()
                 except Exception:
@@ -463,8 +562,27 @@ def load_thread_document_citations(
                 citations = []
 
     ctx = build_file_context_block(citations)
+    preferred_diag = _file_context_diagnostic(db, org=org, file_id=preferred) if preferred else {}
+
+    if preferred and strict_preferred_file_id and not ctx.get("context_available"):
+        logger.warning(
+            "RTB08_DOCUMENT_CONTEXT_STRICT_EMPTY thread_id=%s file_id=%s in_thread=%s exists=%s diag=%s",
+            thread_id,
+            preferred,
+            preferred_in_thread,
+            preferred_exists,
+            preferred_diag,
+        )
+
     return {
         "file_ids": file_ids,
+        "thread_file_ids": thread_file_ids,
+        "preferred_file_id": preferred or None,
+        "strict_preferred_file_id": bool(strict_preferred_file_id),
+        "preferred_file_in_thread": bool(preferred_in_thread),
+        "preferred_file_exists": bool(preferred_exists),
+        "preferred_file_diagnostic": preferred_diag,
+        "retrieval_error": retrieval_error,
         "citations": citations,
         "files_used": list(ctx.get("files_used") or []),
         "file_context_block": str(ctx.get("file_context_block") or ""),
@@ -485,6 +603,7 @@ def build_thread_document_context(
     query: str = "",
     top_k: int = 8,
     preferred_file_id: Optional[str] = None,
+    strict_preferred_file_id: bool = False,
 ) -> Dict[str, Any]:
     """Public service entrypoint for chat, realtime and debug endpoints."""
     data = load_thread_document_citations(
@@ -494,6 +613,7 @@ def build_thread_document_context(
         query=query or "documento anexado",
         top_k=top_k,
         preferred_file_id=preferred_file_id,
+        strict_preferred_file_id=strict_preferred_file_id,
     )
     return {
         "ok": True,
@@ -501,9 +621,14 @@ def build_thread_document_context(
         **data,
         "diagnostic": {
             "service": "document_context_service",
-            "version": "RTB-07",
+            "version": "RTB-08",
             "file_count": len(list(data.get("file_ids") or [])),
+            "thread_file_count": len(list(data.get("thread_file_ids") or [])),
             "citation_count": len(list(data.get("citations") or [])),
             "context_available": bool(data.get("context_available")),
+            "preferred_file_id": data.get("preferred_file_id"),
+            "strict_preferred_file_id": bool(data.get("strict_preferred_file_id")),
+            "preferred_file_in_thread": bool(data.get("preferred_file_in_thread")),
+            "preferred_file_diagnostic": data.get("preferred_file_diagnostic") or {},
         },
     }
