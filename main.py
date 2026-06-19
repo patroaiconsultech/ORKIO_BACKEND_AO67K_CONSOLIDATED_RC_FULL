@@ -26174,7 +26174,7 @@ async def upload(
         text_content = ""
         chunks_created = 0
         try:
-            _log_upload_stage("RTB07_UPLOAD_INDEXING_STARTED", file_id=f.id, filename=f.filename, mime_type=f.mime_type)
+            _log_upload_stage("RTB08_UPLOAD_INDEXING_STARTED", file_id=f.id, filename=f.filename, mime_type=f.mime_type)
             index_result = index_uploaded_file_text(
                 db,
                 org=org,
@@ -26188,7 +26188,7 @@ async def upload(
             extracted_chars = int(index_result.get("extracted_chars") or 0)
             chunks_created = int(index_result.get("chunks_created") or 0)
             _log_upload_stage(
-                "RTB07_UPLOAD_INDEXING_DONE",
+                "RTB08_UPLOAD_INDEXING_DONE",
                 file_id=f.id,
                 extracted_chars=extracted_chars,
                 chunks_created=chunks_created,
@@ -26196,7 +26196,7 @@ async def upload(
                 extraction_failed=bool(index_result.get("extraction_failed")),
             )
         except Exception:
-            logger.exception("RTB07_UPLOAD_INDEXING_FAILED file_id=%s", f.id)
+            logger.exception("RTB08_UPLOAD_INDEXING_FAILED file_id=%s", f.id)
             try:
                 db.rollback()
             except Exception:
@@ -26292,11 +26292,12 @@ def get_thread_document_context(
     thread_id: str,
     file_id: Optional[str] = None,
     query: Optional[str] = None,
+    strict_file_id: bool = False,
     x_org_slug: Optional[str] = Header(default=None),
     user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """RTB-07: authorized document context endpoint for chat/realtime bridges.
+    """RTB-08: authorized strict document context endpoint for chat/realtime bridges.
 
     This endpoint returns extracted evidence for files attached to the current
     thread. It does not expose cross-thread files and is intentionally read-only.
@@ -26318,14 +26319,17 @@ def get_thread_document_context(
             query=(query or "documento anexado"),
             top_k=8,
             preferred_file_id=(file_id or None),
+            strict_preferred_file_id=bool(strict_file_id or file_id),
         )
-        logger.info(
-            "RTB07_DOCUMENT_CONTEXT_READY thread_id=%s file_id=%s file_count=%s evidence_count=%s context_chars=%s",
+        logger.warning(
+            "RTB08_DOCUMENT_CONTEXT_READY thread_id=%s file_id=%s strict=%s file_count=%s evidence_count=%s context_chars=%s preferred_diag=%s",
             tid,
             file_id,
+            bool(strict_file_id or file_id),
             len(list(ctx.get("file_ids") or [])),
             int(ctx.get("file_evidence_count") or 0),
             int(ctx.get("context_chars") or ctx.get("file_context_chars") or 0),
+            ctx.get("preferred_file_diagnostic") or {},
         )
         return ctx
     except HTTPException:
@@ -26335,7 +26339,7 @@ def get_thread_document_context(
             db.rollback()
         except Exception:
             pass
-        logger.exception("RTB07_DOCUMENT_CONTEXT_FAILED thread_id=%s file_id=%s", tid, file_id)
+        logger.exception("RTB08_DOCUMENT_CONTEXT_FAILED thread_id=%s file_id=%s", tid, file_id)
         raise HTTPException(status_code=500, detail=f"document_context_failed:{e.__class__.__name__}")
 
 
