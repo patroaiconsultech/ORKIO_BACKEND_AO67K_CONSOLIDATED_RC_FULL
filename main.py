@@ -6010,6 +6010,42 @@ async def request_id_mw(request: Request, call_next):
     method = str(getattr(request, "method", "") or "").upper()
     request.state.request_id = rid
     request.state.request_started_at = start
+
+    def _attach_safe_public_headers(resp: Response) -> Response:
+        duration_ms = int(max((time.time() - start) * 1000, 0))
+        # RTB09_HF5 — Network/error hardening:
+        # - attach safe correlation headers also on unhandled 500 responses;
+        # - strip legacy/internal product headers defensively;
+        # - never expose internal path, version, stack, RAG mode or product codename.
+        resp.headers["x-request-id"] = rid
+        resp.headers["x-patroai-duration-ms"] = str(duration_ms)
+
+        existing_expose = str(resp.headers.get("access-control-expose-headers") or "").strip()
+        expose_tokens = [token.strip() for token in existing_expose.split(",") if token.strip()]
+        expose_lower = {token.lower() for token in expose_tokens}
+
+        for header_name in ("x-request-id", "x-patroai-duration-ms"):
+            if header_name.lower() not in expose_lower:
+                expose_tokens.append(header_name)
+                expose_lower.add(header_name.lower())
+
+        blocked_header_prefixes = ("x-" + "orkio-",)
+        expose_tokens = [
+            token for token in expose_tokens
+            if not any(token.lower().startswith(prefix) for prefix in blocked_header_prefixes)
+        ]
+        for header_name in list(resp.headers.keys()):
+            header_lower = str(header_name or "").lower()
+            if any(header_lower.startswith(prefix) for prefix in blocked_header_prefixes):
+                try:
+                    del resp.headers[header_name]
+                except Exception:
+                    pass
+
+        if expose_tokens:
+            resp.headers["access-control-expose-headers"] = ", ".join(expose_tokens)
+        return resp
+
     try:
         resp = await call_next(request)
     except Exception as e:
@@ -6024,39 +6060,23 @@ async def request_id_mw(request: Request, call_next):
             logger.exception("HTTP_REQUEST_RUNTIME_ERROR rid=%s method=%s path=%s", rid, method, path)
         except Exception:
             pass
-        raise
-    duration_ms = int(max((time.time() - start) * 1000, 0))
-    # RTB09_HF4 — Public network hardening:
-    # - keep request correlation;
-    # - remove legacy/internal product headers from public API responses;
-    # - do not expose version, path, runtime architecture or internal naming.
-    resp.headers["x-request-id"] = rid
-    resp.headers["x-patroai-duration-ms"] = str(duration_ms)
-    existing_expose = str(resp.headers.get("access-control-expose-headers") or "").strip()
-    expose_tokens = [token.strip() for token in existing_expose.split(",") if token.strip()]
-    expose_lower = {token.lower() for token in expose_tokens}
-    for header_name in ("x-request-id", "x-patroai-duration-ms"):
-        if header_name.lower() not in expose_lower:
-            expose_tokens.append(header_name)
-            expose_lower.add(header_name.lower())
-    # Strip legacy/internal header names defensively in case an upstream layer
-    # or older code path inserted them before this middleware returns.
-    blocked_header_prefixes = ("x-" + "orkio-",)
-    expose_tokens = [
-        token for token in expose_tokens
-        if not any(token.lower().startswith(prefix) for prefix in blocked_header_prefixes)
-    ]
-    for header_name in list(resp.headers.keys()):
-        header_lower = str(header_name or "").lower()
-        if any(header_lower.startswith(prefix) for prefix in blocked_header_prefixes):
-            try:
-                del resp.headers[header_name]
-            except Exception:
-                pass
-    if expose_tokens:
-        resp.headers["access-control-expose-headers"] = ", ".join(expose_tokens)
+
+        # Do not re-raise raw runtime errors to public clients. Return a sanitized
+        # JSON response with the same safe observability headers used on normal paths.
+        resp = JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Internal server error",
+                "request_id": rid,
+            },
+        )
+        return _attach_safe_public_headers(resp)
+
+    resp = _attach_safe_public_headers(resp)
+
     if path == "/api/chat/stream":
         try:
+            duration_ms = resp.headers.get("x-patroai-duration-ms")
             logger.info(
                 "CHAT_STREAM_HTTP rid=%s method=%s status=%s duration_ms=%s",
                 rid,
@@ -6073,155 +6093,16 @@ async def request_id_mw(request: Request, call_next):
 # EFATA777 v2 — production-safe Agent Phase 2 schema reconcile.
 # This is additive only. It exists to prevent ORM SELECT failures when the code
 # references new Agent columns before a formal migration has been applied.
-_AGENT_PHASE2_SCHEMA_COLUMNS = [
-    ("provider", "VARCHAR"),
-    ("fallback_model", "VARCHAR"),
-    ("reasoning_profile", "VARCHAR"),
-    ("tool_policy", "VARCHAR"),
-    ("max_cost_per_run", "NUMERIC(10, 4)"),
-    ("strict_mode", "BOOLEAN NOT NULL DEFAULT FALSE"),
-]
-
-def _reconcile_agent_phase2_schema_best_effort() -> Dict[str, Any]:
-    result: Dict[str, Any] = {"ok": True, "applied": [], "failed": []}
-    try:
-        if ENGINE is None:
-            result["ok"] = False
-            result["reason"] = "engine_unavailable"
-            return result
-        for column, ddl_type in _AGENT_PHASE2_SCHEMA_COLUMNS:
-            sql = f"ALTER TABLE IF EXISTS agents ADD COLUMN IF NOT EXISTS {column} {ddl_type}"
-            try:
-                with ENGINE.begin() as conn:
-                    conn.execute(text(sql))
-                result["applied"].append(column)
-            except Exception as exc:
-                result["ok"] = False
-                result["failed"].append({"column": column, "error": str(exc)})
-        try:
-            if result.get("failed"):
-                logger.warning("AGENT_PHASE2_SCHEMA_RECONCILE_PARTIAL result=%s", result)
-            else:
-                logger.info("AGENT_PHASE2_SCHEMA_RECONCILE_OK columns=%s", result.get("applied"))
-        except Exception:
-            pass
-        return result
-    except Exception as exc:
-        try:
-            logger.exception("AGENT_PHASE2_SCHEMA_RECONCILE_FAILED error=%s", exc)
-        except Exception:
-            pass
-        return {"ok": False, "applied": [], "failed": [{"error": str(exc)}]}
-
-@app.on_event("startup")
-def _startup_agent_phase2_schema_reconcile():
-    _reconcile_agent_phase2_schema_best_effort()
-
-
-@app.on_event("startup")
-async def _startup():
-    # Hard safety gate: JWT secret must exist.
-    require_secret()
-    validate_runtime_env()
-    _startup_schema_guard()
-
-    # DB is optional for smoke tests. Production should prefer Alembic migrations.
-    # For a brand-new database, ENABLE_STARTUP_CREATE_ALL=true allows a one-time
-    # bootstrap of the base schema so auth/register/login can come up safely.
-    if ENGINE is not None:
-        if _env_flag("ENABLE_STARTUP_CREATE_ALL", default=False):
-            def _do_create_all():
-                try:
-                    logger.warning("ENABLE_STARTUP_CREATE_ALL=true -> creating schema with SQLAlchemy metadata")
-                except Exception:
-                    pass
-                from .models import Base  # type: ignore
-                Base.metadata.create_all(bind=ENGINE)
-                try:
-                    logger.warning("CREATE_ALL finished successfully")
-                except Exception:
-                    pass
-
-            _run_with_timeout(_do_create_all, "CREATE_ALL", timeout_sec=30)
-        else:
-            try:
-                logger.info("CREATE_ALL skipped (use Alembic migrations)")
-            except Exception:
-                pass
-
-        def _do_post_bootstrap_db_tasks():
-            from .db import SessionLocal  # type: ignore
-
-            if SessionLocal is None:
-                return
-
-            app_env = _clean_env(os.getenv("APP_ENV", "production"), default="production").lower()
-            db = SessionLocal()
-            try:
-                # DEPLOY SAFETY:
-                # Never run runtime schema reconciliation in production Railway boot.
-                # Production must use Alembic as single source of truth and startup must
-                # not block or fail because of best-effort ALTER TABLE calls.
-                if app_env != "production" and _env_flag("ENABLE_SCHEMA_GUARD", False):
-                    try:
-                        ensure_schema(db)
-                    except Exception:
-                        logger.exception("POST_BOOTSTRAP_SCHEMA_GUARD_FAILED")
-
-                # Non-critical bootstrap tasks: never block startup.
-                try:
-                    _seed_default_summit_codes(db, org=default_tenant() or "public")
-                except Exception:
-                    logger.exception("POST_BOOTSTRAP_SEED_CODES_FAILED")
-
-                try:
-                    _try_refresh_openai_pricing(db, org=default_tenant() or "public")
-                except Exception:
-                    logger.exception("POST_BOOTSTRAP_PRICING_REFRESH_FAILED")
-            finally:
-                try:
-                    db.close()
-                except Exception:
-                    pass
-
-        _run_with_timeout(_do_post_bootstrap_db_tasks, "POST_BOOTSTRAP_DB_TASKS", timeout_sec=10)
-
-    # ADMIN_API_KEY is optional. If not set, admin access is granted only via admin-role JWT.
-    # (ADMIN_EMAILS controls who becomes admin on register/login.)
-
-    # =========================================
-    # ORKIO SELF-HEAL EVOLUTION LOOP BOOT
-    # =========================================
-    try:
-        if start_evolution_loop is None:
-            try:
-                logger.info("EVOLUTION_LOOP_IMPORT_UNAVAILABLE")
-            except Exception:
-                pass
-        else:
-            try:
-                logger.info("EVOLUTION_LOOP_BOOT_REQUESTED")
-            except Exception:
-                pass
-
-            await start_evolution_loop(
-                db_factory=lambda: SessionLocal(),
-                logger=_self_heal_operational_logger(),
-            )
-    except Exception as exc:
-        try:
-            logger.exception("EVOLUTION_LOOP_BOOT_FAIL: %s", exc)
-        except Exception:
-            pass
-
 @app.get("/")
 def root():
-    # Railway default healthcheck may hit "/"
-    return {"status": "ok", "service": "orkio-api", "version": APP_VERSION}
+    # RTB09_HF5 — Legacy public root endpoint must stay neutral.
+    # Do not expose service codename, version, patch, stack or RAG details.
+    return {"status": "ok"}
 
 @app.get("/health")
 def health_root():
-    return {"status": "ok", "service": "orkio-api", "version": APP_VERSION}
+    # RTB09_HF5 — Legacy public health endpoint mirrors the sanitized /api/health.
+    return {"status": "ok" if db_ok() else "degraded"}
 
 
 @app.middleware("http")
@@ -6251,20 +6132,27 @@ async def audit_middleware(request: Request, call_next):
     try:
         response = await call_next(request)
     except Exception as exc:
+        # RTB09_HF5_1 — sanitize audit middleware runtime fallback.
+        # Keep the internal exception in logs only; never expose str(exc), path,
+        # stack, version, architecture, or product codename in the public body.
         try:
-            logger.exception("AUDIT_MIDDLEWARE_RUNTIME_ERROR path=%s", path)
+            logger.exception("AUDIT_MIDDLEWARE_RUNTIME_ERROR")
         except Exception:
             pass
 
-        return JSONResponse(
+        rid = ensure_request_id(request)
+        duration_ms = int(max((time.time() - start) * 1000, 0))
+        safe_response = JSONResponse(
             status_code=500,
             content={
-                "ok": False,
-                "error": "runtime_failure",
-                "detail": str(exc),
-                "path": path,
+                "detail": "Internal server error",
+                "request_id": rid,
             },
         )
+        safe_response.headers["x-request-id"] = rid
+        safe_response.headers["x-patroai-duration-ms"] = str(duration_ms)
+        safe_response.headers["access-control-expose-headers"] = "x-request-id, x-patroai-duration-ms"
+        return safe_response
 
     # Best-effort audit (never block the response)
     try:
