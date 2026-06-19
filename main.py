@@ -155,6 +155,14 @@ from .services.identity_service import load_active_identity
 from .services.governance_service import build_governance_health
 from .services.capability_service import load_runtime_governed_capabilities
 from .services.live_memory_service import bootstrap_live_memory
+from .services.document_context_service import (
+    build_file_context_block as svc_build_file_context_block,
+    build_thread_document_context as svc_build_thread_document_context,
+    get_thread_chat_file_ids as svc_get_thread_chat_file_ids,
+    load_thread_document_citations as svc_load_thread_document_citations,
+    rag_fallback_recent_chunks as svc_rag_fallback_recent_chunks,
+)
+from .services.file_upload_indexing_service import index_uploaded_file_text
 from .core.orkio_constitution import load_constitution
 from .core.orkio_permissions import load_permissions
 
@@ -5938,75 +5946,8 @@ async def cors_preflight_passthrough(full_path: str):
 
 
 def rag_fallback_recent_chunks(db: Session, org: str, file_ids: List[str], top_k: int = 6) -> List[Dict[str, Any]]:
-    """Fallback: when keyword retrieval yields nothing, return early chunks from the most recent file.
-
-    RTB-06:
-    - Keep the existing FileChunk path.
-    - If chunking failed but FileText exists, use bounded FileText excerpts.
-    - This prevents "documento anexado, mas sem acesso" when extraction succeeded
-      but the chunk table is empty or temporarily inconsistent.
-    """
-    if not file_ids:
-        return []
-    row = db.execute(
-        select(File.id).where(File.org_slug == org, File.id.in_(file_ids)).order_by(File.created_at.desc()).limit(1)
-    ).first()
-    if not row or not row[0]:
-        return []
-    fid = row[0]
-    f = db.get(File, fid)
-    filename = getattr(f, "filename", None) or fid
-
-    try:
-        chunks = db.execute(
-            select(FileChunk).where(FileChunk.org_slug == org, FileChunk.file_id == fid).order_by(FileChunk.idx.asc()).limit(top_k)
-        ).scalars().all()
-    except Exception:
-        chunks = []
-
-    out: List[Dict[str, Any]] = []
-    for c in chunks or []:
-        content = str(getattr(c, "content", "") or "").strip()
-        if content:
-            out.append({"file_id": fid, "filename": filename, "content": content, "score": 0.0, "idx": getattr(c, "idx", None), "fallback": True})
-    if out:
-        return out
-
-    # RTB-06 fallback: extracted text exists but chunks are missing.
-    try:
-        ft = db.execute(
-            select(FileText)
-            .where(FileText.org_slug == org, FileText.file_id == fid)
-            .order_by(FileText.created_at.desc())
-            .limit(1)
-        ).scalars().first()
-    except Exception:
-        ft = None
-
-    raw_text = str(getattr(ft, "text", "") or "").strip() if ft is not None else ""
-    if not raw_text:
-        return []
-
-    try:
-        max_chars = int(os.getenv("FILE_CONTEXT_MAX_CHARS", "8000") or "8000")
-    except Exception:
-        max_chars = 8000
-    max_chars = max(1000, min(max_chars, 20000))
-    excerpt = raw_text[:max_chars].rstrip()
-    if len(raw_text) > len(excerpt):
-        excerpt += "\n\n[...texto extraído truncado...]"
-
-    return [{
-        "file_id": fid,
-        "filename": filename,
-        "content": excerpt,
-        "score": 0.0,
-        "idx": 0,
-        "fallback": True,
-        "source": "file_text_fallback",
-    }]
-
-
+    """RTB-07 root wrapper: fallback retrieval lives in services/document_context_service.py."""
+    return svc_rag_fallback_recent_chunks(db, org, file_ids, top_k=top_k)
 
 @app.middleware("http")
 async def request_id_mw(request: Request, call_next):
@@ -14588,70 +14529,9 @@ def _dedupe_nonempty_strs(items: Optional[List[Any]] = None) -> List[str]:
 def _build_file_context_block(
     citations: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
-    files_used: List[str] = []
-    evidence_blocks: List[str] = []
-    evidence_count = 0
+    """RTB-07 root wrapper: document context assembly lives in services/document_context_service.py."""
+    return svc_build_file_context_block(citations)
 
-    for c in list(citations or []):
-        try:
-            filename = str(c.get("filename") or c.get("file_id") or "").strip()
-        except Exception:
-            filename = ""
-        if filename:
-            files_used.append(filename)
-
-        content = ""
-        for key in ("content", "text", "excerpt", "chunk_text", "summary"):
-            try:
-                content = str(c.get(key) or "").strip()
-            except Exception:
-                content = ""
-            if content:
-                break
-
-        if not content:
-            continue
-
-        evidence_count += 1
-        label = filename or f"arquivo_{evidence_count}"
-        evidence_blocks.append(f"[Arquivo: {label}]\n{content}")
-
-    files_used = _dedupe_nonempty_strs(files_used)
-
-    try:
-        max_chars = int(os.getenv("FILE_CONTEXT_MAX_CHARS", "8000") or "8000")
-    except Exception:
-        max_chars = 8000
-
-    raw_context = "\n\n".join(evidence_blocks).strip()
-    if max_chars and len(raw_context) > max_chars:
-        raw_context = raw_context[:max_chars].rstrip() + "\n\n[...contexto de arquivo truncado...]"
-
-    file_context_block = ""
-    if raw_context:
-        file_context_block = (
-            "CONTEXTO DOS ARQUIVOS ANEXADOS:\n"
-            f"{raw_context}\n\n"
-            "Use evidências concretas do arquivo. "
-            "Se o conteúdo não for suficiente para sustentar a resposta, declare isso explicitamente."
-        )
-
-    return {
-        "files_used": files_used,
-        "file_context_block": file_context_block,
-        "file_context_injected": bool(file_context_block),
-        "file_context_chars": len(file_context_block),
-        "file_evidence_required": bool(files_used),
-        "file_evidence_count": evidence_count,
-    }
-
-
-
-
-
-# AO75A — shared context-intent contract.
-# The compatibility wrapper keeps existing callers stable while routing all
-# attachment and continuity decisions through one dependency-free classifier.
 def _is_thread_document_context_request(
     user_text: Any,
     *,
@@ -14673,117 +14553,13 @@ def _get_thread_chat_file_ids(
     thread_id: str,
     max_files: int = 8,
 ) -> List[str]:
-    """Return files that are contextually attached to a chat thread.
-
-    RTB-06:
-    The previous implementation only looked for origin="chat". In production,
-    the upload modal can register a file in the thread while storing it as
-    agent/institutional/global knowledge. The UI then shows "arquivo anexado",
-    but RAG sees zero thread files.
-
-    This resolver accepts every safe thread association used by this codebase:
-    - files.scope_thread_id == thread_id
-    - files.thread_id == thread_id
-    - files.origin_thread_id == thread_id, when the column/model field exists
-    - ORKIO_EVENT file_id stored in the thread system message
-    """
-    if not thread_id:
-        return []
-
-    limit = max(1, int(max_files or 8))
-    out: List[str] = []
-    seen: set = set()
-
-    def _add_file_id(value: Any) -> None:
-        file_id = str(value or "").strip()
-        if not file_id or file_id in seen:
-            return
-        # Validate org ownership before returning an id parsed from messages.
-        try:
-            f = db.get(File, file_id)
-            if f is not None and getattr(f, "org_slug", None) != org:
-                return
-        except Exception:
-            try:
-                db.rollback()
-            except Exception:
-                pass
-        out.append(file_id)
-        seen.add(file_id)
-
-    def _query_by_column(column_name: str) -> None:
-        if len(out) >= limit:
-            return
-        col = getattr(File, column_name, None)
-        if col is None:
-            return
-        try:
-            rows = (
-                db.execute(
-                    select(File.id)
-                    .where(File.org_slug == org, col == thread_id)
-                    .order_by(File.created_at.desc())
-                    .limit(limit)
-                )
-                .all()
-            )
-        except Exception:
-            try:
-                db.rollback()
-            except Exception:
-                pass
-            return
-        for row in list(rows or []):
-            try:
-                _add_file_id(row[0])
-            except Exception:
-                pass
-            if len(out) >= limit:
-                break
-
-    # Prefer direct DB associations.
-    for column_name in ("scope_thread_id", "thread_id", "origin_thread_id"):
-        _query_by_column(column_name)
-        if len(out) >= limit:
-            return out[:limit]
-
-    # Last-mile compatibility: the upload event stored in messages contains
-    # ORKIO_EVENT with file_id even when the File row was not scoped correctly.
-    try:
-        msg_rows = (
-            db.execute(
-                select(Message.content)
-                .where(Message.org_slug == org, Message.thread_id == thread_id)
-                .order_by(Message.created_at.desc())
-                .limit(80)
-            )
-            .all()
-        )
-    except Exception:
-        try:
-            db.rollback()
-        except Exception:
-            pass
-        msg_rows = []
-
-    for row in list(msg_rows or []):
-        try:
-            content = str(row[0] or "")
-        except Exception:
-            content = ""
-        if "ORKIO_EVENT:" not in content:
-            continue
-        raw = content.split("ORKIO_EVENT:", 1)[1].strip()
-        try:
-            payload = json.loads(raw)
-        except Exception:
-            continue
-        _add_file_id(payload.get("file_id"))
-        if len(out) >= limit:
-            break
-
-    return out[:limit]
-
+    """RTB-07 root wrapper: thread-file association lookup lives in services/document_context_service.py."""
+    return svc_get_thread_chat_file_ids(
+        db,
+        org=org,
+        thread_id=thread_id,
+        max_files=max_files,
+    )
 
 def _load_recent_thread_context_messages(
     db: Session,
@@ -14977,58 +14753,14 @@ def _load_thread_document_citations(
     query: str,
     top_k: int = 8,
 ) -> Dict[str, Any]:
-    file_ids = _get_thread_chat_file_ids(
+    """RTB-07 root wrapper: document context retrieval lives in services/document_context_service.py."""
+    return svc_load_thread_document_citations(
         db,
         org=org,
         thread_id=thread_id,
-        max_files=8,
+        query=query,
+        top_k=top_k,
     )
-    citations: List[Dict[str, Any]] = []
-
-    if file_ids:
-        try:
-            citations = keyword_retrieve(
-                db,
-                org_slug=org,
-                query=query,
-                top_k=max(1, int(top_k or 8)),
-                file_ids=file_ids,
-            )
-        except Exception:
-            try:
-                db.rollback()
-            except Exception:
-                pass
-            citations = []
-
-        # Requests such as "analise o documento que mandei" usually contain no
-        # terms from the document itself. Fall back to the first chunks of the
-        # most recently attached file instead of claiming that no file exists.
-        if not citations:
-            try:
-                citations = rag_fallback_recent_chunks(
-                    db,
-                    org=org,
-                    file_ids=file_ids,
-                    top_k=max(1, int(top_k or 8)),
-                )
-            except Exception:
-                try:
-                    db.rollback()
-                except Exception:
-                    pass
-                citations = []
-
-    file_ctx = _build_file_context_block(citations)
-    return {
-        "file_ids": file_ids,
-        "citations": citations,
-        "file_context_injected": bool(file_ctx.get("file_context_injected")),
-        "file_context_chars": int(file_ctx.get("file_context_chars") or 0),
-        "file_evidence_count": int(file_ctx.get("file_evidence_count") or 0),
-        "files_used": list(file_ctx.get("files_used") or []),
-    }
-
 
 def _build_thread_document_runtime_enrichment(
     *,
@@ -26442,21 +26174,29 @@ async def upload(
         text_content = ""
         chunks_created = 0
         try:
-            _log_upload_stage("EXTRACT_TEXT_STARTED", file_id=f.id, filename=f.filename, mime_type=f.mime_type)
-            text_content, extracted_chars = _extract_text_with_fallback(filename, raw, file.content_type)
-            if text_content:
-                ft = FileText(id=new_id(), org_slug=org, file_id=f.id, text=text_content, extracted_chars=extracted_chars, created_at=now_ts())
-                db.add(ft)
-                chunks_created = _create_file_chunks(db, org=org, file_id=f.id, text_content=text_content)
-                db.commit()
-                _log_upload_stage("CHUNKING_DONE", file_id=f.id, extracted_chars=extracted_chars, chunks_created=chunks_created)
-            else:
-                f.extraction_failed = True
-                db.add(f)
-                db.commit()
-                _log_upload_stage("EXTRACT_TEXT_EMPTY", file_id=f.id, filename=f.filename)
+            _log_upload_stage("RTB07_UPLOAD_INDEXING_STARTED", file_id=f.id, filename=f.filename, mime_type=f.mime_type)
+            index_result = index_uploaded_file_text(
+                db,
+                org=org,
+                file_id=f.id,
+                filename=filename,
+                raw=raw,
+                mime_type=file.content_type,
+                logger_obj=logger,
+            )
+            text_content = str(index_result.get("text") or "").strip()
+            extracted_chars = int(index_result.get("extracted_chars") or 0)
+            chunks_created = int(index_result.get("chunks_created") or 0)
+            _log_upload_stage(
+                "RTB07_UPLOAD_INDEXING_DONE",
+                file_id=f.id,
+                extracted_chars=extracted_chars,
+                chunks_created=chunks_created,
+                has_extracted_text=bool(text_content),
+                extraction_failed=bool(index_result.get("extraction_failed")),
+            )
         except Exception:
-            logger.exception("UPLOAD_EXTRACT_OR_CHUNK_FAILED file_id=%s", f.id)
+            logger.exception("RTB07_UPLOAD_INDEXING_FAILED file_id=%s", f.id)
             try:
                 db.rollback()
             except Exception:
@@ -26518,6 +26258,7 @@ async def upload(
             "has_extracted_text": bool(text_content),
             "extraction_status": "extracted" if text_content else ("failed" if bool(getattr(f, "extraction_failed", False)) else "empty"),
             "extraction_failed": bool(getattr(f, "extraction_failed", False)),
+            "document_context_url": f"/api/documents/thread-context?thread_id={effective_thread_id}&file_id={f.id}" if effective_thread_id else None,
             "linked_agent_ids": resolved_agent_ids,
             "linked_agent_id": resolved_agent_id,
         }
@@ -26545,6 +26286,58 @@ async def upload(
             e.__class__.__name__,
         )
         raise HTTPException(status_code=500, detail="Falha ao processar upload. Tente novamente.")
+
+@app.get("/api/documents/thread-context")
+def get_thread_document_context(
+    thread_id: str,
+    file_id: Optional[str] = None,
+    query: Optional[str] = None,
+    x_org_slug: Optional[str] = Header(default=None),
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """RTB-07: authorized document context endpoint for chat/realtime bridges.
+
+    This endpoint returns extracted evidence for files attached to the current
+    thread. It does not expose cross-thread files and is intentionally read-only.
+    """
+    org = get_request_org(user, x_org_slug)
+    tid = (thread_id or "").strip()
+    if not tid:
+        raise HTTPException(status_code=400, detail="thread_id_required")
+
+    uid = user.get("sub")
+    if user.get("role") != "admin":
+        _require_thread_member(db, org, tid, uid)
+
+    try:
+        ctx = svc_build_thread_document_context(
+            db,
+            org=org,
+            thread_id=tid,
+            query=(query or "documento anexado"),
+            top_k=8,
+            preferred_file_id=(file_id or None),
+        )
+        logger.info(
+            "RTB07_DOCUMENT_CONTEXT_READY thread_id=%s file_id=%s file_count=%s evidence_count=%s context_chars=%s",
+            tid,
+            file_id,
+            len(list(ctx.get("file_ids") or [])),
+            int(ctx.get("file_evidence_count") or 0),
+            int(ctx.get("context_chars") or ctx.get("file_context_chars") or 0),
+        )
+        return ctx
+    except HTTPException:
+        raise
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        logger.exception("RTB07_DOCUMENT_CONTEXT_FAILED thread_id=%s file_id=%s", tid, file_id)
+        raise HTTPException(status_code=500, detail=f"document_context_failed:{e.__class__.__name__}")
+
 
 @app.get("/api/files")
 def list_files(x_org_slug: Optional[str] = Header(default=None), user=Depends(get_current_user), db: Session = Depends(get_db)):
