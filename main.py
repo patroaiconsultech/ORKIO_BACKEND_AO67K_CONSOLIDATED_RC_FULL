@@ -2976,12 +2976,14 @@ class StrategicIntakeIn(BaseModel):
     challenge: Optional[str] = Field(default=None, max_length=4000)
     interest_area: Optional[str] = Field(default=None, max_length=120)
 
+    person_type: Optional[str] = Field(default=None, max_length=80)
     investor_type: Optional[str] = Field(default=None, max_length=160)
     capital_range: Optional[str] = Field(default=None, max_length=160)
     sectors: Optional[str] = Field(default=None, max_length=800)
 
     expertise: Optional[str] = Field(default=None, max_length=220)
     years_experience: Optional[str] = Field(default=None, max_length=80)
+    engagement_model: Optional[str] = Field(default=None, max_length=160)
     availability: Optional[str] = Field(default=None, max_length=220)
     ai_experience: Optional[str] = Field(default=None, max_length=2500)
     esg_focus: Optional[str] = Field(default=None, max_length=2500)
@@ -4459,7 +4461,7 @@ async def _auth_rate_limit(request: Request) -> None:
             raise HTTPException(status_code=429, detail="AUTH_RATE_LIMIT")
         dq.append(now)
 
-app = FastAPI(title="Orkio API", version=APP_VERSION)
+app = FastAPI(title="Patroai API", version=APP_VERSION)
 
 
 
@@ -6024,17 +6026,33 @@ async def request_id_mw(request: Request, call_next):
             pass
         raise
     duration_ms = int(max((time.time() - start) * 1000, 0))
+    # RTB09_HF4 — Public network hardening:
+    # - keep request correlation;
+    # - remove legacy/internal product headers from public API responses;
+    # - do not expose version, path, runtime architecture or internal naming.
     resp.headers["x-request-id"] = rid
-    resp.headers["x-orkio-version"] = APP_VERSION
-    resp.headers["x-orkio-path"] = path or "/"
-    resp.headers["x-orkio-duration-ms"] = str(duration_ms)
+    resp.headers["x-patroai-duration-ms"] = str(duration_ms)
     existing_expose = str(resp.headers.get("access-control-expose-headers") or "").strip()
     expose_tokens = [token.strip() for token in existing_expose.split(",") if token.strip()]
     expose_lower = {token.lower() for token in expose_tokens}
-    for header_name in ("x-request-id", "x-orkio-version", "x-orkio-path", "x-orkio-duration-ms"):
+    for header_name in ("x-request-id", "x-patroai-duration-ms"):
         if header_name.lower() not in expose_lower:
             expose_tokens.append(header_name)
             expose_lower.add(header_name.lower())
+    # Strip legacy/internal header names defensively in case an upstream layer
+    # or older code path inserted them before this middleware returns.
+    blocked_header_prefixes = ("x-" + "orkio-",)
+    expose_tokens = [
+        token for token in expose_tokens
+        if not any(token.lower().startswith(prefix) for prefix in blocked_header_prefixes)
+    ]
+    for header_name in list(resp.headers.keys()):
+        header_lower = str(header_name or "").lower()
+        if any(header_lower.startswith(prefix) for prefix in blocked_header_prefixes):
+            try:
+                del resp.headers[header_name]
+            except Exception:
+                pass
     if expose_tokens:
         resp.headers["access-control-expose-headers"] = ", ".join(expose_tokens)
     if path == "/api/chat/stream":
@@ -6462,12 +6480,15 @@ def public_chat(inp: PublicChatIn, x_org_slug: Optional[str] = Header(default=No
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "db": "ok" if db_ok() else "down", "version": APP_VERSION, "rag": RAG_MODE}
+    # RTB09_HF4 — Public health endpoint must not leak version, RAG mode,
+    # database topology or internal runtime details. Keep it safe for uptime checks.
+    return {"status": "ok" if db_ok() else "degraded"}
 
 
 @app.get("/api/meta")
 def meta():
-    return {"status": "ok", "patch": patch_id()}
+    # RTB09_HF4 — Public metadata endpoint intentionally avoids patch/version details.
+    return {"status": "ok"}
 
 @app.get("/api/metrics")
 def metrics():
@@ -48411,6 +48432,8 @@ def _strategic_intake_score(payload: Dict[str, Any]) -> Dict[str, Any]:
     linkedin = str(payload.get("linkedin") or "").strip()
     company = str(payload.get("company") or "").strip()
     whatsapp = str(payload.get("whatsapp") or "").strip()
+    person_type = str(payload.get("person_type") or "").strip()
+    engagement_model = str(payload.get("engagement_model") or "").strip()
     message = str(payload.get("message") or payload.get("challenge") or "").strip()
 
     if company:
@@ -48421,6 +48444,10 @@ def _strategic_intake_score(payload: Dict[str, Any]) -> Dict[str, Any]:
         score += 10
     if whatsapp:
         score += 10
+    if person_type:
+        score += 5
+    if engagement_model:
+        score += 5
     if len(message) >= 80:
         score += 15
     if payload.get("consent_contact"):
@@ -48434,10 +48461,14 @@ def _strategic_intake_score(payload: Dict[str, Any]) -> Dict[str, Any]:
         flags.append("personal_email")
     if not linkedin and payload.get("intake_type") in {"investor", "consultant"}:
         flags.append("linkedin_missing")
+    if payload.get("intake_type") == "investor" and not payload.get("person_type"):
+        flags.append("person_type_missing")
     if payload.get("intake_type") == "investor" and not payload.get("capital_range"):
         flags.append("capital_range_missing")
     if payload.get("intake_type") == "consultant" and not payload.get("expertise"):
         flags.append("expertise_missing")
+    if payload.get("intake_type") == "consultant" and not payload.get("engagement_model"):
+        flags.append("engagement_model_missing")
 
     score = max(0, min(score, 100))
     tier = "low"
@@ -48447,6 +48478,59 @@ def _strategic_intake_score(payload: Dict[str, Any]) -> Dict[str, Any]:
         tier = "medium"
 
     return {"score": score, "tier": tier, "flags": flags}
+
+
+def _rtb09hf2_present(value: Any) -> bool:
+    return bool(str(value or "").strip())
+
+
+def _rtb09hf2_validate_required_intake_fields(inp: StrategicIntakeIn, intake_type: str) -> None:
+    """Strict public-intake validation.
+
+    This endpoint is not a signup flow. Stronger qualification fields reduce spam,
+    protect the private platform and make admin review useful from the first touch.
+    """
+    missing: List[str] = []
+
+    def require(attr: str, label: str) -> None:
+        if not _rtb09hf2_present(getattr(inp, attr, None)):
+            missing.append(label)
+
+    require("full_name", "nome completo")
+    require("email", "e-mail")
+    require("whatsapp", "WhatsApp")
+    require("city", "cidade")
+    require("state", "estado")
+
+    if intake_type == "company":
+        require("company", "empresa")
+        require("role", "cargo")
+        require("segment", "segmento")
+        require("company_size", "tamanho da empresa")
+        require("interest_area", "área de interesse")
+        require("challenge", "principal desafio")
+    elif intake_type == "investor":
+        require("person_type", "pessoa física ou jurídica")
+        require("investor_type", "perfil/tese do investidor")
+        require("capital_range", "faixa indicativa ou tese")
+        require("sectors", "setores de interesse")
+        require("message", "mensagem complementar")
+        if not (_rtb09hf2_present(inp.linkedin) or _rtb09hf2_present(inp.website)):
+            missing.append("LinkedIn ou site")
+    elif intake_type == "consultant":
+        require("linkedin", "LinkedIn")
+        require("expertise", "especialidade principal")
+        require("years_experience", "anos de experiência")
+        require("sectors", "setores de atuação")
+        require("engagement_model", "modelo de atuação")
+        require("availability", "disponibilidade")
+        require("message", "mensagem complementar")
+
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail="Campos obrigatórios pendentes para análise: " + ", ".join(missing) + ".",
+        )
 
 
 @app.post("/api/public/intake")
@@ -48485,6 +48569,8 @@ def public_strategic_intake(
             status_code=400,
             detail="É necessário aceitar os termos, a análise de dados e o contato institucional.",
         )
+
+    _rtb09hf2_validate_required_intake_fields(inp, intake_type)
 
     if not _rate_limit_check(
         _rl_contact_lock,
@@ -48599,7 +48685,7 @@ def public_strategic_intake(
     except Exception:
         logger.warning("RTB09_STRATEGIC_INTAKE_AUDIT_FAILED intake_id=%s", intake_id)
 
-    logger.error(
+    logger.info(
         "RTB09_STRATEGIC_INTAKE_RECEIVED intake_id=%s type=%s score=%s tier=%s access_granted=False",
         intake_id,
         intake_type,
@@ -48646,6 +48732,8 @@ def _strategic_intake_row_to_dict(row: ContactRequest) -> Dict[str, Any]:
         "country": submitted.get("country"),
         "linkedin": submitted.get("linkedin"),
         "website": submitted.get("website"),
+        "person_type": submitted.get("person_type"),
+        "engagement_model": submitted.get("engagement_model"),
         "score": review.get("score"),
         "tier": review.get("tier"),
         "flags": review.get("flags") or [],
@@ -48726,7 +48814,7 @@ def admin_update_strategic_intake_submission(
     db.add(row)
     db.commit()
 
-    logger.error("RTB09_STRATEGIC_INTAKE_STATUS_UPDATED intake_id=%s status=%s access_granted=False", intake_id, status)
+    logger.info("RTB09_STRATEGIC_INTAKE_STATUS_UPDATED intake_id=%s status=%s access_granted=False", intake_id, status)
     return {"ok": True, "item": _strategic_intake_row_to_dict(row)}
 
 
