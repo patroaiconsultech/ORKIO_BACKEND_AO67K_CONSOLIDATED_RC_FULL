@@ -8934,10 +8934,16 @@ def _canonical_dispatch_specialist_slug(name: Any) -> Optional[str]:
         "front_end": "ux_frontend",
         "orion_cto": "orion",
         "cto_runtime": "orion",
+        "oria": "orion",
+        "auria": "orion",
+        "aurya": "orion",
+        "arian": "orion",
+        "aryan": "orion",
+        "warren": "orion",
         "technical_auditor": "auditor",
         "systems_architect": "systems_architect",
         "chief_architect": "systems_architect",
-        "cto": "systems_architect",
+        "cto": "orion",
     }
     slug = aliases.get(raw, raw)
     if slug.startswith("orion"):
@@ -46404,7 +46410,7 @@ def _explicit_agent_override(db: Session, org: str, text: str) -> List[Agent]:
     requested: List[str] = []
 
     patterns = {
-        "Orion": ["orion", "oria", "auria", "aurya", "cto", "nossa cto", "nosso cto", "@orion"],
+        "Orion": ["orion", "oria", "auria", "aurya", "arian", "aryan", "warren", "cto", "nossa cto", "nosso cto", "@orion"],
         "Chris": ["chris", "cfo", "@chris"],
         "Orkio": ["orkio", "@orkio"],
     }
@@ -46841,7 +46847,7 @@ def _run_realtime_multi_agent_turn(
         if slug:
             alias_to_agent.setdefault(slug, ag)
         if slug == "orion":
-            for extra in ("orion", "oria", "auria", "aurya", "cto", "nosso cto", "nossa cto", "chief technology officer", "orion_cto", "orion cto"):
+            for extra in ("orion", "oria", "auria", "aurya", "arian", "aryan", "warren", "cto", "nosso cto", "nossa cto", "chief technology officer", "orion_cto", "orion cto"):
                 alias_to_agent.setdefault(extra, ag)
         elif slug == "auditor":
             for extra in ("auditor", "technical_auditor", "technical auditor", "runtime_auditor", "runtime auditor"):
