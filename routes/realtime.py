@@ -57,6 +57,7 @@ except Exception:  # pragma: no cover
         visible_agent: Optional[str] = None
         target_agent_slug: Optional[str] = None
         requested_agent_names: Optional[Any] = None
+        client_controlled_response: Optional[bool] = None
 
     class RealtimeStartReq(BaseModel):
         agent_id: Optional[str] = None
@@ -73,6 +74,7 @@ except Exception:  # pragma: no cover
         visible_agent: Optional[str] = None
         target_agent_slug: Optional[str] = None
         requested_agent_names: Optional[Any] = None
+        client_controlled_response: Optional[bool] = None
 
     class RealtimeEventIn(BaseModel):
         name: Optional[str] = None
@@ -760,6 +762,7 @@ def _build_basic_realtime_payload(
     ttl_seconds: Optional[int],
     instructions: Optional[str],
     resolved_language: Optional[str],
+    create_response: bool = True,
 ) -> Dict[str, Any]:
     selected_model = (
         str(model or "").strip()
@@ -799,7 +802,7 @@ def _build_basic_realtime_payload(
                         "threshold": 0.72,
                         "prefix_padding_ms": 500,
                         "silence_duration_ms": 1800,
-                        "create_response": True,
+                        "create_response": bool(create_response),
                         "interrupt_response": True,
                     },
                     "transcription": {
@@ -849,13 +852,19 @@ def _normalize_realtime_payload_for_ga(
     ttl_seconds: Optional[int],
     instructions: Optional[str],
     resolved_language: Optional[str],
+    create_response: bool = True,
 ) -> Dict[str, Any]:
     if _payload_looks_ga_compatible(payload):
-        # Ensure patched instructions are not dropped by a stale builder.
+        # Ensure patched instructions and turn policy are not dropped by a stale builder.
         try:
             session = payload.get("session")
             if isinstance(session, dict) and instructions:
                 session["instructions"] = instructions
+            audio = session.get("audio") if isinstance(session, dict) else None
+            audio_input = audio.get("input") if isinstance(audio, dict) else None
+            turn_detection = audio_input.get("turn_detection") if isinstance(audio_input, dict) else None
+            if isinstance(turn_detection, dict):
+                turn_detection["create_response"] = bool(create_response)
         except Exception:
             pass
         return payload
@@ -866,6 +875,7 @@ def _normalize_realtime_payload_for_ga(
         ttl_seconds=ttl_seconds,
         instructions=instructions,
         resolved_language=resolved_language,
+        create_response=create_response,
     )
 
 
@@ -1106,7 +1116,7 @@ def _build_realtime_agent_identity_block(agent_context: Optional[Dict[str, Any]]
         )
 
     return (
-        "EFATA777 V6 — IDENTIDADE ATIVA E VERDADE OPERACIONAL DO REALTIME\n"
+        "EFATA777 V7 — IDENTIDADE ATIVA, TURNO CONTROLADO E VERDADE OPERACIONAL DO REALTIME\n"
         f"{role_line}\n"
         f"- Identidade ativa: {name}.\n"
         f"- Slug ativo: {slug}.\n"
@@ -1186,6 +1196,8 @@ async def _mint_client_secret(
         default=os.getenv("OPENAI_REALTIME_VOICE_DEFAULT", "cedar"),
     )
     ttl_seconds = int(_safe_getattr(body, "ttl_seconds", None) or REALTIME_PUBLIC_BETA_MAX_SECONDS)
+    client_controlled_response = bool(_safe_getattr(body, "client_controlled_response", False))
+    create_response = not client_controlled_response
 
     payload: Dict[str, Any]
     if callable(build_openai_realtime_client_secret_payload):
@@ -1205,6 +1217,7 @@ async def _mint_client_secret(
                 ttl_seconds=ttl_seconds,
                 instructions=instructions,
                 resolved_language=resolved_language,
+                create_response=create_response,
             )
     else:
         payload = _build_basic_realtime_payload(
@@ -1213,6 +1226,7 @@ async def _mint_client_secret(
             ttl_seconds=ttl_seconds,
             instructions=instructions,
             resolved_language=resolved_language,
+            create_response=create_response,
         )
 
     payload = _normalize_realtime_payload_for_ga(
@@ -1222,6 +1236,7 @@ async def _mint_client_secret(
         ttl_seconds=ttl_seconds,
         instructions=instructions,
         resolved_language=resolved_language,
+        create_response=create_response,
     )
 
     try:
@@ -1771,6 +1786,72 @@ def _rtb06_promote_realtime_finals_to_messages(
     return result
 
 
+
+def _rtb07_orchestration_bridge_candidate(
+    *,
+    session_id: str,
+    events: List[Any],
+    promotion: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Detect voice turns that should be bridged into the governed text orchestrator.
+
+    This does not execute patches or deploys. It only asks the frontend to route
+    the final transcript through the normal chat stream, where @Orion/@Team
+    governance already exists.
+    """
+
+    if not session_id or not events:
+        return None
+
+    latest_text = ""
+    for ev in events:
+        event_name = _event_name(ev).strip().lower()
+        if event_name != "transcript.final":
+            continue
+        text = _rtb06_extract_final_text(ev)
+        if text:
+            latest_text = text
+
+    if not latest_text:
+        return None
+
+    normalized = (
+        latest_text
+        .lower()
+        .replace("á", "a")
+        .replace("à", "a")
+        .replace("ã", "a")
+        .replace("â", "a")
+        .replace("é", "e")
+        .replace("ê", "e")
+        .replace("í", "i")
+        .replace("ó", "o")
+        .replace("ô", "o")
+        .replace("õ", "o")
+        .replace("ú", "u")
+        .replace("ç", "c")
+    )
+
+    intent = bool(re.search(
+        r"\b(auditoria|read\s*-?\s*only|readonly|war\s*room|orquestrac[aã]o|orquestracao|realtime|real\s*time|agentes?|orion|chris|diagnostico|logs?|runtime|backend|frontend)\b",
+        normalized,
+        re.I,
+    ))
+    if not intent:
+        return None
+
+    return {
+        "status": "candidate",
+        "session_id": session_id,
+        "thread_id": (promotion or {}).get("thread_id"),
+        "text": latest_text,
+        "route_family": "realtime_voice_orchestration_audit",
+        "target_agent": "Orion",
+        "write_allowed": False,
+        "patch": "EFATA777_V7",
+    }
+
+
 def _event_name(event: Any) -> str:
     payload = _safe_getattr(event, "payload", {}) or {}
     meta = _safe_getattr(event, "meta", {}) or {}
@@ -1883,7 +1964,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 "rtb06": True,
                 "context": overlay_meta,
                 "agent": _json_safe(agent_context),
-                "serialization_safe": "RTB03_RTB06_EFATA777_V6",
+                "serialization_safe": "RTB03_RTB06_EFATA777_V7",
             }
         )
 
@@ -1974,12 +2055,13 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         usage_advisory = _build_esg_usage_advisory()
 
         session_meta = {
-            "patch": "RTB03_RTB06_EFATA777_V6",
+            "patch": "RTB03_RTB06_EFATA777_V7",
             "mode": mode,
             "response_profile": response_profile,
             "language_profile": language_profile,
             "context": overlay_meta,
             "agent": _json_safe(agent_context),
+            "client_controlled_response": bool(_safe_getattr(body, "client_controlled_response", False)),
         }
 
         _maybe_persist_realtime_session(
@@ -2030,7 +2112,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 "rtb06": True,
                 "context": overlay_meta,
                 "agent": _json_safe(agent_context),
-                "serialization_safe": "RTB03_RTB06_EFATA777_V6",
+                "serialization_safe": "RTB03_RTB06_EFATA777_V7",
                 "timebox_policy": "advisory_only_esg",
             }
         )
@@ -2068,13 +2150,21 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             logger=logger,
         )
 
+        bridge = _rtb07_orchestration_bridge_candidate(
+            session_id=session_id,
+            events=events,
+            promotion=promotion,
+        )
+
         return {
             "ok": True,
             "session_id": session_id,
             "received": len(events),
             "rtb03": True,
             "rtb06": True,
+            "rtb07": True,
             "finals_promoted": promotion,
+            "rtb02_bridge": bridge,
         }
 
     @router.get("/api/realtime/{session_id}")
