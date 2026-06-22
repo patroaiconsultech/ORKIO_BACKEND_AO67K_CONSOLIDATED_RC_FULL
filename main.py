@@ -2523,6 +2523,112 @@ def resolve_agent_voice(agent: Optional[Any]) -> str:
     env_voice = env_map.get(agent_name, "")
     return _normalize_voice_id(db_voice or env_voice or default_voice, default=default_voice)
 
+
+# EFATA777-WR-20260622 — Agent phase-2 schema reconciliation
+# Root cause observed in production: ensure_core_agents() called
+# _reconcile_agent_phase2_schema_best_effort(), but the function was absent,
+# causing /api/threads and /api/agents to return 500.
+_AGENT_PHASE2_SCHEMA_RECONCILED = False
+
+def _reconcile_agent_phase2_schema_best_effort() -> None:
+    """Best-effort, fail-open guard for agent runtime columns.
+
+    This helper must never poison user-facing routes. It exists because the
+    agents table can lag behind app/main.py during emergency deployments.
+    When a column already exists, nothing is changed. When a migration cannot
+    run, the function logs and returns; callers must continue whenever possible.
+    """
+    global _AGENT_PHASE2_SCHEMA_RECONCILED
+    if _AGENT_PHASE2_SCHEMA_RECONCILED:
+        return
+
+    engine = globals().get("ENGINE")
+    if engine is None:
+        _AGENT_PHASE2_SCHEMA_RECONCILED = True
+        return
+
+    def _log_warn(msg: str, *args: Any) -> None:
+        try:
+            log = globals().get("logger") or logging.getLogger("orkio")
+            log.warning(msg, *args)
+        except Exception:
+            pass
+
+    def _log_exc(msg: str, *args: Any) -> None:
+        try:
+            log = globals().get("logger") or logging.getLogger("orkio")
+            log.exception(msg, *args)
+        except Exception:
+            pass
+
+    columns_to_add = {
+        "provider": "VARCHAR",
+        "model": "VARCHAR",
+        "fallback_model": "VARCHAR",
+        "embedding_model": "VARCHAR",
+        "temperature": "VARCHAR",
+        "reasoning_profile": "VARCHAR",
+        "tool_policy": "VARCHAR",
+        "max_cost_per_run": "DOUBLE PRECISION",
+        "strict_mode": "BOOLEAN DEFAULT FALSE",
+        "avatar_url": "VARCHAR",
+    }
+
+    try:
+        dialect = str(getattr(getattr(engine, "dialect", None), "name", "") or "").lower()
+        with engine.begin() as conn:
+            existing = set()
+            if dialect == "postgresql":
+                rows = conn.execute(text("""
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = 'agents'
+                """)).fetchall()
+                existing = {str(row[0]) for row in rows}
+            elif dialect == "sqlite":
+                rows = conn.execute(text("PRAGMA table_info(agents)")).fetchall()
+                existing = {str(row[1]) for row in rows}
+            else:
+                try:
+                    rows = conn.execute(text("""
+                        SELECT column_name
+                        FROM information_schema.columns
+                        WHERE table_name = 'agents'
+                    """)).fetchall()
+                    existing = {str(row[0]) for row in rows}
+                except Exception:
+                    existing = set()
+
+            if not existing:
+                # Either the table does not exist yet or the dialect cannot list it.
+                # Do not fail user-facing routes because this is a reconciliation pass.
+                _AGENT_PHASE2_SCHEMA_RECONCILED = True
+                return
+
+            for col, col_type in columns_to_add.items():
+                if col in existing:
+                    continue
+                try:
+                    if dialect == "postgresql":
+                        conn.execute(text(f"ALTER TABLE agents ADD COLUMN IF NOT EXISTS {col} {col_type}"))
+                    elif dialect == "sqlite":
+                        sqlite_type = "REAL" if col == "max_cost_per_run" else ("BOOLEAN DEFAULT 0" if col == "strict_mode" else "VARCHAR")
+                        conn.execute(text(f"ALTER TABLE agents ADD COLUMN {col} {sqlite_type}"))
+                    else:
+                        conn.execute(text(f"ALTER TABLE agents ADD COLUMN {col} {col_type}"))
+                    _log_warn("AGENT_PHASE2_SCHEMA_COLUMN_ADDED column=%s dialect=%s", col, dialect or "unknown")
+                except Exception:
+                    # Another replica may have added it, or the DB may not allow online DDL.
+                    # This is explicitly best-effort.
+                    _log_exc("AGENT_PHASE2_SCHEMA_COLUMN_ADD_FAILED column=%s", col)
+
+        _AGENT_PHASE2_SCHEMA_RECONCILED = True
+    except Exception:
+        # Never allow a best-effort schema guard to break /api/threads or /api/agents.
+        _log_exc("AGENT_PHASE2_SCHEMA_RECONCILE_FAILED_FAIL_OPEN")
+        _AGENT_PHASE2_SCHEMA_RECONCILED = True
+
+
 def ensure_core_agents(db: Session, org: str) -> None:
     """Ensure the core board + audit specialists exist for the org (Summit boardroom edition)."""
     _reconcile_agent_phase2_schema_best_effort()
@@ -3068,6 +3174,17 @@ class MessageOut(BaseModel):
     role: str
     content: str
     created_at: int
+
+class MessageCreateIn(BaseModel):
+    thread_id: str = Field(min_length=1)
+    role: str = Field(default="user", max_length=32)
+    content: str = Field(min_length=1, max_length=20000)
+    agent_id: Optional[str] = None
+    agent_name: Optional[str] = None
+    user_name: Optional[str] = None
+    client_message_id: Optional[str] = None
+    client_event_id: Optional[str] = None
+    created_at: Optional[int] = None
 
 class ChatIn(BaseModel):
     tenant: str = Field(default_tenant(), min_length=1)
@@ -7056,8 +7173,19 @@ def list_threads(x_org_slug: Optional[str] = Header(default=None), user=Depends(
     except Exception:
         pass
 
-    # Ensure core agents exist (solo-supervised defaults)
-    ensure_core_agents(db, org)
+    # Ensure core agents exist (solo-supervised defaults).
+    # EFATA777-WR-20260622: this must not break conversation restore.
+    try:
+        ensure_core_agents(db, org)
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        try:
+            logger.exception("THREADS_LIST_ENSURE_CORE_AGENTS_FAILED_FAIL_OPEN org=%s user_id=%s", org, uid)
+        except Exception:
+            pass
 
     real_message_roles = ["user", "assistant"]
 
@@ -7262,6 +7390,97 @@ def list_messages(
         "agent_id": getattr(m, "agent_id", None),
         "agent_name": getattr(m, "agent_name", None),
     } for m in rows]
+
+
+# EFATA777-WR-20260622 — compat endpoint for realtime/front-end message persistence.
+# Production logs showed POST /api/messages returning 405 while realtime generated
+# transcript.final events. This endpoint is intentionally small: it persists a
+# single message into an existing thread and returns the persisted record.
+@app.post("/api/messages")
+def create_message_compat(
+    inp: MessageCreateIn,
+    x_org_slug: Optional[str] = Header(default=None),
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    org = get_request_org(user, x_org_slug)
+    require_onboarding_complete(user)
+    uid = user.get("sub")
+    thread_id = str(inp.thread_id or "").strip()
+    if not thread_id:
+        raise HTTPException(status_code=400, detail="thread_id required")
+
+    if user.get("role") != "admin":
+        _require_thread_member(db, org, thread_id, uid)
+
+    t = db.execute(
+        select(Thread).where(Thread.org_slug == org, Thread.id == thread_id)
+    ).scalar_one_or_none()
+    if not t:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    role = str(inp.role or "user").strip().lower()
+    if role not in {"user", "assistant", "system"}:
+        role = "user"
+
+    content = str(inp.content or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="content required")
+
+    created = int(inp.created_at or now_ts())
+    agent_id = str(inp.agent_id or "").strip() or None
+    agent_name = str(inp.agent_name or "").strip() or None
+    if role == "assistant" and agent_id and not agent_name:
+        try:
+            ag = db.execute(
+                select(Agent).where(Agent.org_slug == org, Agent.id == agent_id)
+            ).scalar_one_or_none()
+            if ag:
+                agent_name = getattr(ag, "name", None)
+        except Exception:
+            pass
+
+    msg = Message(
+        id=new_id(),
+        org_slug=org,
+        thread_id=thread_id,
+        user_id=uid if role == "user" else None,
+        user_name=(str(inp.user_name or user.get("name") or "").strip() or None) if role == "user" else None,
+        role=role,
+        content=content,
+        agent_id=agent_id if role == "assistant" else None,
+        agent_name=agent_name if role == "assistant" else None,
+        created_at=created,
+    )
+    db.add(msg)
+
+    try:
+        if hasattr(t, "updated_at"):
+            t.updated_at = created
+            db.add(t)
+    except Exception:
+        pass
+
+    try:
+        _ensure_thread_owner(db, org, thread_id, uid)
+    except Exception:
+        # Owner bootstrap is useful but must not block message persistence.
+        pass
+
+    db.commit()
+    return {
+        "id": msg.id,
+        "thread_id": thread_id,
+        "role": msg.role,
+        "content": msg.content,
+        "created_at": msg.created_at,
+        "user_id": getattr(msg, "user_id", None),
+        "user_name": getattr(msg, "user_name", None),
+        "agent_id": getattr(msg, "agent_id", None),
+        "agent_name": getattr(msg, "agent_name", None),
+        "ok": True,
+        "compatibility_endpoint": "POST /api/messages",
+    }
 
 
 
@@ -8729,7 +8948,9 @@ def _canonical_dispatch_specialist_slug(name: Any) -> Optional[str]:
         return "chris"
     if slug.startswith("auditor") or "auditor" in slug:
         return "auditor"
-    if slug.startswith("systems_architect") or slug.startswith("cto"):
+    if slug.startswith("cto"):
+        return "orion"
+    if slug.startswith("systems_architect"):
         return "systems_architect"
     if slug in {"architect", "devops", "security", "memory_ops", "stage_manager", "ux_frontend"}:
         return slug
@@ -8893,7 +9114,11 @@ def _register_dispatch_agent_aliases(alias_to_agent: Dict[str, Any], agent: Any)
     if slug == "orkio":
         extra_aliases = ["orkio", "ceo", "host"]
     elif slug == "orion":
-        extra_aliases = ["orion", "cto_runtime", "cto runtime", "orion_cto", "orion cto"]
+        extra_aliases = [
+            "orion", "oria", "auria", "aurya",
+            "cto", "nosso cto", "nossa cto", "chief technology officer",
+            "cto_runtime", "cto runtime", "orion_cto", "orion cto"
+        ]
     elif slug == "auditor":
         extra_aliases = [
             "auditor",
@@ -8904,9 +9129,8 @@ def _register_dispatch_agent_aliases(alias_to_agent: Dict[str, Any], agent: Any)
             "technical_audit",
             "technical audit",
         ]
-    elif slug == "cto":
+    elif slug == "systems_architect":
         extra_aliases = [
-            "cto",
             "systems_architect",
             "systems architect",
             "cto_delegate",
@@ -31604,7 +31828,10 @@ def _canonical_agent_admin_slug(value: Any) -> str:
         "systems_architect": "systems_architect",
         "chief_architect": "systems_architect",
         "architect": "systems_architect",
-        "cto": "systems_architect",
+        # EFATA777-WR-20260622: product decision for AppConsole/realtime.
+        # "CTO" in user-facing routing means Orion, the technical CTO agent.
+        "cto": "orion",
+        "chief_technology_officer": "orion",
     }
     return aliases.get(raw, raw)
 
@@ -31823,19 +32050,44 @@ def agent_delegate(inp: DelegateIn, x_org_slug: Optional[str] = Header(default=N
 @app.get("/api/agents")
 def list_agents(x_org_slug: Optional[str] = Header(default=None), user=Depends(get_current_user), db: Session = Depends(get_db)):
     org = get_request_org(user, x_org_slug)
-    ensure_core_agents(db, org)
-    rows = db.execute(select(Agent).where(Agent.org_slug == org).order_by(Agent.updated_at.desc())).scalars().all()
-    roster = get_agent_roster()
-    return [
-        _serialize_agent_record(
-            a,
-            slug=_canonical_agent_admin_slug(getattr(a, "name", None) or getattr(a, "id", None)),
-            roster_meta=roster.get(_canonical_agent_admin_slug(getattr(a, "name", None) or getattr(a, "id", None)), {}),
-            persisted=True,
-            source_status="persisted",
-        )
-        for a in rows
-    ]
+    try:
+        ensure_core_agents(db, org)
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        try:
+            logger.exception("AGENTS_LIST_ENSURE_CORE_AGENTS_FAILED_FAIL_OPEN org=%s user_id=%s", org, user.get("sub"))
+        except Exception:
+            pass
+
+    try:
+        # Return the merged runtime roster so the selector remains usable even
+        # when some agents are roster-backed rather than persisted rows.
+        items = _list_admin_agents_merged(db, org)
+        required = {"orkio", "team", "chris", "orion"}
+        present = {str(item.get("agent_key") or "").strip().lower() for item in list(items or []) if isinstance(item, dict)}
+        if not required.issubset(present):
+            roster = get_agent_roster()
+            for slug in ["orkio", "team", "chris", "orion"]:
+                if slug not in present:
+                    items.append(_build_roster_only_agent_payload(org, slug, dict(roster.get(slug) or {})))
+        return items
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        try:
+            logger.exception("AGENTS_LIST_MERGED_FAILED_ROSTER_FALLBACK org=%s", org)
+        except Exception:
+            pass
+        roster = get_agent_roster()
+        items: List[Dict[str, Any]] = []
+        for slug in ["orkio", "team", "chris", "orion"]:
+            items.append(_build_roster_only_agent_payload(org, slug, dict(roster.get(slug) or {})))
+        return items
 
 
 @app.get("/api/agents/runtime-catalog")
@@ -46091,9 +46343,13 @@ def _detect_requested_agent_names(message: str) -> List[str]:
     patterns = [
         ("orkio", [r"@orkio\b", r"\borkio\b", r"host\b", r"moderador", r"moderator"]),
         ("chris", [r"@chris\b", r"\bchris\b", r"\bcfo\b", r"financeir", r"financial", r"financ"]),
-        ("orion", [r"@orion\b", r"\borion\b", r"\borion only\b", r"orion only", r"signer\s*[:=]\s*orion", r"required_signer\s*[:=]\s*orion"]),
+        ("orion", [
+            r"@orion\b", r"\borion\b", r"\boria\b", r"\bauria\b", r"\baurya\b",
+            r"\borion only\b", r"orion only", r"\bcto\b", r"noss[oa]\s+cto",
+            r"chief technology officer", r"signer\s*[:=]\s*orion", r"required_signer\s*[:=]\s*orion"
+        ]),
         ("auditor", [r"@auditor\b", r"\bauditor\b", r"technical auditor", r"auditoria t[ée]cnica", r"runtime audit"]),
-        ("systems_architect", [r"@cto\b", r"\bcto\b", r"systems architect", r"system architect"]),
+        ("systems_architect", [r"systems architect", r"system architect"]),
         ("ux_frontend", [r"ux/frontend", r"ux_frontend", r"ux frontend", r"@ux\s+frontend\b", r"frontend ux", r"@ux\b", r"@frontend\b"]),
     ]
     for name, pats in patterns:
@@ -46148,7 +46404,7 @@ def _explicit_agent_override(db: Session, org: str, text: str) -> List[Agent]:
     requested: List[str] = []
 
     patterns = {
-        "Orion": ["orion", "cto", "@orion"],
+        "Orion": ["orion", "oria", "auria", "aurya", "cto", "nossa cto", "nosso cto", "@orion"],
         "Chris": ["chris", "cfo", "@chris"],
         "Orkio": ["orkio", "@orkio"],
     }
@@ -46584,11 +46840,14 @@ def _run_realtime_multi_agent_turn(
         slug = _canonical_dispatch_specialist_slug(ag_name)
         if slug:
             alias_to_agent.setdefault(slug, ag)
-        if slug == "auditor":
+        if slug == "orion":
+            for extra in ("orion", "oria", "auria", "aurya", "cto", "nosso cto", "nossa cto", "chief technology officer", "orion_cto", "orion cto"):
+                alias_to_agent.setdefault(extra, ag)
+        elif slug == "auditor":
             for extra in ("auditor", "technical_auditor", "technical auditor", "runtime_auditor", "runtime auditor"):
                 alias_to_agent.setdefault(extra, ag)
-        elif slug == "cto":
-            for extra in ("cto", "systems_architect", "systems architect", "cto_delegate", "cto delegate"):
+        elif slug == "systems_architect":
+            for extra in ("systems_architect", "systems architect", "cto_delegate", "cto delegate"):
                 alias_to_agent.setdefault(extra, ag)
         elif slug == "ux_frontend":
             for extra in ("ux_frontend", "ux/frontend", "ux frontend", "frontend ux", "ux", "frontend"):
