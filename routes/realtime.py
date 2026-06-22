@@ -15,6 +15,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -50,10 +51,16 @@ except Exception:  # pragma: no cover
         language_profile: Optional[str] = None
         language: Optional[str] = None
         agent_id: Optional[str] = None
+        agent_ids: Optional[Any] = None
         thread_id: Optional[str] = None
+        dest_mode: Optional[str] = None
+        visible_agent: Optional[str] = None
+        target_agent_slug: Optional[str] = None
+        requested_agent_names: Optional[Any] = None
 
     class RealtimeStartReq(BaseModel):
         agent_id: Optional[str] = None
+        agent_ids: Optional[Any] = None
         thread_id: Optional[str] = None
         voice: Optional[str] = None
         model: Optional[str] = None
@@ -62,6 +69,10 @@ except Exception:  # pragma: no cover
         response_profile: Optional[str] = None
         language_profile: Optional[str] = None
         language: Optional[str] = None
+        dest_mode: Optional[str] = None
+        visible_agent: Optional[str] = None
+        target_agent_slug: Optional[str] = None
+        requested_agent_names: Optional[Any] = None
 
     class RealtimeEventIn(BaseModel):
         name: Optional[str] = None
@@ -883,16 +894,241 @@ def _extract_secret_value(secret_obj: Any) -> Tuple[Optional[str], Any]:
     return value, _json_safe(session)
 
 
+def _coerce_realtime_list(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        items = value
+    elif isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return []
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                items = parsed
+            else:
+                items = [raw]
+        except Exception:
+            items = re.split(r"[;,|]", raw)
+    else:
+        items = [value]
+
+    out: List[str] = []
+    for item in items:
+        text = str(item or "").strip()
+        if text and text not in out:
+            out.append(text)
+    return out
+
+
+def _normalize_realtime_agent_slug(value: Any, *, default: str = "") -> str:
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return default
+
+    simplified = (
+        raw
+        .replace("@", " ")
+        .replace("ó", "o")
+        .replace("ò", "o")
+        .replace("õ", "o")
+        .replace("ô", "o")
+        .replace("á", "a")
+        .replace("à", "a")
+        .replace("ã", "a")
+        .replace("â", "a")
+        .replace("é", "e")
+        .replace("ê", "e")
+        .replace("í", "i")
+        .replace("ú", "u")
+        .replace("ç", "c")
+    )
+    compact = re.sub(r"[^a-z0-9]+", " ", simplified).strip()
+
+    # STT/transcription aliases observed during Daniel's realtime tests.
+    if any(token in compact for token in ("orion", "oria", "auria", "aurya", "arian", "aryan", "orlan", "warren")):
+        return "orion"
+    if "cto" in compact or "tecnico" in compact or "technical" in compact:
+        return "orion"
+    if any(token in compact for token in ("chris", "cris", "cfo", "financeiro", "financial")):
+        return "chris"
+    if any(token in compact for token in ("team", "time", "equipe", "squad", "war room", "warroom")):
+        return "team"
+    if any(token in compact for token in ("orkio", "ork", "patroai")):
+        return "orkio"
+
+    return default
+
+
+def _agent_display_name_from_slug(slug: str) -> str:
+    return {
+        "orion": "Orion",
+        "chris": "Chris",
+        "team": "Team",
+        "orkio": "Orkio",
+    }.get(str(slug or "").strip().lower(), "Orkio")
+
+
+def _find_agent_row_by_hint(deps: SimpleNamespace, db: Any, org: str, hint: str) -> Any:
+    Agent = getattr(deps, "Agent", None)
+    if db is None or Agent is None or select is None or not hint:
+        return None
+
+    raw = str(hint or "").strip()
+    slug = _normalize_realtime_agent_slug(raw, default="")
+    candidates = [raw]
+    if slug:
+        candidates.extend([slug, _agent_display_name_from_slug(slug)])
+
+    seen: List[str] = []
+    for item in candidates:
+        item = str(item or "").strip()
+        if item and item not in seen:
+            seen.append(item)
+
+    for candidate in seen:
+        try:
+            row = db.execute(
+                select(Agent).where(
+                    Agent.org_slug == org,
+                    Agent.id == candidate,
+                ).limit(1)
+            ).scalar_one_or_none()
+            if row:
+                return row
+        except Exception:
+            pass
+
+    for candidate in seen:
+        try:
+            row = db.execute(
+                select(Agent).where(
+                    Agent.org_slug == org,
+                    Agent.name.ilike(candidate),
+                ).limit(1)
+            ).scalar_one_or_none()
+            if row:
+                return row
+        except Exception:
+            pass
+
+    return None
+
+
+def _agent_row_slug(row: Any, fallback: str = "") -> str:
+    if not row:
+        return fallback
+    for key in ("slug", "agent_slug", "code", "key", "name", "id"):
+        slug = _normalize_realtime_agent_slug(_safe_getattr(row, key, ""), default="")
+        if slug:
+            return slug
+    return fallback
+
+
+def _resolve_realtime_agent_context(
+    deps: SimpleNamespace,
+    db: Any,
+    *,
+    org: str,
+    body: Any,
+    explicit_agent_id: Optional[str],
+) -> Dict[str, Any]:
+    dest_mode = str(_safe_getattr(body, "dest_mode", "") or "").strip().lower()
+    visible_agent = str(_safe_getattr(body, "visible_agent", "") or "").strip()
+    target_agent_slug = str(_safe_getattr(body, "target_agent_slug", "") or "").strip()
+    requested_names = _coerce_realtime_list(_safe_getattr(body, "requested_agent_names", None))
+    agent_ids = _coerce_realtime_list(_safe_getattr(body, "agent_ids", None))
+
+    hints: List[str] = []
+    for item in (target_agent_slug, visible_agent, explicit_agent_id):
+        if item:
+            hints.append(str(item))
+    hints.extend(agent_ids)
+    hints.extend(requested_names)
+
+    slug = ""
+    row = None
+    for hint in hints:
+        slug = _normalize_realtime_agent_slug(hint, default="")
+        row = _find_agent_row_by_hint(deps, db, org, hint)
+        if row:
+            slug = _agent_row_slug(row, fallback=slug)
+        if slug:
+            break
+
+    if not slug:
+        if dest_mode == "team":
+            slug = "team"
+        else:
+            slug = "orkio"
+
+    display_name = _agent_display_name_from_slug(slug)
+    row_id = str(_safe_getattr(row, "id", "") or "").strip() if row else ""
+    row_name = str(_safe_getattr(row, "name", "") or "").strip() if row else ""
+
+    return {
+        "slug": slug,
+        "display_name": display_name,
+        "agent_id": row_id or (explicit_agent_id if slug != "team" else None),
+        "agent_name": row_name or display_name,
+        "dest_mode": dest_mode or ("team" if slug == "team" else "single"),
+        "visible_agent": visible_agent or display_name,
+        "target_agent_slug": target_agent_slug or slug,
+        "requested_agent_names": requested_names,
+        "agent_ids": agent_ids,
+    }
+
+
+def _build_realtime_agent_identity_block(agent_context: Optional[Dict[str, Any]] = None) -> str:
+    ctx = agent_context if isinstance(agent_context, dict) else {}
+    slug = str(ctx.get("slug") or "orkio").strip().lower()
+    name = _agent_display_name_from_slug(slug)
+
+    role_line = {
+        "orion": "Você é Orion, agente interno CTO técnico da Patroai, responsável por diagnóstico técnico, arquitetura, bugs, logs, deploy, realtime e orquestração.",
+        "chris": "Você é Chris, agente interno financeiro/estratégico da Patroai, responsável por análise financeira, precificação, viabilidade, riscos comerciais e estratégia de receita.",
+        "team": "Você está no modo Team, atuando como coordenador de sala executiva multiagente da Patroai.",
+        "orkio": "Você é Orkio, agente executivo principal da plataforma Patroai.",
+    }.get(slug, "Você é Orkio, agente executivo principal da plataforma Patroai.")
+
+    if slug == "team":
+        direct_identity = (
+            "- Se o usuário perguntar quem está falando, diga que é o modo Team coordenando a conversa, e identifique o agente que assumirá cada resposta quando houver handoff.\n"
+            "- Não finja que vários agentes falaram se não houve troca técnica de speaker ou resposta registrada.\n"
+            "- Para acionar Orion/Chris, sinalize o handoff de forma clara e responda como o agente correto apenas quando a sessão estiver instruída para isso."
+        )
+    else:
+        direct_identity = (
+            f"- Se o usuário perguntar quem está falando, responda: 'Eu sou {name}.'.\n"
+            f"- O speaker visual, a resposta e a persistência devem ser coerentes com {name}.\n"
+            f"- Não diga que você é Orkio quando a identidade ativa for {name}, exceto para explicar que Orkio é a plataforma/agente coordenador."
+        )
+
+    return (
+        "EFATA777 V6 — IDENTIDADE ATIVA E VERDADE OPERACIONAL DO REALTIME\n"
+        f"{role_line}\n"
+        f"- Identidade ativa: {name}.\n"
+        f"- Slug ativo: {slug}.\n"
+        f"{direct_identity}\n"
+        "- Não afirme que executou auditoria, abriu War Room, acionou agentes, enviou push, fez deploy, commit, PR ou integração se a ação não estiver tecnicamente confirmada por ferramenta, endpoint ou log.\n"
+        "- Quando algo for apenas proposta, intenção ou plano, diga explicitamente que é proposta/intenção/plano.\n"
+        "- Para Daniel admin/founder, mantenha tom executivo, objetivo, técnico e honesto."
+    )
+
+
 def _build_instructions(
     deps: SimpleNamespace,
     *,
     mode: str,
     response_profile: str,
     language_profile: str,
+    agent_context: Optional[Dict[str, Any]] = None,
 ) -> str:
     builder = getattr(deps, "build_summit_instructions", None)
     sensitive_guard = getattr(deps, "_sensitive_guard_instruction", None)
 
+    identity_block = _build_realtime_agent_identity_block(agent_context)
     instructions = ""
 
     if callable(builder):
@@ -900,12 +1136,7 @@ def _build_instructions(
             instructions = str(
                 builder(
                     mode=mode,
-                    agent_instructions=(
-                        "IDENTIDADE OBRIGATÓRIA DO REALTIME\n"
-                        "- Você é Orkio, agente da plataforma PatroAI.\n"
-                        "- Responda sempre em português do Brasil.\n"
-                        "- Seja claro, executivo, útil e seguro.\n"
-                    ),
+                    agent_instructions=identity_block,
                     language_profile=language_profile,
                     response_profile=response_profile,
                 )
@@ -916,9 +1147,13 @@ def _build_instructions(
 
     if not instructions:
         instructions = (
-            "Você é Orkio, agente executivo da plataforma PatroAI. "
-            "Responda sempre em português do Brasil, com clareza, objetividade e segurança."
+            identity_block
+            + "\n\nResponda sempre em português do Brasil, com clareza, objetividade, segurança operacional e sem inventar evidência."
         )
+    elif identity_block not in instructions:
+        # If the summit builder returns a generic Orkio prompt, the active agent
+        # identity overlay must still win for Realtime.
+        instructions = f"{instructions}\n\n{identity_block}"
 
     if callable(sensitive_guard):
         try:
@@ -1406,6 +1641,53 @@ def _rtb06_insert_message(
     return False
 
 
+def _rtb06_event_agent_hint(event: Any, session_ctx: Dict[str, Any], text: str) -> str:
+    data = _rtb06_event_dict(event)
+    candidates: List[Any] = []
+
+    def add_from(obj: Any) -> None:
+        if not isinstance(obj, dict):
+            return
+        for key in (
+            "agent_name",
+            "speaker_name",
+            "visible_agent",
+            "active_agent",
+            "target_agent_slug",
+            "agent_id",
+            "speaker",
+        ):
+            value = obj.get(key)
+            if value:
+                candidates.append(value)
+
+    add_from(data)
+    add_from(data.get("meta") if isinstance(data, dict) else None)
+    add_from(data.get("payload") if isinstance(data, dict) else None)
+    add_from(session_ctx)
+
+    for candidate in candidates:
+        slug = _normalize_realtime_agent_slug(candidate, default="")
+        if slug:
+            return slug
+
+    # Only infer from the assistant text when it clearly declares the identity.
+    raw = str(text or "").strip().lower()
+    if re.search(r"\b(sou|eu sou|aqui e|aqui é|fala)\s+(o\s+)?orion\b", raw, re.I):
+        return "orion"
+    if re.search(r"\b(sou|eu sou|aqui e|aqui é|fala)\s+(a\s+)?chris\b", raw, re.I):
+        return "chris"
+    if re.search(r"\b(sou|eu sou|aqui e|aqui é|fala)\s+(o\s+)?team\b", raw, re.I):
+        return "team"
+
+    return "orkio"
+
+
+def _rtb06_agent_name_for_event(event: Any, session_ctx: Dict[str, Any], text: str) -> str:
+    slug = _rtb06_event_agent_hint(event, session_ctx, text)
+    return _agent_display_name_from_slug(slug)
+
+
 def _rtb06_promote_realtime_finals_to_messages(
     deps: SimpleNamespace,
     db: Any,
@@ -1463,7 +1745,7 @@ def _rtb06_promote_realtime_finals_to_messages(
             user_id=effective_user_id,
             role=role,
             content=text,
-            agent_name=("Orkio" if role == "assistant" else None),
+            agent_name=(_rtb06_agent_name_for_event(ev, session_ctx, text) if role == "assistant" else None),
             session_id=session_id,
             event_name=event_key,
             event_hash=event_hash,
@@ -1554,14 +1836,24 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             or "pt"
         ).strip().lower() or "pt"
 
+        thread_id = str(_safe_getattr(body, "thread_id", "") or "").strip()
+        agent_id = str(_safe_getattr(body, "agent_id", "") or "").strip() or None
+        agent_context = _resolve_realtime_agent_context(
+            deps,
+            db,
+            org=org,
+            body=body,
+            explicit_agent_id=agent_id,
+        )
+
         base_instructions = _build_instructions(
             deps,
             mode=mode,
             response_profile=response_profile,
             language_profile=language_profile,
+            agent_context=agent_context,
         )
 
-        thread_id = str(_safe_getattr(body, "thread_id", "") or "").strip()
         overlay, overlay_meta = _build_realtime_context_overlay(
             deps,
             db,
@@ -1590,7 +1882,8 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 "rtb03": True,
                 "rtb06": True,
                 "context": overlay_meta,
-                "serialization_safe": "RTB03_RTB06",
+                "agent": _json_safe(agent_context),
+                "serialization_safe": "RTB03_RTB06_EFATA777_V6",
             }
         )
 
@@ -1627,12 +1920,21 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
 
         thread_id = str(_safe_getattr(body, "thread_id", "") or "").strip() or _new_id("thread")
         agent_id = str(_safe_getattr(body, "agent_id", "") or "").strip() or None
+        agent_context = _resolve_realtime_agent_context(
+            deps,
+            db,
+            org=org,
+            body=body,
+            explicit_agent_id=agent_id,
+        )
+        agent_id = str(agent_context.get("agent_id") or agent_id or "").strip() or None
 
         base_instructions = _build_instructions(
             deps,
             mode=mode,
             response_profile=response_profile,
             language_profile=language_profile,
+            agent_context=agent_context,
         )
 
         overlay, overlay_meta = _build_realtime_context_overlay(
@@ -1672,11 +1974,12 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         usage_advisory = _build_esg_usage_advisory()
 
         session_meta = {
-            "patch": "RTB03_RTB06",
+            "patch": "RTB03_RTB06_EFATA777_V6",
             "mode": mode,
             "response_profile": response_profile,
             "language_profile": language_profile,
             "context": overlay_meta,
+            "agent": _json_safe(agent_context),
         }
 
         _maybe_persist_realtime_session(
@@ -1695,11 +1998,13 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         try:
             logger.warning(
                 "RTB03_REALTIME_START_OK user_id=%s org=%s session_id=%s thread_id=%s "
-                "admin=%s founder_identity=%s thread_context=%s messages=%s",
+                "agent=%s dest_mode=%s admin=%s founder_identity=%s thread_context=%s messages=%s",
                 uid,
                 org,
                 session_id,
                 thread_id,
+                agent_context.get("display_name"),
+                agent_context.get("dest_mode"),
                 bool(is_admin),
                 bool(overlay_meta.get("founder_identity_injected")),
                 bool(overlay_meta.get("thread_context_loaded")),
@@ -1724,7 +2029,8 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 "rtb03": True,
                 "rtb06": True,
                 "context": overlay_meta,
-                "serialization_safe": "RTB03_RTB06",
+                "agent": _json_safe(agent_context),
+                "serialization_safe": "RTB03_RTB06_EFATA777_V6",
                 "timebox_policy": "advisory_only_esg",
             }
         )
