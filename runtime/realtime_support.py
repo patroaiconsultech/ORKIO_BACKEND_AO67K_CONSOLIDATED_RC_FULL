@@ -17,19 +17,33 @@ from pydantic import BaseModel, Field
 
 
 class RealtimeClientSecretReq(BaseModel):
-    """Request an ephemeral client secret for the OpenAI Realtime API."""
+    """Request an ephemeral client secret for the OpenAI Realtime API.
+
+    EFATA777 V6:
+    The frontend can now send the active AppConsole destination to Realtime.
+    These fields are optional and fail-open, but preserving them prevents Pydantic
+    from silently dropping the selected agent/squad state.
+    """
 
     agent_id: Optional[str] = None
+    thread_id: Optional[str] = None
     voice: str = Field(default="cedar", description="Realtime voice id.")
     model: str = Field(default="gpt-realtime-mini", description="Realtime model name.")
     ttl_seconds: int = Field(default=600, ge=10, le=7200, description="Client secret TTL in seconds.")
     mode: Optional[str] = Field(default=None, description="platform|summit")
     response_profile: Optional[str] = Field(default=None, description="default|stage")
     language_profile: Optional[str] = Field(default=None, description="auto|pt-BR|en")
+    language: Optional[str] = Field(default=None, description="Alias for language_profile.")
+    dest_mode: Optional[str] = Field(default=None, description="team|single|multi")
+    visible_agent: Optional[str] = Field(default=None, description="Human-visible active agent name.")
+    target_agent_slug: Optional[str] = Field(default=None, description="Canonical requested agent slug.")
+    agent_ids: Optional[Any] = Field(default=None, description="Optional multi-agent target ids/slugs.")
+    requested_agent_names: Optional[Any] = Field(default=None, description="Optional raw requested agent names.")
 
 
 class RealtimeStartReq(BaseModel):
     agent_id: Optional[str] = None
+    agent_ids: Optional[Any] = None
     thread_id: Optional[str] = None
     voice: str = Field(default="cedar")
     model: str = Field(default="gpt-realtime-mini")
@@ -37,6 +51,11 @@ class RealtimeStartReq(BaseModel):
     mode: Optional[str] = Field(default=None, description="platform|summit")
     response_profile: Optional[str] = Field(default=None, description="default|stage")
     language_profile: Optional[str] = Field(default=None, description="auto|pt-BR|en")
+    language: Optional[str] = Field(default=None, description="Alias for language_profile.")
+    dest_mode: Optional[str] = Field(default=None, description="team|single|multi")
+    visible_agent: Optional[str] = Field(default=None, description="Human-visible active agent name.")
+    target_agent_slug: Optional[str] = Field(default=None, description="Canonical requested agent slug.")
+    requested_agent_names: Optional[Any] = Field(default=None, description="Optional raw requested agent names.")
 
 
 class RealtimeEventIn(BaseModel):
