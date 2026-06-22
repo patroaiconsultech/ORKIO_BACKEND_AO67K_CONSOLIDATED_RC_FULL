@@ -116,6 +116,19 @@ except Exception:  # pragma: no cover
 
 
 try:
+    from app.runtime.realtime_meeting_orchestrator import (  # type: ignore
+        build_meeting_directive,
+        summarize_directive_for_log,
+    )
+except Exception:  # pragma: no cover
+    def build_meeting_directive(*args: Any, **kwargs: Any) -> Optional[Dict[str, Any]]:
+        return None
+
+    def summarize_directive_for_log(directive: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        return {"status": "unavailable" if directive is None else "unknown"}
+
+
+try:
     from app.runtime.realtime_session_builder import (  # type: ignore
         build_openai_realtime_client_secret_payload,
         realtime_session_debug_snapshot,
@@ -1483,6 +1496,9 @@ def _rtb06_get_session_context(
         "user_id": fallback_user_id,
         "thread_id": None,
         "agent_id": None,
+        "agent_slug": None,
+        "dest_mode": None,
+        "meta": {},
         "found": False,
     }
     RealtimeSession = getattr(deps, "RealtimeSession", None)
@@ -1501,6 +1517,36 @@ def _rtb06_get_session_context(
         context["user_id"] = str(_safe_getattr(rs, "user_id", None) or context["user_id"] or "") or None
         context["thread_id"] = str(_safe_getattr(rs, "thread_id", None) or "") or None
         context["agent_id"] = str(_safe_getattr(rs, "agent_id", None) or "") or None
+
+        meta_raw = _safe_getattr(rs, "meta", None)
+        meta_obj: Dict[str, Any] = {}
+        if isinstance(meta_raw, dict):
+            meta_obj = meta_raw
+        elif isinstance(meta_raw, str) and meta_raw.strip():
+            try:
+                parsed_meta = json.loads(meta_raw)
+                if isinstance(parsed_meta, dict):
+                    meta_obj = parsed_meta
+            except Exception:
+                meta_obj = {}
+        context["meta"] = meta_obj
+
+        agent_meta = meta_obj.get("agent") if isinstance(meta_obj.get("agent"), dict) else {}
+        agent_slug = _normalize_realtime_agent_slug(
+            agent_meta.get("slug")
+            or agent_meta.get("agent_slug")
+            or agent_meta.get("display_name")
+            or agent_meta.get("name")
+            or agent_meta.get("agent_id")
+            or context.get("agent_id")
+            or "",
+            default="",
+        )
+        if agent_slug:
+            context["agent_slug"] = agent_slug
+        dest_mode = str(meta_obj.get("dest_mode") or agent_meta.get("dest_mode") or "").strip().lower()
+        if dest_mode:
+            context["dest_mode"] = dest_mode
     except Exception:
         return context
 
@@ -1558,7 +1604,7 @@ def _rtb06_create_message_instance(
     metadata_json = json.dumps(
         {
             "source": "realtime",
-            "patch": "RTB06",
+            "patch": "RTB06_V8",
             "realtime_session_id": session_id,
             "event_name": event_name,
             "event_hash": event_hash,
@@ -1848,7 +1894,7 @@ def _rtb07_orchestration_bridge_candidate(
         "route_family": "realtime_voice_orchestration_audit",
         "target_agent": "Orion",
         "write_allowed": False,
-        "patch": "EFATA777_V7",
+        "patch": "EFATA777_V8",
     }
 
 
@@ -1908,6 +1954,12 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         org = _resolve_org_safe(deps, user, x_org_slug)
         db_user = _lookup_db_user(deps, db, user, org)
         uid = str(_safe_getattr(user, "sub", None) or _safe_getattr(user, "id", "") or "").strip() or None
+        is_admin = _is_admin_user(user, db_user)
+        if is_admin:
+            try:
+                body.client_controlled_response = True
+            except Exception:
+                pass
 
         mode = str(_safe_getattr(body, "mode", "") or "platform").strip().lower()
         response_profile = str(_safe_getattr(body, "response_profile", "") or "natural").strip().lower()
@@ -1964,7 +2016,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 "rtb06": True,
                 "context": overlay_meta,
                 "agent": _json_safe(agent_context),
-                "serialization_safe": "RTB03_RTB06_EFATA777_V7",
+                "serialization_safe": "RTB03_RTB06_EFATA777_V8",
             }
         )
 
@@ -1979,6 +2031,11 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         db_user = _lookup_db_user(deps, db, user, org)
         uid = str(_safe_getattr(user, "sub", None) or _safe_getattr(user, "id", "") or "").strip() or None
         is_admin = _is_admin_user(user, db_user)
+        if is_admin:
+            try:
+                body.client_controlled_response = True
+            except Exception:
+                pass
 
         mode = str(_safe_getattr(body, "mode", "") or "platform").strip().lower()
         response_profile = str(_safe_getattr(body, "response_profile", "") or "natural").strip().lower()
@@ -2055,12 +2112,14 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         usage_advisory = _build_esg_usage_advisory()
 
         session_meta = {
-            "patch": "RTB03_RTB06_EFATA777_V7",
+            "patch": "RTB03_RTB06_EFATA777_V8",
             "mode": mode,
             "response_profile": response_profile,
             "language_profile": language_profile,
             "context": overlay_meta,
             "agent": _json_safe(agent_context),
+            "dest_mode": str(agent_context.get("dest_mode") or _safe_getattr(body, "dest_mode", "") or "").strip().lower(),
+            "meeting_orchestrator": {"enabled": True, "kind": "turn_based"},
             "client_controlled_response": bool(_safe_getattr(body, "client_controlled_response", False)),
         }
 
@@ -2112,7 +2171,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 "rtb06": True,
                 "context": overlay_meta,
                 "agent": _json_safe(agent_context),
-                "serialization_safe": "RTB03_RTB06_EFATA777_V7",
+                "serialization_safe": "RTB03_RTB06_EFATA777_V8",
                 "timebox_policy": "advisory_only_esg",
             }
         )
@@ -2156,6 +2215,40 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             promotion=promotion,
         )
 
+        meeting_directive = None
+        try:
+            session_ctx = _rtb06_get_session_context(
+                deps,
+                db,
+                session_id=session_id,
+                fallback_org=org,
+                fallback_user_id=uid,
+            )
+            meeting_directive = build_meeting_directive(
+                session_id=session_id,
+                events=events,
+                current_agent_slug=(
+                    session_ctx.get("agent_slug")
+                    or session_ctx.get("agent_id")
+                    or ""
+                ),
+                dest_mode=session_ctx.get("dest_mode") or "",
+                promotion=promotion,
+            )
+            try:
+                logger.warning(
+                    "EFATA777_V8_MEETING_DIRECTIVE %s",
+                    json.dumps(summarize_directive_for_log(meeting_directive), ensure_ascii=False, sort_keys=True),
+                )
+            except Exception:
+                pass
+        except Exception as meeting_err:
+            meeting_directive = None
+            try:
+                logger.warning("EFATA777_V8_MEETING_DIRECTIVE_FAILED %s", meeting_err)
+            except Exception:
+                pass
+
         return {
             "ok": True,
             "session_id": session_id,
@@ -2163,8 +2256,10 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             "rtb03": True,
             "rtb06": True,
             "rtb07": True,
+            "rtb08_meeting": True,
             "finals_promoted": promotion,
             "rtb02_bridge": bridge,
+            "meeting_orchestrator": meeting_directive,
         }
 
     @router.get("/api/realtime/{session_id}")
