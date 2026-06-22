@@ -1538,6 +1538,12 @@ PATROAI_ADDRESS = os.getenv("PATROAI_ADDRESS", "Rua General João Manuel, 207, S
 PATROAI_CONTACT_EMAIL = os.getenv("PATROAI_CONTACT_EMAIL", "contato@patroai.com")
 PATROAI_PRIVACY_EMAIL = os.getenv("PATROAI_PRIVACY_EMAIL", "privacidade@patroai.com")
 
+# RTB-10 HF8 — public landing intake notification routing.
+# The form must always persist first. Email notification is best-effort and must never block the user.
+PATROAI_INTAKE_NOTIFY_TO = os.getenv("PATROAI_INTAKE_NOTIFY_TO", PATROAI_CONTACT_EMAIL).strip() or PATROAI_CONTACT_EMAIL
+PATROAI_PRIVACY_NOTIFY_TO = os.getenv("PATROAI_PRIVACY_NOTIFY_TO", PATROAI_PRIVACY_EMAIL).strip() or PATROAI_PRIVACY_EMAIL
+PATROAI_INTAKE_NOTIFY_ENABLED = os.getenv("PATROAI_INTAKE_NOTIFY_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
+
 # Usage limits for summit_standard
 SUMMIT_STD_MAX_TOKENS_PER_REQ = int(os.getenv("SUMMIT_STD_MAX_TOKENS_PER_REQ", "2000"))
 SUMMIT_STD_REALTIME_MAX_MIN_DAY = int(os.getenv("SUMMIT_STD_REALTIME_MAX_MIN_DAY", "15"))
@@ -48376,6 +48382,147 @@ def _strategic_intake_score(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {"score": score, "tier": tier, "flags": flags}
 
 
+
+def _rtb10_hf8_safe_line(value: Any, limit: int = 500) -> str:
+    text_value = str(value or "").strip()
+    text_value = re.sub(r"[\r\n\t]+", " ", text_value)
+    text_value = re.sub(r"\s+", " ", text_value).strip()
+    if len(text_value) > limit:
+        return text_value[:limit].rstrip() + "..."
+    return text_value
+
+
+def _rtb10_hf8_intake_type_label(intake_type: str, locale: str = "pt") -> str:
+    labels_pt = {
+        "company": "Empresa / Cliente",
+        "investor": "Investidor",
+        "consultant": "Consultor associado",
+    }
+    labels_en = {
+        "company": "Company / Client",
+        "investor": "Investor",
+        "consultant": "Associated consultant",
+    }
+    labels = labels_en if str(locale or "").lower().startswith("en") else labels_pt
+    return labels.get(str(intake_type or "").strip().lower(), str(intake_type or "cadastro"))
+
+
+def _rtb10_hf8_build_public_intake_notification(
+    *,
+    intake_id: str,
+    intake_type: str,
+    payload: Dict[str, Any],
+    review: Dict[str, Any],
+    request_meta: Dict[str, Any],
+) -> str:
+    submitted = dict(payload or {})
+    locale = str(request_meta.get("locale") or submitted.get("locale") or "pt").strip()
+    intake_label = _rtb10_hf8_intake_type_label(intake_type, locale)
+    flags = review.get("flags") or []
+    if not isinstance(flags, list):
+        flags = []
+
+    lines = [
+        "Novo cadastro recebido pela landing pública do Grupo Patroai.",
+        "",
+        f"Protocolo: {intake_id}",
+        f"Perfil: {intake_label}",
+        "Status inicial: under_review",
+        f"Score: {review.get('score')} / Tier: {review.get('tier')}",
+        f"Flags: {', '.join([str(x) for x in flags]) if flags else 'sem flags'}",
+        "",
+        "Dados principais:",
+        f"- Nome: {_rtb10_hf8_safe_line(submitted.get('full_name'))}",
+        f"- E-mail: {_rtb10_hf8_safe_line(submitted.get('email'))}",
+        f"- WhatsApp: {_rtb10_hf8_safe_line(submitted.get('whatsapp'))}",
+        f"- Empresa/organização: {_rtb10_hf8_safe_line(submitted.get('company'))}",
+        f"- Cargo/função: {_rtb10_hf8_safe_line(submitted.get('role'))}",
+        f"- Cidade/UF: {_rtb10_hf8_safe_line(submitted.get('city'))} / {_rtb10_hf8_safe_line(submitted.get('state'))}",
+        f"- País: {_rtb10_hf8_safe_line(submitted.get('country'))}",
+        f"- LinkedIn: {_rtb10_hf8_safe_line(submitted.get('linkedin'))}",
+        f"- Site: {_rtb10_hf8_safe_line(submitted.get('website'))}",
+        "",
+        "Campos estratégicos:",
+        f"- Segmento: {_rtb10_hf8_safe_line(submitted.get('segment'))}",
+        f"- Área de interesse: {_rtb10_hf8_safe_line(submitted.get('interest_area'))}",
+        f"- Pessoa física/jurídica: {_rtb10_hf8_safe_line(submitted.get('person_type'))}",
+        f"- Perfil/tese do investidor: {_rtb10_hf8_safe_line(submitted.get('investor_type'))}",
+        f"- Faixa/tese: {_rtb10_hf8_safe_line(submitted.get('capital_range'))}",
+        f"- Especialidade: {_rtb10_hf8_safe_line(submitted.get('expertise'))}",
+        f"- Modelo de atuação: {_rtb10_hf8_safe_line(submitted.get('engagement_model'))}",
+        f"- Disponibilidade: {_rtb10_hf8_safe_line(submitted.get('availability'))}",
+        "",
+        "Mensagem / desafio:",
+        _rtb10_hf8_safe_line(submitted.get("message") or submitted.get("challenge"), limit=1200) or "não informado",
+        "",
+        "Consentimentos:",
+        f"- Termos: {bool(submitted.get('consent_terms'))}",
+        f"- Análise de dados: {bool(submitted.get('consent_data_review'))}",
+        f"- Contato operacional: {bool(submitted.get('consent_contact'))}",
+        f"- Marketing opcional: {bool(submitted.get('consent_marketing'))}",
+        "",
+        "Contexto jurídico-operacional:",
+        f"- Termos: {TERMS_VERSION}",
+        f"- Privacidade: {PRIVACY_VERSION}",
+        f"- Cookies: {COOKIES_VERSION}",
+        f"- Controladora: {PATROAI_LEGAL_NAME}",
+        f"- CNPJ: {PATROAI_CNPJ}",
+        f"- Canal institucional: {PATROAI_CONTACT_EMAIL}",
+        f"- Canal de privacidade: {PATROAI_PRIVACY_EMAIL}",
+        "",
+        "Contexto técnico:",
+        f"- Rota: {_rtb10_hf8_safe_line(request_meta.get('route'))}",
+        f"- Origem: {_rtb10_hf8_safe_line(request_meta.get('source'))}",
+        f"- Idioma: {_rtb10_hf8_safe_line(locale)}",
+        f"- IP: {_rtb10_hf8_safe_line(request_meta.get('ip'))}",
+        f"- User-Agent: {_rtb10_hf8_safe_line(request_meta.get('user_agent'), limit=300)}",
+        "",
+        "Regra central:",
+        "Cadastro não é acesso. Cadastro é qualificação.",
+    ]
+    return "\n".join(lines)
+
+
+def _rtb10_hf8_notify_public_intake(
+    *,
+    intake_id: str,
+    intake_type: str,
+    payload: Dict[str, Any],
+    review: Dict[str, Any],
+    request_meta: Dict[str, Any],
+) -> bool:
+    if not PATROAI_INTAKE_NOTIFY_ENABLED:
+        logger.info("RTB10_HF8_INTAKE_EMAIL_SKIPPED disabled intake_id=%s", intake_id)
+        return False
+
+    recipients = _parse_email_recipients(PATROAI_INTAKE_NOTIFY_TO)
+    if not recipients:
+        logger.warning("RTB10_HF8_INTAKE_EMAIL_SKIPPED empty_recipients intake_id=%s", intake_id)
+        return False
+
+    locale = str(request_meta.get("locale") or payload.get("locale") or "pt").strip()
+    label = _rtb10_hf8_intake_type_label(intake_type, locale)
+    tier = str((review or {}).get("tier") or "n/a")
+    subject = f"Grupo Patroai | Novo cadastro {label} | {tier} | {intake_id[:8]}"
+    body = _rtb10_hf8_build_public_intake_notification(
+        intake_id=intake_id,
+        intake_type=intake_type,
+        payload=payload,
+        review=review,
+        request_meta=request_meta,
+    )
+
+    sent = _send_resend_email(recipients, _ascii_safe_text(subject), _ascii_safe_text(body))
+    logger.info(
+        "RTB10_HF8_INTAKE_EMAIL_RESULT intake_id=%s type=%s sent=%s recipients_count=%s",
+        intake_id,
+        intake_type,
+        sent,
+        len(recipients),
+    )
+    return bool(sent)
+
+
 def _rtb09hf2_present(value: Any) -> bool:
     return bool(str(value or "").strip())
 
@@ -48591,6 +48738,28 @@ def public_strategic_intake(
                 pass
             logger.exception("RTB09_MARKETING_CONSENT_INTAKE_FAILED intake_id=%s", intake_id)
 
+    # RTB-10 HF8 — best-effort internal notification.
+    # Must never block the public form response.
+    notify_sent = False
+    try:
+        notify_sent = _rtb10_hf8_notify_public_intake(
+            intake_id=intake_id,
+            intake_type=intake_type,
+            payload={**raw_payload, "intake_type": intake_type, "email": normalized_email},
+            review=review,
+            request_meta={
+                "ip": ip,
+                "user_agent": ua,
+                "received_at": now_ts(),
+                "route": "/api/public/intake",
+                "locale": inp.locale or "pt",
+                "source": inp.source or "grupo_patroai_public_landing",
+            },
+        )
+    except Exception:
+        notify_sent = False
+        logger.exception("RTB10_HF8_INTAKE_EMAIL_NOTIFY_FAILED intake_id=%s", intake_id)
+
     try:
         audit(
             db,
@@ -48607,6 +48776,7 @@ def public_strategic_intake(
                 "score": review.get("score"),
                 "tier": review.get("tier"),
                 "access_granted": False,
+                "email_notification_sent": bool(notify_sent),
             },
         )
     except Exception:
@@ -48634,6 +48804,10 @@ def public_strategic_intake(
             "terms": TERMS_VERSION,
             "privacy": PRIVACY_VERSION,
             "cookies": COOKIES_VERSION,
+        },
+        "notification": {
+            "internal_email_attempted": bool(PATROAI_INTAKE_NOTIFY_ENABLED),
+            "internal_email_sent": bool(notify_sent),
         },
     }
 
