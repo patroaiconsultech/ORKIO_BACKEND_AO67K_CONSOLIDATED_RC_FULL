@@ -38,6 +38,7 @@ class RealtimeClientSecretReq(BaseModel):
     visible_agent: Optional[str] = Field(default=None, description="Human-visible active agent name.")
     target_agent_slug: Optional[str] = Field(default=None, description="Canonical requested agent slug.")
     agent_ids: Optional[Any] = Field(default=None, description="Optional multi-agent target ids/slugs.")
+    client_controlled_response: Optional[bool] = Field(default=None, description="When true, backend starts Realtime with server_vad.create_response=false so frontend can route/handoff before speaking.")
     requested_agent_names: Optional[Any] = Field(default=None, description="Optional raw requested agent names.")
 
 
@@ -55,6 +56,7 @@ class RealtimeStartReq(BaseModel):
     dest_mode: Optional[str] = Field(default=None, description="team|single|multi")
     visible_agent: Optional[str] = Field(default=None, description="Human-visible active agent name.")
     target_agent_slug: Optional[str] = Field(default=None, description="Canonical requested agent slug.")
+    client_controlled_response: Optional[bool] = Field(default=None, description="When true, backend starts Realtime with server_vad.create_response=false so frontend can route/handoff before speaking.")
     requested_agent_names: Optional[Any] = Field(default=None, description="Optional raw requested agent names.")
 
 
