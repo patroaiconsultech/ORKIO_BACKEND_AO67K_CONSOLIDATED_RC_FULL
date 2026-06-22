@@ -1528,7 +1528,15 @@ def _summit_access_expired(payload_or_user: Any) -> bool:
 
 TURNSTILE_SECRET = os.getenv("TURNSTILE_SECRET_KEY", "").strip()
 MSG_MAX_CHARS = int(os.getenv("MSG_MAX_CHARS", "4000"))
-TERMS_VERSION = "2026-03-01"
+TERMS_VERSION = os.getenv("TERMS_VERSION", "RTB10-v1.0-2026-06-20")
+PRIVACY_VERSION = os.getenv("PRIVACY_VERSION", "RTB10-v1.0-2026-06-20")
+COOKIES_VERSION = os.getenv("COOKIES_VERSION", "RTB10-v1.0-2026-06-20")
+PATROAI_LEGAL_NAME = os.getenv("PATROAI_LEGAL_NAME", "PATROAI CONSULTECH LTDA")
+PATROAI_TRADE_NAME = os.getenv("PATROAI_TRADE_NAME", "Grupo Patroai")
+PATROAI_CNPJ = os.getenv("PATROAI_CNPJ", "45.860.926/0001-95")
+PATROAI_ADDRESS = os.getenv("PATROAI_ADDRESS", "Rua General João Manuel, 207, Sobreloja 2 — Centro Histórico — Porto Alegre/RS — Brasil")
+PATROAI_CONTACT_EMAIL = os.getenv("PATROAI_CONTACT_EMAIL", "contato@patroai.com")
+PATROAI_PRIVACY_EMAIL = os.getenv("PATROAI_PRIVACY_EMAIL", "privacidade@patroai.com")
 
 # Usage limits for summit_standard
 SUMMIT_STD_MAX_TOKENS_PER_REQ = int(os.getenv("SUMMIT_STD_MAX_TOKENS_PER_REQ", "2000"))
@@ -48506,7 +48514,38 @@ def public_strategic_intake(
             "ip": ip,
             "user_agent": ua,
             "received_at": now_ts(),
+            "route": "/api/public/intake",
+            "locale": inp.locale or "pt",
+            "source": inp.source or "grupo_patroai_public_landing",
             "terms_version": TERMS_VERSION,
+            "privacy_version": PRIVACY_VERSION,
+            "cookies_version": COOKIES_VERSION,
+            "legal_identity": {
+                "trade_name": PATROAI_TRADE_NAME,
+                "legal_name": PATROAI_LEGAL_NAME,
+                "cnpj": PATROAI_CNPJ,
+                "address": PATROAI_ADDRESS,
+                "contact_email": PATROAI_CONTACT_EMAIL,
+                "privacy_email": PATROAI_PRIVACY_EMAIL,
+            },
+        },
+        "consent_record": {
+            "version": TERMS_VERSION,
+            "privacy_version": PRIVACY_VERSION,
+            "cookies_version": COOKIES_VERSION,
+            "consent_terms": bool(inp.consent_terms),
+            "consent_data_review": bool(inp.consent_data_review),
+            "consent_contact": bool(inp.consent_contact),
+            "consent_marketing": bool(inp.consent_marketing),
+            "marketing_is_optional": True,
+            "contact_is_operational": True,
+            "controller": {
+                "trade_name": PATROAI_TRADE_NAME,
+                "legal_name": PATROAI_LEGAL_NAME,
+                "cnpj": PATROAI_CNPJ,
+                "contact_email": PATROAI_CONTACT_EMAIL,
+                "privacy_email": PATROAI_PRIVACY_EMAIL,
+            },
         },
     }
 
@@ -48590,6 +48629,11 @@ def public_strategic_intake(
         "message": _strategic_intake_public_message(inp),
         "review": {
             "tier": review.get("tier"),
+        },
+        "legal_versions": {
+            "terms": TERMS_VERSION,
+            "privacy": PRIVACY_VERSION,
+            "cookies": COOKIES_VERSION,
         },
     }
 
