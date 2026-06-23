@@ -135,6 +135,71 @@ from .runtime.public_orion_policy import (
     build_public_orion_policy_decision,
     build_public_orion_stream_payload,
 )
+
+# AO-GLIP03B — fail-open Aria runtime lock helper.
+# Keeps GLIP/Aria persona logic outside this already large main.py.
+# If the helper file is not deployed yet, the fallback below keeps the backend bootable.
+try:
+    from .runtime.glip_aria_runtime import (
+        glip_aria_is_request,
+        glip_aria_route_plan,
+        glip_aria_runtime_hints,
+        glip_aria_build_system_prompt,
+        glip_aria_build_direct_answer,
+        glip_aria_clean_answer,
+    )
+except Exception:  # pragma: no cover - partial deploy protection
+    def glip_aria_is_request(*args, **kwargs):
+        return False
+
+    def glip_aria_route_plan():
+        return {
+            "requested_agent": "Aria",
+            "resolved_agent": "Aria",
+            "route_family": "glip_aria_architecture",
+            "route_reason": "glip_aria_fallback",
+            "blocked_routes": ["orkio_public_identity", "technical_audit", "chris_valuation", "orion_governance"],
+        }
+
+    def glip_aria_runtime_hints():
+        return {
+            "routing": {
+                "routing_source": "glip_aria_runtime_lock_fallback",
+                "route_applied": True,
+                "execution_lifecycle": "completed",
+                "requested_agent": "Aria",
+                "resolved_agent": "Aria",
+                "route_family": "glip_aria_architecture",
+                "route_reason": "persona_lock",
+                "blocked_routes": ["orkio_public_identity", "technical_audit", "chris_valuation", "orion_governance"],
+            },
+            "glip_aria": {"persona_lock": True},
+        }
+
+    def glip_aria_build_system_prompt():
+        return (
+            "Você é Aria, a inteligência operacional da GLIP Arquitetura. "
+            "Responda como especialista em arquitetura comercial, briefing, propostas, contratos, projetos e obras. "
+            "Não exponha Orkio, PatroAI, Chris, Orion, Team, router, runtime, auditoria técnica ou códigos internos."
+        )
+
+    def glip_aria_build_direct_answer(message=""):
+        return (
+            "Sou Aria, a inteligência operacional da GLIP para arquitetura comercial. "
+            "Minha especialidade é organizar briefing, escopo, propostas, contratos, documentos, cronogramas, fornecedores, aprovações, riscos e acompanhamento de obras. "
+            "Posso começar estruturando o projeto, a fase atual, pendências e o próximo passo com o cliente."
+        )
+
+    def glip_aria_clean_answer(text, *, fallback_message=""):
+        raw = str(text or "").strip()
+        if not raw:
+            return fallback_message or glip_aria_build_direct_answer("")
+        lowered = raw.lower()
+        forbidden = ["sou orkio", "patroai", "auditoria focada", "ao20", "technical_audit", "router precedence", "chris", "orion", "team"]
+        if any(x in lowered for x in forbidden):
+            return fallback_message or glip_aria_build_direct_answer("")
+        return raw.replace("Orkio", "Aria").replace("PatroAI", "GLIP").replace("Patroai", "GLIP")
+
 from .runtime.realtime_support import (
     RealtimeClientSecretReq,
     RealtimeStartReq,
@@ -3209,6 +3274,14 @@ class ChatIn(BaseModel):
     visible_agent: Optional[str] = None
     target_agent_slug: Optional[str] = None
     requested_agent_names: Optional[List[str]] = None
+    # AO-GLIP03B: white-label runtime context contract.
+    # These fields allow GLIP/Aria requests to bypass legacy Orkio/AO router fast-paths
+    # without depending only on textual @mentions.
+    source: Optional[str] = None
+    product: Optional[str] = None
+    context_mode: Optional[str] = None
+    runtime_persona: Optional[str] = None
+    persona_lock: Optional[str] = None
     message: str = Field(min_length=1)
     client_message_id: Optional[str] = None  # idempotency key (frontend-generated UUID)
     top_k: int = 6
@@ -22526,6 +22599,98 @@ def chat(
     except Exception:
         pass
 
+    glip_aria_mode = glip_aria_is_request(
+        getattr(inp, "message", ""),
+        visible_agent=getattr(inp, "visible_agent", None),
+        target_agent_slug=getattr(inp, "target_agent_slug", None),
+        requested_agent_names=getattr(inp, "requested_agent_names", None),
+        source=getattr(inp, "source", None),
+        product=getattr(inp, "product", None),
+        agent_id=getattr(inp, "agent_id", None),
+        dest_mode=getattr(inp, "dest_mode", None),
+    )
+
+    if glip_aria_mode:
+        fallback = glip_aria_build_direct_answer(getattr(inp, "message", ""))
+        try:
+            _get_or_create_user_message(
+                db,
+                org,
+                tid,
+                user,
+                getattr(inp, "message", ""),
+                getattr(inp, "client_message_id", None),
+            )
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
+        try:
+            history_rows = (
+                db.execute(
+                    select(Message)
+                    .where(Message.org_slug == org, Message.thread_id == tid)
+                    .order_by(Message.created_at.asc())
+                    .limit(16)
+                )
+                .scalars()
+                .all()
+            )
+            history = []
+            for row in list(history_rows or [])[-12:]:
+                content = str(getattr(row, "content", "") or "").strip()
+                if not content:
+                    continue
+                role = "assistant" if getattr(row, "role", None) == "assistant" else "user"
+                history.append({"role": role, "content": content})
+
+            ans_obj = _openai_answer(
+                inp.message,
+                [],
+                history=history,
+                system_prompt=glip_aria_build_system_prompt(),
+                model_override=None,
+                temperature=0.35,
+            )
+            final_text = str(ans_obj.get("text") or ans_obj.get("answer") or "").strip() if isinstance(ans_obj, dict) else str(ans_obj or "").strip()
+            final_text = glip_aria_clean_answer(final_text, fallback_message=fallback)
+        except Exception:
+            final_text = fallback
+
+        try:
+            msg = Message(
+                id=new_id(),
+                org_slug=org,
+                thread_id=tid,
+                user_id=uid,
+                user_name=str(getattr(db_user, "name", "") or ""),
+                role="assistant",
+                content=final_text,
+                agent_id="aria",
+                agent_name="Aria",
+                created_at=now_ts(),
+            )
+            db.add(msg)
+            db.commit()
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
+        return ChatOut(
+            thread_id=tid,
+            answer=final_text,
+            citations=[],
+            agent_id="aria",
+            agent_name="Aria",
+            voice_id="marin",
+            avatar_url=None,
+            runtime_hints=glip_aria_runtime_hints(),
+        )
+
     # AO66B-HF1_AMCHAM_PUBLIC_JOURNEY_FASTPATH_WIRE_DIRECT
     # Same policy as stream path for direct /api/chat fallback.
     try:
@@ -34273,14 +34438,29 @@ async def chat_stream(
     if not message:
         raise HTTPException(400, "message required")
 
-    route_plan = _ao20bc_resolve_route(
+    glip_aria_mode = glip_aria_is_request(
         message,
-        requested_agent=(
-            getattr(inp, "visible_agent", None)
-            or getattr(inp, "target_agent_slug", None)
-            or None
-        ),
-        source="chat",
+        visible_agent=getattr(inp, "visible_agent", None),
+        target_agent_slug=getattr(inp, "target_agent_slug", None),
+        requested_agent_names=getattr(inp, "requested_agent_names", None),
+        source=getattr(inp, "source", None),
+        product=getattr(inp, "product", None),
+        agent_id=getattr(inp, "agent_id", None),
+        dest_mode=getattr(inp, "dest_mode", None),
+    )
+
+    route_plan = (
+        glip_aria_route_plan()
+        if glip_aria_mode
+        else _ao20bc_resolve_route(
+            message,
+            requested_agent=(
+                getattr(inp, "visible_agent", None)
+                or getattr(inp, "target_agent_slug", None)
+                or None
+            ),
+            source="chat",
+        )
     )
 
     # AO20K-HF4F_ROUTE_PLAN_SAFE_FUNCTION_SCOPE
@@ -40736,6 +40916,152 @@ async def chat_stream(
             except Exception:
                 pass
 
+    def _glip_aria_run_in_isolated_session() -> Dict[str, Any]:
+        """AO-GLIP03B: single-purpose GLIP/Aria runtime path.
+
+        Runs before Orkio public fast-paths, AO20 technical audit, Chris valuation
+        and Orion governance. It preserves the GLIP experience as:
+        Aria -> architecture commercial workflow.
+        """
+        db2 = SessionLocal()
+        try:
+            org2 = _resolve_org(user, x_org_slug)
+            uid2 = user.get("sub") if isinstance(user, dict) else None
+
+            db_user2 = db2.execute(
+                select(User).where(User.id == uid2, User.org_slug == org2)
+            ).scalar_one_or_none()
+            if not db_user2:
+                raise HTTPException(status_code=401, detail="Not authenticated")
+
+            try:
+                auth_status2 = _auth_status_for_user(db_user2)
+                if db_user2.role != "admin" and auth_status2 == "pending_approval":
+                    raise HTTPException(status_code=403, detail="User pending approval")
+            except HTTPException:
+                raise
+            except Exception:
+                pass
+
+            tid2 = (inp.thread_id or "").strip() or None
+            if not tid2:
+                t2 = Thread(id=new_id(), org_slug=org2, title="Nova conversa", created_at=now_ts())
+                db2.add(t2)
+                db2.commit()
+                tid2 = t2.id
+                _ensure_thread_owner(db2, org2, tid2, uid2)
+            else:
+                if user.get("role") != "admin":
+                    _require_thread_member(db2, org2, tid2, uid2)
+
+            m_user2, _created2 = _get_or_create_user_message(
+                db2,
+                org2,
+                tid2,
+                user,
+                inp.message,
+                getattr(inp, "client_message_id", None),
+            )
+
+            prev2 = db2.execute(
+                select(Message)
+                .where(Message.org_slug == org2, Message.thread_id == tid2, Message.id != m_user2.id)
+                .order_by(Message.created_at.asc())
+            ).scalars().all()
+            prev2 = list(prev2 or [])[-12:]
+
+            history2: List[Dict[str, str]] = []
+            for pm in prev2:
+                role2 = "assistant" if getattr(pm, "role", None) == "assistant" else ("system" if getattr(pm, "role", None) == "system" else "user")
+                content2 = str(getattr(pm, "content", "") or "").strip()
+                if content2:
+                    history2.append({"role": role2, "content": content2})
+
+            fallback = glip_aria_build_direct_answer(message)
+
+            try:
+                logger.info(
+                    "AO_GLIP03B_ARIA_LLM_START trace_id=%s thread_id=%s history_count=%s",
+                    trace_id,
+                    tid2,
+                    len(history2),
+                )
+            except Exception:
+                pass
+
+            ans_obj = _openai_answer(
+                message,
+                [],
+                history=history2,
+                system_prompt=glip_aria_build_system_prompt(),
+                model_override=None,
+                temperature=0.35,
+            )
+
+            if isinstance(ans_obj, dict):
+                final_text = str(ans_obj.get("text") or ans_obj.get("answer") or "").strip()
+            else:
+                final_text = str(ans_obj or "").strip()
+
+            final_text = glip_aria_clean_answer(final_text, fallback_message=fallback)
+
+            m_ass2 = Message(
+                id=new_id(),
+                org_slug=org2,
+                thread_id=tid2,
+                role="assistant",
+                content=final_text,
+                agent_id="aria",
+                agent_name="Aria",
+                created_at=now_ts(),
+            )
+            db2.add(m_ass2)
+            db2.commit()
+
+            return {
+                "thread_id": tid2,
+                "answer": final_text,
+                "message": final_text,
+                "final_text": final_text,
+                "content": final_text,
+                "citations": [],
+                "agent_id": "aria",
+                "agent_name": "Aria",
+                "voice_id": "marin",
+                "avatar_url": None,
+                "assistant_persisted": True,
+                "assistant_message_id": getattr(m_ass2, "id", None),
+                "runtime_hints": glip_aria_runtime_hints(),
+            }
+
+        except Exception:
+            try:
+                logger.exception("AO_GLIP03B_ARIA_RUNTIME_FAILED trace_id=%s thread_id=%s", trace_id, tid_seed)
+            except Exception:
+                pass
+            fallback_text = glip_aria_build_direct_answer(message)
+            return {
+                "thread_id": tid_seed,
+                "answer": fallback_text,
+                "message": fallback_text,
+                "final_text": fallback_text,
+                "content": fallback_text,
+                "citations": [],
+                "agent_id": "aria",
+                "agent_name": "Aria",
+                "voice_id": "marin",
+                "avatar_url": None,
+                "assistant_persisted": False,
+                "assistant_message_id": None,
+                "runtime_hints": glip_aria_runtime_hints(),
+            }
+        finally:
+            try:
+                db2.close()
+            except Exception:
+                pass
+
+
     # AO-29C_CHAT_STREAM_OBSERVABILITY
     try:
         logger.warning("AO29_CHAT_STREAM_REQUEST_ENTER trace_id=%s thread_id=%s", trace_id, tid_seed)
@@ -40751,10 +41077,86 @@ async def chat_stream(
         base = {
             "thread_id": tid_seed,
             "trace_id": trace_id,
-            "agent_id": "orkio",
-            "agent_name": "Orkio",
-            "final_speaker": "Orkio",
+            "agent_id": "aria" if glip_aria_mode else "orkio",
+            "agent_name": "Aria" if glip_aria_mode else "Orkio",
+            "final_speaker": "Aria" if glip_aria_mode else "Orkio",
         }
+
+        if glip_aria_mode:
+            try:
+                logger.info(
+                    "AO_GLIP03B_ARIA_RUNTIME_LOCK_ENTER trace_id=%s thread_id=%s visible_agent=%s target_agent_slug=%s source=%s product=%s",
+                    trace_id,
+                    tid_seed,
+                    getattr(inp, "visible_agent", None),
+                    getattr(inp, "target_agent_slug", None),
+                    getattr(inp, "source", None),
+                    getattr(inp, "product", None),
+                )
+            except Exception:
+                pass
+
+            yield _metatron_sse("status", {
+                **base,
+                "status": "Aria está organizando o fluxo arquitetônico.",
+                "phase": "glip_aria_runtime_lock",
+            })
+
+            payload = await asyncio.to_thread(_glip_aria_run_in_isolated_session)
+            try:
+                payload = _safe_payload(payload)
+            except Exception:
+                payload = {}
+
+            final_text = str(
+                payload.get("answer")
+                or payload.get("message")
+                or payload.get("final_text")
+                or payload.get("content")
+                or ""
+            ).strip()
+            final_text = glip_aria_clean_answer(
+                _sanitize_visible_stream_text(final_text),
+                fallback_message=glip_aria_build_direct_answer(message),
+            )
+
+            final_thread_id = str(payload.get("thread_id") or tid_seed or "").strip() or tid_seed
+            final_base = {
+                **base,
+                "thread_id": final_thread_id,
+                "agent_id": "aria",
+                "agent_name": "Aria",
+                "final_speaker": "Aria",
+            }
+            runtime_hints = payload.get("runtime_hints") if isinstance(payload.get("runtime_hints"), dict) else glip_aria_runtime_hints()
+
+            yield _metatron_sse("status", {
+                **final_base,
+                "status": "Resposta preparada.",
+                "phase": "answer_ready",
+            })
+            yield _metatron_sse("chunk", {
+                **final_base,
+                "delta": final_text,
+                "content": final_text,
+            })
+            yield _metatron_sse("agent_done", {
+                **final_base,
+                "done": True,
+                "message": "Resposta concluída.",
+            })
+            yield _metatron_sse("done", {
+                **final_base,
+                "done": True,
+                "assistant_persisted": bool(payload.get("assistant_persisted", True)),
+                "assistant_message_id": payload.get("assistant_message_id"),
+                "final_text": final_text,
+                "citations": payload.get("citations") or [],
+                "voice_id": payload.get("voice_id") or "marin",
+                "avatar_url": payload.get("avatar_url"),
+                "runtime_hints": runtime_hints,
+            })
+            return
 
         try:
             logger.info("CHAT_STREAM_OPEN trace_id=%s thread_id=%s org=%s", trace_id, tid_seed, org)
@@ -40834,13 +41236,14 @@ async def chat_stream(
                         }
                     },
                 }
-            payload = _ao79a_force_public_orkio_payload(
-                payload,
-                user_payload=user,
-                trace_id=trace_id,
-                thread_id=tid_seed,
-                routing_source=routing_source,
-            )
+            if not glip_aria_mode:
+                payload = _ao79a_force_public_orkio_payload(
+                    payload,
+                    user_payload=user,
+                    trace_id=trace_id,
+                    thread_id=tid_seed,
+                    routing_source=routing_source,
+                )
             route_plan_safe = _ao20k_hf2_json_safe(route_plan if isinstance(route_plan, dict) else {})
 
             final_text = str(
@@ -40903,6 +41306,14 @@ async def chat_stream(
             if not final_text:
                 final_text = "Peço perdão. O runtime concluiu sem texto final. A tentativa foi encerrada com segurança, e posso retomar pelo último ponto confirmado."
             final_text = _sanitize_visible_stream_text(final_text)
+            if glip_aria_mode:
+                final_text = glip_aria_clean_answer(
+                    final_text,
+                    fallback_message=glip_aria_build_direct_answer(message),
+                )
+                agent_id = "aria"
+                agent_name = "Aria"
+                runtime_hints = glip_aria_runtime_hints()
 
             try:
                 logger.info("CHAT_STREAM_FIRST_CHUNK trace_id=%s thread_id=%s chars=%s", trace_id, thread_id, len(final_text))
