@@ -230,6 +230,15 @@ from .services.document_context_service import (
 from .services.file_upload_indexing_service import index_uploaded_file_text
 from .core.orkio_constitution import load_constitution
 from .core.orkio_permissions import load_permissions
+from .runtime.agent_registry import (
+    AGENT_REGISTRY_VERSION,
+    agent_aliases as registry_agent_aliases,
+    agent_display_name as registry_agent_display_name,
+    canonical_agent_slug as registry_canonical_agent_slug,
+    enrich_catalog_item as registry_enrich_catalog_item,
+    ordered_registry_slugs as registry_ordered_slugs,
+    registry_payload as build_agent_registry_payload,
+)
 
 import importlib
 
@@ -3273,7 +3282,10 @@ class ChatIn(BaseModel):
     dest_mode: Optional[str] = None
     visible_agent: Optional[str] = None
     target_agent_slug: Optional[str] = None
+    target_agent_slugs: Optional[List[str]] = None
     requested_agent_names: Optional[List[str]] = None
+    multi_agent_turn: Optional[bool] = None
+    response_control: Optional[str] = None
     # AO-GLIP03B: white-label runtime context contract.
     # These fields allow GLIP/Aria requests to bypass legacy Orkio/AO router fast-paths
     # without depending only on textual @mentions.
@@ -8983,18 +8995,10 @@ def _github_token_diagnostic() -> Dict[str, Any]:
 
 
 def _canonical_runtime_agent_slug(name: Any) -> Optional[str]:
-    raw = str(name or "").strip().lower()
-    if not raw:
-        return None
-    if raw.startswith("orkio"):
-        return "orkio"
-    if raw.startswith("orion"):
-        return "orion"
-    if raw.startswith("chris"):
-        return "chris"
-    if raw.startswith("auditor") or "auditor" in raw:
-        return "auditor"
-    return None
+    # PATCH_23_AGENT_REGISTRY_CANONICO:
+    # Runtime slug resolution must use the same canonical aliases as
+    # frontend Direct Agent Addressing and realtime meeting orchestration.
+    return registry_canonical_agent_slug(name, default=None, allow_unknown=False)
 
 
 
@@ -9840,10 +9844,11 @@ def _db_runtime_catalog(db: Optional[Session], org: Optional[str]) -> List[Dict[
         slug = _canonical_runtime_agent_slug(getattr(row, "name", None))
         if not slug:
             continue
-        items.append({
+        item = {
             "id": getattr(row, "id", None),
             "slug": slug,
-            "name": getattr(row, "name", None) or slug.title(),
+            "name": getattr(row, "name", None) or registry_agent_display_name(slug, default=slug.title()),
+            "display_name": registry_agent_display_name(slug, default=getattr(row, "name", None) or slug.title()),
             "role": _infer_agent_role(row),
             "model": getattr(row, "model", None) or os.getenv("DEFAULT_CHAT_MODEL", "gpt-4o-mini"),
             "voice_id": resolve_agent_voice(row),
@@ -9854,7 +9859,10 @@ def _db_runtime_catalog(db: Optional[Session], org: Optional[str]) -> List[Dict[
             "available_to_runtime": True,
             "org_slug": getattr(row, "org_slug", None) or org,
             "description": getattr(row, "description", None) or "",
-        })
+            "aliases": registry_agent_aliases(slug),
+            "agent_registry_version": AGENT_REGISTRY_VERSION,
+        }
+        items.append(registry_enrich_catalog_item(item))
     return items
 
 
@@ -9871,7 +9879,7 @@ def _privileged_runtime_catalog(db: Optional[Session], org: Optional[str], inclu
         if not slug or slug in seen:
             continue
         seen.add(slug)
-        items.append(entry)
+        items.append(registry_enrich_catalog_item(entry))
     return items
 
 
@@ -9974,8 +9982,8 @@ def _runtime_available_agents(db: Optional[Session] = None, org: Optional[str] =
         if slug and slug not in discovered and bool(item.get("available_to_runtime", True)):
             discovered.append(slug)
     if not discovered:
-        discovered = ["orkio", "orion", "chris"]
-    ordered = [slug for slug in ["orkio", "orion", "chris", "auditor"] if slug in discovered]
+        discovered = registry_ordered_slugs(include_internal=True)
+    ordered = [slug for slug in registry_ordered_slugs(include_internal=True) if slug in discovered]
     for slug in discovered:
         if slug not in ordered:
             ordered.append(slug)
@@ -10039,7 +10047,9 @@ def _build_runtime_capabilities_payload(db: Optional[Session] = None, org: Optio
             "available_agents": available_agents,
             "handoff_enabled": len(available_agents) > 1,
         },
-        "agent_catalog": catalog,
+        "agent_registry_version": AGENT_REGISTRY_VERSION,
+        "agent_registry": build_agent_registry_payload(include_internal=bool(privileged and include_hidden)),
+        "agent_catalog": [registry_enrich_catalog_item(item) for item in catalog],
         "agent_catalog_source": "privileged" if privileged and include_hidden else "public",
         "github": {
             "available": github_available,
@@ -14282,8 +14292,11 @@ def _efata777_destination_contract_from_input(
         dest_mode = ""
     agent_ids = _efata777_clean_list(getattr(inp, "agent_ids", None))
     requested_agent_names = _efata777_clean_list(getattr(inp, "requested_agent_names", None))
+    target_agent_slugs = _efata777_clean_list(getattr(inp, "target_agent_slugs", None))
     visible_agent = str(getattr(inp, "visible_agent", "") or "").strip()
     target_agent_slug = str(getattr(inp, "target_agent_slug", "") or "").strip()
+    multi_agent_turn = bool(getattr(inp, "multi_agent_turn", False))
+    response_control = str(getattr(inp, "response_control", "") or "").strip()
 
     resolved: List[Any] = []
     def _append(candidate: Any) -> None:
@@ -14300,10 +14313,14 @@ def _efata777_destination_contract_from_input(
             if resolved:
                 break
     elif dest_mode == "multi":
-        for token in agent_ids + requested_agent_names:
+        for token in agent_ids + target_agent_slugs + requested_agent_names:
             _append(_efata777_resolve_agent_token(token, alias_to_agent=alias_to_agent, all_agents=all_agents))
     elif dest_mode == "team":
-        for token in agent_ids + requested_agent_names:
+        # PATCH_22_DIRECT_AGENT_ADDRESSING:
+        # In Team Mode, a named agent is the active speaker for the current turn.
+        # Do not ignore target_agent_slug/visible_agent/agent_id just because the
+        # room remains Team. Team is the room; the target is the speaker.
+        for token in [target_agent_slug, visible_agent, getattr(inp, "agent_id", None)] + target_agent_slugs + agent_ids + requested_agent_names:
             _append(_efata777_resolve_agent_token(token, alias_to_agent=alias_to_agent, all_agents=all_agents))
 
     frozen_names = [str(getattr(a, "name", "") or "").strip() for a in resolved if str(getattr(a, "name", "") or "").strip()]
@@ -14316,7 +14333,10 @@ def _efata777_destination_contract_from_input(
         "agent_ids": agent_ids,
         "visible_agent": visible_agent,
         "target_agent_slug": target_agent_slug,
+        "target_agent_slugs": target_agent_slugs,
         "requested_agent_names": requested_agent_names,
+        "multi_agent_turn": bool(multi_agent_turn or len(resolved) > 1),
+        "response_control": response_control or ("sequenced_team_turns" if (multi_agent_turn or len(resolved) > 1) else "single_turn"),
         "target_agents_rows": resolved,
         "target_agent_frozen": target_agent_frozen,
         "target_agents_frozen": frozen_slugs,
@@ -14333,6 +14353,9 @@ def _efata777_contract_for_intent_context(contract: Optional[Dict[str, Any]]) ->
         "target_agent_frozen": c.get("target_agent_frozen") or "",
         "target_agents_from_payload": list(c.get("target_agents_frozen") or []),
         "target_agents_frozen": list(c.get("target_agents_frozen") or []),
+        "target_agent_slugs_from_payload": list(c.get("target_agent_slugs") or []),
+        "multi_agent_turn": bool(c.get("multi_agent_turn")),
+        "response_control": c.get("response_control") or "",
         "visible_agent": c.get("visible_agent") or "",
         "requested_agent_names": list(c.get("requested_agent_names") or []),
     }
@@ -14356,6 +14379,11 @@ def _efata777_apply_destination_receipt(
         receipt["target_agent"] = c.get("target_agent_frozen")
     if c.get("target_agents_frozen"):
         receipt["target_agents"] = list(c.get("target_agents_frozen") or [])
+    if c.get("target_agent_slugs"):
+        receipt["target_agent_slugs"] = list(c.get("target_agent_slugs") or [])
+    if c.get("multi_agent_turn"):
+        receipt["multi_agent_turn"] = True
+        receipt["response_control"] = c.get("response_control") or "sequenced_team_turns"
     if bool(block_roster or c.get("target_agent_frozen") or c.get("target_agents_frozen")):
         receipt["dispatch_attempted"] = True
         receipt["fallback_used"] = False
@@ -32298,6 +32326,19 @@ def get_agent_capabilities(include_hidden: bool = False, x_org_slug: Optional[st
     if include_hidden and not privileged:
         raise HTTPException(status_code=403, detail="Privileged catalog required")
     return _build_runtime_capabilities_payload(db=db, org=org, include_hidden=include_hidden, privileged=privileged and include_hidden)
+
+
+@app.get("/api/agents/registry")
+def get_agent_registry(include_internal: bool = False, x_org_slug: Optional[str] = Header(default=None), user=Depends(get_current_user)):
+    # PATCH_23_AGENT_REGISTRY_CANONICO:
+    # Exposes the same canonical alias map used by backend routing. Internal
+    # aliases require privileged catalog access; public/runtime callers receive
+    # only non-internal profiles (Orkio + Team).
+    get_request_org(user, x_org_slug)
+    privileged = _payload_has_catalog_privileged_access(user)
+    if include_internal and not privileged:
+        raise HTTPException(status_code=403, detail="Privileged registry required")
+    return build_agent_registry_payload(include_internal=bool(include_internal and privileged))
 
 
 @app.get("/api/admin/agents/hidden/bootstrap-status")
