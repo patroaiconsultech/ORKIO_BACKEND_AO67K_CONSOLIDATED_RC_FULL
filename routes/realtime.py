@@ -22,6 +22,20 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
 
+try:
+    from app.runtime.agent_registry import (
+        AGENT_REGISTRY_VERSION,
+        agent_display_name as registry_agent_display_name,
+        canonical_agent_slug as registry_canonical_agent_slug,
+        realtime_role_line as registry_realtime_role_line,
+    )
+except Exception:  # pragma: no cover
+    AGENT_REGISTRY_VERSION = "PATCH_23_CANONICAL_AGENT_REGISTRY_V1"
+    registry_agent_display_name = None  # type: ignore
+    registry_canonical_agent_slug = None  # type: ignore
+    registry_realtime_role_line = None  # type: ignore
+
+
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -57,6 +71,9 @@ except Exception:  # pragma: no cover
         visible_agent: Optional[str] = None
         target_agent_slug: Optional[str] = None
         requested_agent_names: Optional[Any] = None
+        target_agent_slugs: Optional[Any] = None
+        multi_agent_turn: Optional[bool] = None
+        response_control: Optional[str] = None
         client_controlled_response: Optional[bool] = None
 
     class RealtimeStartReq(BaseModel):
@@ -74,6 +91,9 @@ except Exception:  # pragma: no cover
         visible_agent: Optional[str] = None
         target_agent_slug: Optional[str] = None
         requested_agent_names: Optional[Any] = None
+        target_agent_slugs: Optional[Any] = None
+        multi_agent_turn: Optional[bool] = None
+        response_control: Optional[str] = None
         client_controlled_response: Optional[bool] = None
 
     class RealtimeEventIn(BaseModel):
@@ -129,6 +149,41 @@ except Exception:  # pragma: no cover
 
 
 try:
+    from app.runtime.meeting_state import (  # type: ignore
+        MEETING_STATE_VERSION,
+        apply_turn_to_meeting_state,
+        build_initial_meeting_state,
+        meeting_state_from_meta,
+        merge_meeting_state_into_meta,
+        summarize_meeting_state_for_log,
+        update_meeting_state_from_directive,
+    )
+except Exception:  # pragma: no cover
+    MEETING_STATE_VERSION = "PATCH_25_MEETING_STATE_V1"
+
+    def build_initial_meeting_state(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+        return {}
+
+    def apply_turn_to_meeting_state(state: Optional[Dict[str, Any]], *args: Any, **kwargs: Any) -> Dict[str, Any]:
+        return state if isinstance(state, dict) else {}
+
+    def update_meeting_state_from_directive(state: Optional[Dict[str, Any]], *args: Any, **kwargs: Any) -> Dict[str, Any]:
+        return state if isinstance(state, dict) else {}
+
+    def meeting_state_from_meta(meta: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        return (meta or {}).get("meeting_state", {}) if isinstance(meta, dict) else {}
+
+    def merge_meeting_state_into_meta(meta: Optional[Dict[str, Any]], state: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        out = dict(meta or {})
+        if isinstance(state, dict) and state:
+            out["meeting_state"] = state
+        return out
+
+    def summarize_meeting_state_for_log(state: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        return {"version": MEETING_STATE_VERSION}
+
+
+try:
     from app.runtime.realtime_session_builder import (  # type: ignore
         build_openai_realtime_client_secret_payload,
         realtime_session_debug_snapshot,
@@ -151,9 +206,53 @@ except Exception:  # pragma: no cover
         }
 
 
+
+try:
+    from app.runtime.meeting_observability import (  # type: ignore
+        MEETING_OBSERVABILITY_VERSION,
+        build_meeting_transition_log,
+        summarize_transition_for_response,
+        transition_log_line,
+    )
+except Exception:  # pragma: no cover
+    MEETING_OBSERVABILITY_VERSION = "PATCH_29_MEETING_OBSERVABILITY_V1"
+
+    def build_meeting_transition_log(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+        return {
+            "event": "meeting_transition",
+            "observability_version": MEETING_OBSERVABILITY_VERSION,
+            "transition_reason": "observability_unavailable",
+        }
+
+    def summarize_transition_for_response(event: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        return event if isinstance(event, dict) else {}
+
+    def transition_log_line(event: Optional[Dict[str, Any]]) -> str:
+        try:
+            return json.dumps(event or {}, ensure_ascii=False, sort_keys=True)
+        except Exception:
+            return "{}"
+
 class RealtimeEventsBatchReq(BaseModel):
     session_id: str
     events: List[RealtimeEventIn] = []
+    # PATCH_22_DIRECT_AGENT_ADDRESSING:
+    # Optional client-side routing hints captured after the frontend applies a
+    # direct agent address such as "Orion, ...". These are advisory and fail-open.
+    agent_id: Optional[str] = None
+    dest_mode: Optional[str] = None
+    visible_agent: Optional[str] = None
+    target_agent_slug: Optional[str] = None
+    requested_agent_names: Optional[Any] = None
+    # PATCH_25_MEETING_STATE_PERSISTENTE:
+    # Frontend may echo the latest room state so backend can merge it into
+    # RealtimeSession.meta without a migration.
+    meeting_state: Optional[Dict[str, Any]] = None
+    # PATCH_27_MULTI_AGENT_RESPONSE_CONTROL:
+    # Advisory route metadata for sequenced team turns. Optional/fail-open.
+    target_agent_slugs: Optional[List[str]] = None
+    multi_agent_turn: Optional[bool] = None
+    response_control: Optional[str] = None
 
 
 def _now_ts() -> int:
@@ -946,6 +1045,16 @@ def _coerce_realtime_list(value: Any) -> List[str]:
 
 
 def _normalize_realtime_agent_slug(value: Any, *, default: str = "") -> str:
+    # PATCH_23_AGENT_REGISTRY_CANONICO:
+    # Realtime slug resolution now delegates to the canonical backend registry.
+    try:
+        if callable(registry_canonical_agent_slug):
+            resolved = registry_canonical_agent_slug(value, default="", allow_unknown=False)
+            if resolved:
+                return str(resolved)
+    except Exception:
+        pass
+
     raw = str(value or "").strip().lower()
     if not raw:
         return default
@@ -969,13 +1078,17 @@ def _normalize_realtime_agent_slug(value: Any, *, default: str = "") -> str:
     )
     compact = re.sub(r"[^a-z0-9]+", " ", simplified).strip()
 
-    # STT/transcription aliases observed during Daniel's realtime tests.
+    # Defensive fallback retained for bootstraps where registry import is unavailable.
     if any(token in compact for token in ("orion", "oria", "auria", "aurya", "arian", "aryan", "orlan", "warren")):
         return "orion"
     if "cto" in compact or "tecnico" in compact or "technical" in compact:
         return "orion"
     if any(token in compact for token in ("chris", "cris", "cfo", "financeiro", "financial")):
         return "chris"
+    if "laura" in compact or "business plan" in compact or "pitch" in compact:
+        return "laura"
+    if "auditor" in compact or "auditoria" in compact or "ao 01" in compact or "ao01" in compact:
+        return "auditor"
     if any(token in compact for token in ("team", "time", "equipe", "squad", "war room", "warroom")):
         return "team"
     if any(token in compact for token in ("orkio", "ork", "patroai")):
@@ -985,9 +1098,16 @@ def _normalize_realtime_agent_slug(value: Any, *, default: str = "") -> str:
 
 
 def _agent_display_name_from_slug(slug: str) -> str:
+    try:
+        if callable(registry_agent_display_name):
+            return str(registry_agent_display_name(slug, default="Orkio") or "Orkio")
+    except Exception:
+        pass
     return {
         "orion": "Orion",
         "chris": "Chris",
+        "laura": "Laura",
+        "auditor": "Auditor",
         "team": "Team",
         "orkio": "Orkio",
     }.get(str(slug or "").strip().lower(), "Orkio")
@@ -1108,12 +1228,23 @@ def _build_realtime_agent_identity_block(agent_context: Optional[Dict[str, Any]]
     slug = str(ctx.get("slug") or "orkio").strip().lower()
     name = _agent_display_name_from_slug(slug)
 
-    role_line = {
-        "orion": "Você é Orion, agente interno CTO técnico da Patroai, responsável por diagnóstico técnico, arquitetura, bugs, logs, deploy, realtime e orquestração.",
-        "chris": "Você é Chris, agente interno financeiro/estratégico da Patroai, responsável por análise financeira, precificação, viabilidade, riscos comerciais e estratégia de receita.",
-        "team": "Você está no modo Team, atuando como coordenador de sala executiva multiagente da Patroai.",
-        "orkio": "Você é Orkio, agente executivo principal da plataforma Patroai.",
-    }.get(slug, "Você é Orkio, agente executivo principal da plataforma Patroai.")
+    try:
+        role_line = (
+            registry_realtime_role_line(slug)
+            if callable(registry_realtime_role_line)
+            else ""
+        )
+    except Exception:
+        role_line = ""
+    if not role_line:
+        role_line = {
+            "orion": "Você é Orion, agente interno CTO técnico da Patroai, responsável por diagnóstico técnico, arquitetura, bugs, logs, deploy, realtime e orquestração.",
+            "chris": "Você é Chris, agente interno financeiro/estratégico da Patroai, responsável por análise financeira, precificação, viabilidade, riscos comerciais e estratégia de receita.",
+            "laura": "Você é Laura, agente interno de narrativa, business plan e investidores da Patroai.",
+            "auditor": "Você é Auditor, agente/função de auditoria externa, responsável por revisão crítica, evidências e riscos.",
+            "team": "Você está no modo Team, atuando como coordenador de sala executiva multiagente da Patroai.",
+            "orkio": "Você é Orkio, agente executivo principal da plataforma Patroai.",
+        }.get(slug, "Você é Orkio, agente executivo principal da plataforma Patroai.")
 
     if slug == "team":
         direct_identity = (
@@ -1133,6 +1264,7 @@ def _build_realtime_agent_identity_block(agent_context: Optional[Dict[str, Any]]
         f"{role_line}\n"
         f"- Identidade ativa: {name}.\n"
         f"- Slug ativo: {slug}.\n"
+        f"- Agent Registry: {AGENT_REGISTRY_VERSION}.\n"
         f"{direct_identity}\n"
         "- Não afirme que executou auditoria, abriu War Room, acionou agentes, enviou push, fez deploy, commit, PR ou integração se a ação não estiver tecnicamente confirmada por ferramenta, endpoint ou log.\n"
         "- Quando algo for apenas proposta, intenção ou plano, diga explicitamente que é proposta/intenção/plano.\n"
@@ -1331,7 +1463,12 @@ def _maybe_persist_realtime_session(
             "status": "active",
         }
         if meta is not None:
-            values["meta"] = json.dumps(meta, ensure_ascii=False)
+            # PATCH_27_AO01_PATCH26_FIX:
+            # Preserve meta as a Python mapping on initial session creation.
+            # PATCH 26 already preserved type on update; this closes the remaining
+            # JSON/JSONB risk reported by AO-01. TEXT-only deployments can still
+            # serialize through the ORM/db layer if configured that way.
+            values["meta"] = meta
 
         for key, value in values.items():
             try:
@@ -1530,6 +1667,7 @@ def _rtb06_get_session_context(
             except Exception:
                 meta_obj = {}
         context["meta"] = meta_obj
+        context["meeting_state"] = meeting_state_from_meta(meta_obj)
 
         agent_meta = meta_obj.get("agent") if isinstance(meta_obj.get("agent"), dict) else {}
         agent_slug = _normalize_realtime_agent_slug(
@@ -1544,13 +1682,100 @@ def _rtb06_get_session_context(
         )
         if agent_slug:
             context["agent_slug"] = agent_slug
-        dest_mode = str(meta_obj.get("dest_mode") or agent_meta.get("dest_mode") or "").strip().lower()
+        meeting_state = context.get("meeting_state") if isinstance(context.get("meeting_state"), dict) else {}
+        meeting_active_slug = str(meeting_state.get("active_speaker_slug") or "").strip()
+        if meeting_active_slug:
+            context["meeting_active_speaker_slug"] = meeting_active_slug
+            context["meeting_active_speaker_name"] = str(meeting_state.get("active_speaker_name") or "").strip()
+        dest_mode = str(meta_obj.get("dest_mode") or agent_meta.get("dest_mode") or meeting_state.get("mode") or "").strip().lower()
         if dest_mode:
             context["dest_mode"] = dest_mode
     except Exception:
         return context
 
     return context
+
+
+def _maybe_update_realtime_session_meeting_state(
+    deps: SimpleNamespace,
+    db: Any,
+    *,
+    session_id: str,
+    meeting_state: Optional[Dict[str, Any]],
+    logger: Optional[logging.Logger] = None,
+) -> bool:
+    """Persist PATCH_25 meeting state in RealtimeSession.meta without migrations."""
+    if not session_id or not isinstance(meeting_state, dict) or not meeting_state:
+        return False
+    RealtimeSession = getattr(deps, "RealtimeSession", None)
+    if db is None or RealtimeSession is None or select is None:
+        return False
+
+    try:
+        rs = (
+            db.execute(select(RealtimeSession).where(RealtimeSession.id == session_id))
+            .scalar_one_or_none()
+        )
+        if not rs:
+            return False
+
+        meta_raw = _safe_getattr(rs, "meta", None)
+        meta_obj: Dict[str, Any] = {}
+        if isinstance(meta_raw, dict):
+            meta_obj = dict(meta_raw)
+        elif isinstance(meta_raw, str) and meta_raw.strip():
+            try:
+                parsed_meta = json.loads(meta_raw)
+                if isinstance(parsed_meta, dict):
+                    meta_obj = parsed_meta
+            except Exception:
+                meta_obj = {}
+
+        next_meta = merge_meeting_state_into_meta(meta_obj, meeting_state)
+        try:
+            # PATCH_26_AO01_PATCH25_FIX:
+            # Preserve the runtime type of RealtimeSession.meta. Some deployments
+            # store meta as TEXT (string JSON), while others use JSON/JSONB and
+            # expect a Python dict. Do not stringify dict-backed columns.
+            if isinstance(meta_raw, str):
+                setattr(rs, "meta", json.dumps(next_meta, ensure_ascii=False))
+            else:
+                setattr(rs, "meta", next_meta)
+        except Exception:
+            return False
+
+        db.add(rs)
+        db.commit()
+        return True
+    except Exception as err:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        try:
+            if logger:
+                logger.warning("PATCH25_MEETING_STATE_PERSIST_FAILED session_id=%s err=%s", session_id, err)
+        except Exception:
+            pass
+        return False
+
+
+def _merge_client_meeting_state(
+    server_state: Optional[Dict[str, Any]],
+    client_state: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Client echo is advisory; server keys win when present."""
+    if not isinstance(client_state, dict):
+        return server_state if isinstance(server_state, dict) else {}
+    if not isinstance(server_state, dict) or not server_state:
+        return client_state
+    merged = dict(client_state)
+    merged.update(server_state)
+    if server_state.get("participant_slugs"):
+        merged["participant_slugs"] = server_state.get("participant_slugs")
+    if server_state.get("participants"):
+        merged["participants"] = server_state.get("participants")
+    return merged
 
 
 def _rtb06_message_has_existing(
@@ -2111,8 +2336,36 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         }
         usage_advisory = _build_esg_usage_advisory()
 
+        initial_meeting_state = build_initial_meeting_state(
+            session_id=session_id,
+            thread_id=thread_id,
+            org=org,
+            user_id=uid,
+            dest_mode=str(agent_context.get("dest_mode") or _safe_getattr(body, "dest_mode", "") or "team").strip().lower(),
+            active_agent_slug=(
+                agent_context.get("slug")
+                or agent_context.get("agent_slug")
+                or agent_context.get("display_name")
+                or agent_id
+                or "orkio"
+            ),
+            active_agent_name=agent_context.get("display_name") or agent_context.get("name") or "",
+            include_internal=bool(is_admin),
+            history_loaded=bool(overlay_meta.get("thread_context_loaded", True)),
+            now_ts=started_at,
+        )
+
+        initial_meeting_observability = build_meeting_transition_log(
+            previous_state={},
+            next_state=initial_meeting_state,
+            directive={"kind": "session_start", "match_type": "session_start", "session_id": session_id, "thread_id": thread_id},
+            source="realtime_start",
+            persisted=None,
+            now_ts=started_at,
+        )
+
         session_meta = {
-            "patch": "RTB03_RTB06_EFATA777_V8",
+            "patch": "RTB03_RTB06_EFATA777_V8_PATCH29",
             "mode": mode,
             "response_profile": response_profile,
             "language_profile": language_profile,
@@ -2120,7 +2373,15 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             "agent": _json_safe(agent_context),
             "dest_mode": str(agent_context.get("dest_mode") or _safe_getattr(body, "dest_mode", "") or "").strip().lower(),
             "meeting_orchestrator": {"enabled": True, "kind": "turn_based"},
+            "meeting_state": _json_safe(initial_meeting_state),
+            "meeting_state_version": MEETING_STATE_VERSION,
+            "meeting_observability": _json_safe(summarize_transition_for_response(initial_meeting_observability)),
+            "meeting_observability_version": MEETING_OBSERVABILITY_VERSION,
             "client_controlled_response": bool(_safe_getattr(body, "client_controlled_response", False)),
+            # PATCH_27_MULTI_AGENT_RESPONSE_CONTROL:
+            "target_agent_slugs": _json_safe(_safe_getattr(body, "target_agent_slugs", None) or []),
+            "multi_agent_turn": bool(_safe_getattr(body, "multi_agent_turn", False)),
+            "response_control": str(_safe_getattr(body, "response_control", "") or "").strip(),
         }
 
         _maybe_persist_realtime_session(
@@ -2151,6 +2412,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 bool(overlay_meta.get("thread_context_loaded")),
                 overlay_meta.get("thread_context_messages"),
             )
+            logger.warning("EFATA777_V12_MEETING_TRANSITION %s", transition_log_line(initial_meeting_observability))
         except Exception:
             pass
 
@@ -2171,7 +2433,11 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 "rtb06": True,
                 "context": overlay_meta,
                 "agent": _json_safe(agent_context),
-                "serialization_safe": "RTB03_RTB06_EFATA777_V8",
+                "meeting_state": _json_safe(initial_meeting_state),
+                "meeting_state_version": MEETING_STATE_VERSION,
+                "meeting_observability": _json_safe(summarize_transition_for_response(initial_meeting_observability)),
+                "meeting_observability_version": MEETING_OBSERVABILITY_VERSION,
+                "serialization_safe": "RTB03_RTB06_EFATA777_V8_PATCH29",
                 "timebox_policy": "advisory_only_esg",
             }
         )
@@ -2216,6 +2482,9 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         )
 
         meeting_directive = None
+        meeting_state: Dict[str, Any] = {}
+        meeting_state_persisted = False
+        meeting_transition: Dict[str, Any] = {}
         try:
             session_ctx = _rtb06_get_session_context(
                 deps,
@@ -2224,22 +2493,105 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 fallback_org=org,
                 fallback_user_id=uid,
             )
+            body_target_agent_slug = str(_safe_getattr(body, "target_agent_slug", "") or "").strip()
+            body_visible_agent = str(_safe_getattr(body, "visible_agent", "") or "").strip()
+            body_agent_id = str(_safe_getattr(body, "agent_id", "") or "").strip()
+            body_dest_mode = str(_safe_getattr(body, "dest_mode", "") or "").strip().lower()
+            body_meeting_state = _safe_getattr(body, "meeting_state", None)
+            body_target_agent_slugs = [
+                str(slug or "").strip().lower()
+                for slug in (_safe_getattr(body, "target_agent_slugs", None) or [])
+                if str(slug or "").strip()
+            ]
+            body_multi_agent_turn = bool(_safe_getattr(body, "multi_agent_turn", False))
+            body_response_control = str(_safe_getattr(body, "response_control", "") or "").strip()
+            existing_meeting_state = _merge_client_meeting_state(
+                session_ctx.get("meeting_state") if isinstance(session_ctx.get("meeting_state"), dict) else {},
+                body_meeting_state if isinstance(body_meeting_state, dict) else {},
+            )
+
+            current_agent_slug = (
+                body_target_agent_slug
+                or body_visible_agent
+                or body_agent_id
+                or session_ctx.get("meeting_active_speaker_slug")
+                or session_ctx.get("agent_slug")
+                or session_ctx.get("agent_id")
+                or ""
+            )
+            effective_dest_mode = body_dest_mode or session_ctx.get("dest_mode") or "team"
+
             meeting_directive = build_meeting_directive(
                 session_id=session_id,
                 events=events,
-                current_agent_slug=(
-                    session_ctx.get("agent_slug")
-                    or session_ctx.get("agent_id")
-                    or ""
-                ),
-                dest_mode=session_ctx.get("dest_mode") or "",
+                current_agent_slug=current_agent_slug,
+                dest_mode=effective_dest_mode,
                 promotion=promotion,
             )
+
+            if meeting_directive:
+                if body_target_agent_slugs and not meeting_directive.get("target_agent_slugs"):
+                    meeting_directive["target_agent_slugs"] = body_target_agent_slugs
+                if body_multi_agent_turn:
+                    meeting_directive["multi_agent_turn"] = True
+                    meeting_directive["response_control"] = body_response_control or meeting_directive.get("response_control") or "sequenced_team_turns"
+                meeting_state = update_meeting_state_from_directive(
+                    existing_meeting_state,
+                    meeting_directive,
+                    session_id=session_id,
+                    thread_id=session_ctx.get("thread_id"),
+                    org=org,
+                    user_id=uid,
+                    dest_mode=effective_dest_mode,
+                    include_internal=bool(_is_admin_user(user, None)),
+                    now_ts=_now_ts(),
+                )
+                try:
+                    meeting_directive["meeting_state"] = _json_safe(meeting_state)
+                    meeting_directive["meeting_state_version"] = MEETING_STATE_VERSION
+                except Exception:
+                    pass
+            else:
+                meeting_state = apply_turn_to_meeting_state(
+                    existing_meeting_state,
+                    session_id=session_id,
+                    thread_id=session_ctx.get("thread_id"),
+                    org=org,
+                    user_id=uid,
+                    dest_mode=effective_dest_mode,
+                    target_agent_slug=current_agent_slug,
+                    target_agent_name=body_visible_agent,
+                    kind="client_state_echo",
+                    source="events_batch",
+                    include_internal=bool(_is_admin_user(user, None)),
+                    now_ts=_now_ts(),
+                )
+
+            meeting_state_persisted = _maybe_update_realtime_session_meeting_state(
+                deps,
+                db,
+                session_id=session_id,
+                meeting_state=meeting_state,
+                logger=logger,
+            )
+
+            meeting_transition = build_meeting_transition_log(
+                previous_state=existing_meeting_state,
+                next_state=meeting_state,
+                directive=meeting_directive,
+                source="events_batch",
+                persisted=meeting_state_persisted,
+                now_ts=_now_ts(),
+            )
+
             try:
                 logger.warning(
-                    "EFATA777_V8_MEETING_DIRECTIVE %s",
+                    "EFATA777_V8_MEETING_DIRECTIVE %s state=%s persisted=%s",
                     json.dumps(summarize_directive_for_log(meeting_directive), ensure_ascii=False, sort_keys=True),
+                    json.dumps(summarize_meeting_state_for_log(meeting_state), ensure_ascii=False, sort_keys=True),
+                    bool(meeting_state_persisted),
                 )
+                logger.warning("EFATA777_V12_MEETING_TRANSITION %s", transition_log_line(meeting_transition))
             except Exception:
                 pass
         except Exception as meeting_err:
@@ -2257,11 +2609,18 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             "rtb06": True,
             "rtb07": True,
             "rtb08_meeting": True,
+            "rtb09_meeting_state": True,
             "finals_promoted": promotion,
             "rtb02_bridge": bridge,
             "meeting_orchestrator": meeting_directive,
+            "meeting_state": _json_safe(meeting_state),
+            "meeting_state_version": MEETING_STATE_VERSION,
+            "meeting_observability": _json_safe(summarize_transition_for_response(meeting_transition)),
+            "meeting_observability_version": MEETING_OBSERVABILITY_VERSION,
+            "meeting_state_persisted": bool(meeting_state_persisted),
         }
 
+    @router.get("/api/realtime/sessions/{session_id}")
     @router.get("/api/realtime/{session_id}")
     def realtime_get_session(
         session_id: str,
@@ -2281,20 +2640,41 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         except Exception:
             snapshot = None
 
+        session_ctx = _rtb06_get_session_context(
+            deps,
+            db,
+            session_id=session_id_clean,
+            fallback_org=org,
+            fallback_user_id=str(_safe_getattr(user, "sub", None) or _safe_getattr(user, "id", "") or "").strip() or None,
+        )
+        meeting_state = session_ctx.get("meeting_state") if isinstance(session_ctx.get("meeting_state"), dict) else {}
+
         payload = {
             "ok": True,
             "session_id": session_id_clean,
             "org": org,
             "finals_only": bool(finals_only),
             "session": _json_safe(snapshot) if snapshot else None,
+            "meeting_state": _json_safe(meeting_state),
+            "meeting_state_version": MEETING_STATE_VERSION,
+            "meeting_observability": _json_safe(summarize_transition_for_response(build_meeting_transition_log(
+                previous_state={},
+                next_state=meeting_state,
+                directive={"kind": "session_snapshot", "match_type": "session_snapshot", "session_id": session_id_clean},
+                source="realtime_get_session",
+                persisted=True,
+                now_ts=_now_ts(),
+            ))),
+            "meeting_observability_version": MEETING_OBSERVABILITY_VERSION,
             "finals": {
                 "user_text": "",
                 "assistant_text": "",
                 "turns": [],
             },
             "rtb03": True,
-            "serialization_safe": "RTB03_RTB06",
-            "compatibility_endpoint": "GET /api/realtime/{session_id}",
+            "rtb09_meeting_state": True,
+            "serialization_safe": "RTB03_RTB06_PATCH25",
+            "compatibility_endpoint": "GET /api/realtime/{session_id} | GET /api/realtime/sessions/{session_id}",
         }
 
         try:
