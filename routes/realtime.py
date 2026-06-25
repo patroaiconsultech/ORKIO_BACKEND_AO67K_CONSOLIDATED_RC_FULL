@@ -1,5 +1,6 @@
 # ORKIO_RTB06_REALTIME_FINALS_MESSAGES_BRIDGE
 # Backend-only PATCH_MINIMUM for routes/realtime.py
+# PATCH_30_SERVER_SPEAKER_AUTHORITY_CLIENT_ECHO_QUARANTINE
 #
 # Purpose:
 # - Preserve existing Realtime endpoints.
@@ -1778,6 +1779,92 @@ def _merge_client_meeting_state(
     return merged
 
 
+PATCH_30_SERVER_SPEAKER_AUTHORITY_VERSION = (
+    "PATCH_30_SERVER_SPEAKER_AUTHORITY_CLIENT_ECHO_QUARANTINE_V1"
+)
+
+
+def _rtb30_latest_user_transcript(events: List[Any]) -> str:
+    """Return the latest user transcript.final text for meeting-state authority checks."""
+    latest = ""
+    for ev in events or []:
+        try:
+            if _event_name(ev).strip().lower() != "transcript.final":
+                continue
+            text = _rtb06_extract_final_text(ev)
+            if text:
+                latest = text
+        except Exception:
+            continue
+    return latest
+
+
+def _rtb30_state_active_slug(state: Optional[Dict[str, Any]]) -> str:
+    state = state if isinstance(state, dict) else {}
+    return _normalize_realtime_agent_slug(
+        state.get("active_speaker_slug")
+        or state.get("active_persona_slug")
+        or state.get("target_agent_slug")
+        or "",
+        default="",
+    )
+
+
+def _rtb30_last_turn_source(state: Optional[Dict[str, Any]]) -> str:
+    state = state if isinstance(state, dict) else {}
+    last_turn = state.get("last_turn") if isinstance(state.get("last_turn"), dict) else {}
+    return str(last_turn.get("source") or "").strip().lower()
+
+
+def _rtb30_last_turn_kind(state: Optional[Dict[str, Any]]) -> str:
+    state = state if isinstance(state, dict) else {}
+    last_turn = state.get("last_turn") if isinstance(state.get("last_turn"), dict) else {}
+    return str(last_turn.get("kind") or last_turn.get("transition_reason") or "").strip().lower()
+
+
+def _rtb30_is_server_resolved_state(state: Optional[Dict[str, Any]]) -> bool:
+    """True when backend/router has resolved an authoritative speaker for the room."""
+    active_slug = _rtb30_state_active_slug(state)
+    if not active_slug:
+        return False
+    source = _rtb30_last_turn_source(state)
+    kind = _rtb30_last_turn_kind(state)
+    return bool(
+        source == "meeting_orchestrator"
+        or kind in {
+            "handoff",
+            "addressed_turn",
+            "direct_address",
+            "command_address",
+            "multi_agent_sequence",
+            "team_panel",
+            "readonly_audit",
+        }
+    )
+
+
+def _rtb30_should_quarantine_client_echo(
+    state: Optional[Dict[str, Any]],
+    incoming_agent_slug: Any,
+) -> Tuple[bool, str, str]:
+    """Prevent stale frontend echoes from overriding the server-resolved speaker.
+
+    The PATCH 29 logs showed a direct address resolving Laura correctly and then
+    a later client_state_echo restoring Orion. The client payload remains useful
+    as telemetry, but it must not be allowed to replace an authoritative server
+    handoff/persona decision.
+    """
+    preserved_slug = _rtb30_state_active_slug(state)
+    incoming_slug = _normalize_realtime_agent_slug(incoming_agent_slug, default="")
+    if not preserved_slug or not incoming_slug:
+        return False, incoming_slug, preserved_slug
+    if incoming_slug == preserved_slug:
+        return False, incoming_slug, preserved_slug
+    if not _rtb30_is_server_resolved_state(state):
+        return False, incoming_slug, preserved_slug
+    return True, incoming_slug, preserved_slug
+
+
 def _rtb06_message_has_existing(
     deps: SimpleNamespace,
     db: Any,
@@ -1929,6 +2016,18 @@ def _rtb06_insert_message(
 
 def _rtb06_event_agent_hint(event: Any, session_ctx: Dict[str, Any], text: str) -> str:
     data = _rtb06_event_dict(event)
+    event_name = _event_name(event).lower()
+    session_meeting_state = session_ctx.get("meeting_state") if isinstance(session_ctx, dict) else None
+    meeting_authority_slug = _normalize_realtime_agent_slug(
+        session_ctx.get("meeting_active_speaker_slug")
+        or session_ctx.get("meeting_active_persona_slug")
+        or (session_meeting_state.get("active_speaker_slug") if isinstance(session_meeting_state, dict) else "")
+        or (session_meeting_state.get("active_persona_slug") if isinstance(session_meeting_state, dict) else ""),
+        default="",
+    )
+    if event_name in {"response.final", "response.done", "assistant.final"} and meeting_authority_slug:
+        return meeting_authority_slug
+
     candidates: List[Any] = []
 
     def add_from(obj: Any) -> None:
@@ -1963,6 +2062,10 @@ def _rtb06_event_agent_hint(event: Any, session_ctx: Dict[str, Any], text: str) 
         return "orion"
     if re.search(r"\b(sou|eu sou|aqui e|aqui é|fala)\s+(a\s+)?chris\b", raw, re.I):
         return "chris"
+    if re.search(r"\b(sou|eu sou|aqui e|aqui é|fala)\s+(a\s+)?laura\b", raw, re.I):
+        return "laura"
+    if re.search(r"\b(sou|eu sou|aqui e|aqui é|fala)\s+(o\s+)?auditor\b", raw, re.I):
+        return "auditor"
     if re.search(r"\b(sou|eu sou|aqui e|aqui é|fala)\s+(o\s+)?team\b", raw, re.I):
         return "team"
 
@@ -2509,14 +2612,29 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 session_ctx.get("meeting_state") if isinstance(session_ctx.get("meeting_state"), dict) else {},
                 body_meeting_state if isinstance(body_meeting_state, dict) else {},
             )
+            latest_user_transcript_for_meeting = _rtb30_latest_user_transcript(events)
 
-            current_agent_slug = (
-                body_target_agent_slug
-                or body_visible_agent
-                or body_agent_id
+            # PATCH 30:
+            # The backend meeting state is the authority for the current speaker.
+            # body_target_agent_slug/body_visible_agent are client echoes and can be
+            # stale after a server-side handoff. Use them only when no server active
+            # speaker exists yet.
+            server_active_agent_slug = (
+                _rtb30_state_active_slug(existing_meeting_state)
                 or session_ctx.get("meeting_active_speaker_slug")
                 or session_ctx.get("agent_slug")
                 or session_ctx.get("agent_id")
+                or ""
+            )
+            client_echo_agent_slug = (
+                body_target_agent_slug
+                or body_visible_agent
+                or body_agent_id
+                or ""
+            )
+            current_agent_slug = (
+                server_active_agent_slug
+                or client_echo_agent_slug
                 or ""
             )
             effective_dest_mode = body_dest_mode or session_ctx.get("dest_mode") or "team"
@@ -2552,20 +2670,56 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 except Exception:
                     pass
             else:
-                meeting_state = apply_turn_to_meeting_state(
+                quarantine_echo, incoming_echo_slug, preserved_echo_slug = _rtb30_should_quarantine_client_echo(
                     existing_meeting_state,
-                    session_id=session_id,
-                    thread_id=session_ctx.get("thread_id"),
-                    org=org,
-                    user_id=uid,
-                    dest_mode=effective_dest_mode,
-                    target_agent_slug=current_agent_slug,
-                    target_agent_name=body_visible_agent,
-                    kind="client_state_echo",
-                    source="events_batch",
-                    include_internal=bool(_is_admin_user(user, None)),
-                    now_ts=_now_ts(),
+                    client_echo_agent_slug,
                 )
+
+                if not latest_user_transcript_for_meeting:
+                    # Telemetry/audio/provider batches are not user turns. They must
+                    # not increment turn_index and must not change speaker/persona.
+                    meeting_state = existing_meeting_state if isinstance(existing_meeting_state, dict) else {}
+                    if quarantine_echo:
+                        try:
+                            logger.warning(
+                                "PATCH30_CLIENT_STATE_ECHO_QUARANTINED session_id=%s incoming=%s preserved=%s reason=no_user_transcript source=events_batch version=%s",
+                                session_id,
+                                incoming_echo_slug,
+                                preserved_echo_slug,
+                                PATCH_30_SERVER_SPEAKER_AUTHORITY_VERSION,
+                            )
+                        except Exception:
+                            pass
+                else:
+                    echo_target_slug = preserved_echo_slug if quarantine_echo else current_agent_slug
+                    echo_kind = "client_state_echo_quarantined" if quarantine_echo else "client_state_echo"
+                    if quarantine_echo:
+                        try:
+                            logger.warning(
+                                "PATCH30_CLIENT_STATE_ECHO_QUARANTINED session_id=%s incoming=%s preserved=%s reason=server_authority_wins source=events_batch version=%s",
+                                session_id,
+                                incoming_echo_slug,
+                                preserved_echo_slug,
+                                PATCH_30_SERVER_SPEAKER_AUTHORITY_VERSION,
+                            )
+                        except Exception:
+                            pass
+
+                    meeting_state = apply_turn_to_meeting_state(
+                        existing_meeting_state,
+                        session_id=session_id,
+                        thread_id=session_ctx.get("thread_id"),
+                        org=org,
+                        user_id=uid,
+                        dest_mode=effective_dest_mode,
+                        target_agent_slug=echo_target_slug,
+                        target_agent_name=_agent_display_name_from_slug(echo_target_slug) if echo_target_slug else body_visible_agent,
+                        kind=echo_kind,
+                        source="events_batch",
+                        transcript=latest_user_transcript_for_meeting,
+                        include_internal=bool(_is_admin_user(user, None)),
+                        now_ts=_now_ts(),
+                    )
 
             meeting_state_persisted = _maybe_update_realtime_session_meeting_state(
                 deps,
@@ -2617,6 +2771,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             "meeting_state_version": MEETING_STATE_VERSION,
             "meeting_observability": _json_safe(summarize_transition_for_response(meeting_transition)),
             "meeting_observability_version": MEETING_OBSERVABILITY_VERSION,
+            "speaker_authority_version": PATCH_30_SERVER_SPEAKER_AUTHORITY_VERSION,
             "meeting_state_persisted": bool(meeting_state_persisted),
         }
 
