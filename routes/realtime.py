@@ -3,6 +3,8 @@
 # PATCH_30_SERVER_SPEAKER_AUTHORITY_CLIENT_ECHO_QUARANTINE
 # PATCH_32_MANUAL_AGENT_AUTHORITY_MODE
 # PATCH_32_PREDEPLOY_PREMIUM_MANUAL_AGENT_AUTHORITY_AUDIT
+# PATCH_32_REV_C_PROFILE_ADDRESS_MERGE
+# PATCH_32_REV_D_TEAM_PANEL_PRESTAGING
 #
 # Purpose:
 # - Preserve existing Realtime endpoints.
@@ -39,7 +41,23 @@ except Exception:  # pragma: no cover
     registry_realtime_role_line = None  # type: ignore
 
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+try:
+    from app.runtime.profile_preferences import (  # type: ignore
+        PROFILE_ADDRESS_PREFERENCE_VERSION,
+        build_profile_address_preference_context,
+        resolve_profile_address_names,
+    )
+except Exception:  # pragma: no cover
+    PROFILE_ADDRESS_PREFERENCE_VERSION = "PROFILE_ADDRESS_PREFERENCE_V1"
+
+    def build_profile_address_preference_context(*args: Any, **kwargs: Any) -> str:
+        return ""
+
+    def resolve_profile_address_names(*args: Any, **kwargs: Any) -> List[str]:
+        return []
+
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -73,6 +91,7 @@ except Exception:  # pragma: no cover
         dest_mode: Optional[str] = None
         visible_agent: Optional[str] = None
         target_agent_slug: Optional[str] = None
+        manual_target_slug: Optional[str] = None
         requested_agent_names: Optional[Any] = None
         target_agent_slugs: Optional[Any] = None
         multi_agent_turn: Optional[bool] = None
@@ -81,7 +100,14 @@ except Exception:  # pragma: no cover
         manual_agent_source: Optional[str] = None
         manual_authority_version: Optional[str] = None
         auto_handoff_enabled: Optional[bool] = None
+        manual_team_panel_required: Optional[bool] = None
+        manual_team_panel_order: Optional[Any] = None
+        team_panel_version: Optional[str] = None
+        team_panel_mode: Optional[str] = None
+        team_panel_voice_moderator_slug: Optional[str] = None
         client_controlled_response: Optional[bool] = None
+        preferred_address_names: Optional[Any] = None
+        profile_address_preference_version: Optional[str] = None
 
     class RealtimeStartReq(BaseModel):
         agent_id: Optional[str] = None
@@ -97,6 +123,7 @@ except Exception:  # pragma: no cover
         dest_mode: Optional[str] = None
         visible_agent: Optional[str] = None
         target_agent_slug: Optional[str] = None
+        manual_target_slug: Optional[str] = None
         requested_agent_names: Optional[Any] = None
         target_agent_slugs: Optional[Any] = None
         multi_agent_turn: Optional[bool] = None
@@ -105,7 +132,14 @@ except Exception:  # pragma: no cover
         manual_agent_source: Optional[str] = None
         manual_authority_version: Optional[str] = None
         auto_handoff_enabled: Optional[bool] = None
+        manual_team_panel_required: Optional[bool] = None
+        manual_team_panel_order: Optional[Any] = None
+        team_panel_version: Optional[str] = None
+        team_panel_mode: Optional[str] = None
+        team_panel_voice_moderator_slug: Optional[str] = None
         client_controlled_response: Optional[bool] = None
+        preferred_address_names: Optional[Any] = None
+        profile_address_preference_version: Optional[str] = None
 
     class RealtimeEventIn(BaseModel):
         name: Optional[str] = None
@@ -254,6 +288,7 @@ class RealtimeEventsBatchReq(BaseModel):
     dest_mode: Optional[str] = None
     visible_agent: Optional[str] = None
     target_agent_slug: Optional[str] = None
+    manual_target_slug: Optional[str] = None
     requested_agent_names: Optional[Any] = None
     # PATCH_25_MEETING_STATE_PERSISTENTE:
     # Frontend may echo the latest room state so backend can merge it into
@@ -272,6 +307,15 @@ class RealtimeEventsBatchReq(BaseModel):
     manual_agent_source: Optional[str] = None
     manual_authority_version: Optional[str] = None
     auto_handoff_enabled: Optional[bool] = None
+    # PATCH_32_REV_D_TEAM_PANEL_PRESTAGING:
+    # Optional/fail-open Team panel contract. When manual_target_slug=team, these
+    # fields prevent Team from being treated as a single specialist by older
+    # dispatchers/HF constraints.
+    manual_team_panel_required: Optional[bool] = None
+    manual_team_panel_order: Optional[List[str]] = None
+    team_panel_version: Optional[str] = None
+    team_panel_mode: Optional[str] = None
+    team_panel_voice_moderator_slug: Optional[str] = None
 
 
 def _now_ts() -> int:
@@ -328,6 +372,18 @@ def _safe_getattr(obj: Any, name: str, default: Any = None) -> Any:
         return getattr(obj, name, default)
     except Exception:
         return default
+
+
+async def _request_json_field(request: Optional[Request], name: str, default: Any = None) -> Any:
+    if request is None:
+        return default
+    try:
+        payload = await request.json()
+        if isinstance(payload, dict):
+            return payload.get(name, default)
+    except Exception:
+        return default
+    return default
 
 
 def _json_safe(value: Any) -> Any:
@@ -796,6 +852,7 @@ def _build_realtime_context_overlay(
     thread_id: str,
     uid: Optional[str],
     logger: logging.Logger,
+    profile_address_names: Any = None,
 ) -> Tuple[str, Dict[str, Any]]:
     """Build a safe contextual overlay for Realtime session instructions.
 
@@ -818,6 +875,24 @@ def _build_realtime_context_overlay(
             meta["founder_identity_injected"] = True
     except Exception as exc:
         meta["identity_context_error"] = str(exc)[:120]
+
+    try:
+        profile_address_context = build_profile_address_preference_context(
+            user=user,
+            db_user=db_user,
+            explicit=profile_address_names,
+        )
+        if profile_address_context:
+            overlay_parts.append(profile_address_context)
+            meta["profile_address_preference_injected"] = True
+            meta["profile_address_preference_version"] = PROFILE_ADDRESS_PREFERENCE_VERSION
+            meta["profile_address_names_count"] = len(resolve_profile_address_names(
+                user=user,
+                db_user=db_user,
+                explicit=profile_address_names,
+            ))
+    except Exception as exc:
+        meta["profile_address_preference_error"] = str(exc)[:120]
 
     if thread_id:
         try:
@@ -1132,6 +1207,45 @@ def _agent_display_name_from_slug(slug: str) -> str:
     }.get(str(slug or "").strip().lower(), "Orkio")
 
 
+
+
+def _coerce_manual_team_panel_order(value: Any = None) -> List[str]:
+    """PATCH_32_REV_D: deterministic Team panel order.
+
+    Fail-open and canonical. It must include Laura/Chris/Orion even if a stale
+    client/API payload only sends ["orkio"] or omits the list.
+    """
+    raw_items: List[Any] = []
+    if isinstance(value, str):
+        raw = value.strip()
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                raw_items = parsed if isinstance(parsed, list) else [raw]
+            except Exception:
+                raw_items = re.split(r"[;,|]", raw)
+    elif isinstance(value, (list, tuple, set)):
+        raw_items = list(value)
+    elif value:
+        raw_items = [value]
+
+    out: List[str] = []
+    for item in raw_items:
+        slug = _normalize_realtime_agent_slug(item, default="")
+        if slug in PATCH_32_REV_D_TEAM_PANEL_ORDER and slug not in out:
+            out.append(slug)
+
+    # Add any missing canonical Team members in deterministic order.
+    for slug in PATCH_32_REV_D_TEAM_PANEL_ORDER:
+        if slug not in out:
+            out.append(slug)
+
+    return out
+
+
+def _manual_team_panel_names(slugs: Optional[List[str]] = None) -> List[str]:
+    return [_agent_display_name_from_slug(slug) for slug in (slugs or PATCH_32_REV_D_TEAM_PANEL_ORDER)]
+
 def _find_agent_row_by_hint(deps: SimpleNamespace, db: Any, org: str, hint: str) -> Any:
     Agent = getattr(deps, "Agent", None)
     if db is None or Agent is None or select is None or not hint:
@@ -1198,12 +1312,13 @@ def _resolve_realtime_agent_context(
 ) -> Dict[str, Any]:
     dest_mode = str(_safe_getattr(body, "dest_mode", "") or "").strip().lower()
     visible_agent = str(_safe_getattr(body, "visible_agent", "") or "").strip()
+    manual_target_slug = str(_safe_getattr(body, "manual_target_slug", "") or "").strip()
     target_agent_slug = str(_safe_getattr(body, "target_agent_slug", "") or "").strip()
     requested_names = _coerce_realtime_list(_safe_getattr(body, "requested_agent_names", None))
     agent_ids = _coerce_realtime_list(_safe_getattr(body, "agent_ids", None))
 
     hints: List[str] = []
-    for item in (target_agent_slug, visible_agent, explicit_agent_id):
+    for item in (manual_target_slug, target_agent_slug, visible_agent, explicit_agent_id):
         if item:
             hints.append(str(item))
     hints.extend(agent_ids)
@@ -1802,7 +1917,12 @@ PATCH_30_SERVER_SPEAKER_AUTHORITY_VERSION = (
 )
 
 PATCH_32_MANUAL_AGENT_AUTHORITY_VERSION = "PATCH_32_MANUAL_AGENT_AUTHORITY_MODE_V1"
+PATCH_32_REV_C_MANUAL_TARGET_SOURCE_OF_TRUTH_VERSION = "PATCH_32_REV_C_MANUAL_TARGET_SOURCE_OF_TRUTH_V1"
 PATCH_32_PREDEPLOY_PREMIUM_VERSION = "PATCH_32_PREDEPLOY_MANUAL_AGENT_AUTHORITY_VOICE_SYNC_V1"
+PATCH_32_REV_D_TEAM_PANEL_VERSION = "PATCH_32_REV_D_TEAM_PANEL_PRESTAGING_V1"
+PATCH_32_REV_D_TEAM_PANEL_ORDER = ["orkio", "orion", "chris", "laura"]
+PATCH_32_REV_D_TEAM_PANEL_MODE = "manual_team_panel_deterministic_queue"
+PATCH_32_REV_D_TEAM_PANEL_VOICE_MODERATOR_SLUG = "orkio"
 
 
 def _rtb30_latest_user_transcript(events: List[Any]) -> str:
@@ -2345,6 +2465,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             thread_id=thread_id,
             uid=uid,
             logger=logger,
+            profile_address_names=_safe_getattr(body, "preferred_address_names", None),
         )
         instructions = _append_instruction_overlay(base_instructions, overlay)
 
@@ -2372,6 +2493,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
     @router.post("/api/realtime/start")
     async def realtime_start(
         body: RealtimeStartReq,
+        request: Request,
         x_org_slug: Optional[str] = Header(default=None),
         user: Any = Depends(get_current_user),
         db: Any = Depends(get_db),
@@ -2407,6 +2529,30 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
 
         thread_id = str(_safe_getattr(body, "thread_id", "") or "").strip() or _new_id("thread")
         agent_id = str(_safe_getattr(body, "agent_id", "") or "").strip() or None
+        raw_manual_target_slug = (
+            str(_safe_getattr(body, "manual_target_slug", "") or "").strip()
+            or str(await _request_json_field(request, "manual_target_slug", "") or "").strip()
+        )
+        manual_target_slug = _normalize_realtime_agent_slug(raw_manual_target_slug, default="")
+        body_manual_agent_lock = bool(_safe_getattr(body, "manual_agent_lock", False))
+        raw_team_panel_order = (
+            _safe_getattr(body, "manual_team_panel_order", None)
+            or await _request_json_field(request, "manual_team_panel_order", None)
+            or _safe_getattr(body, "target_agent_slugs", None)
+            or []
+        )
+        manual_team_panel_order = _coerce_manual_team_panel_order(raw_team_panel_order) if manual_target_slug == "team" else []
+        if body_manual_agent_lock and manual_target_slug:
+            try:
+                body.target_agent_slug = manual_target_slug
+                body.visible_agent = _agent_display_name_from_slug(manual_target_slug)
+                body.dest_mode = "team" if manual_target_slug == "team" else "single"
+                if manual_target_slug == "team":
+                    body.target_agent_slugs = manual_team_panel_order
+                    body.multi_agent_turn = True
+                    body.response_control = "manual_team_panel"
+            except Exception:
+                pass
         agent_context = _resolve_realtime_agent_context(
             deps,
             db,
@@ -2433,6 +2579,10 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             thread_id=thread_id,
             uid=uid,
             logger=logger,
+            profile_address_names=(
+                _safe_getattr(body, "preferred_address_names", None)
+                or await _request_json_field(request, "preferred_address_names", None)
+            ),
         )
         instructions = _append_instruction_overlay(base_instructions, overlay)
 
@@ -2467,13 +2617,19 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             user_id=uid,
             dest_mode=str(agent_context.get("dest_mode") or _safe_getattr(body, "dest_mode", "") or "team").strip().lower(),
             active_agent_slug=(
-                agent_context.get("slug")
-                or agent_context.get("agent_slug")
-                or agent_context.get("display_name")
-                or agent_id
-                or "orkio"
+                "team" if (body_manual_agent_lock and manual_target_slug == "team") else (
+                    manual_target_slug
+                    or agent_context.get("slug")
+                    or agent_context.get("agent_slug")
+                    or agent_context.get("display_name")
+                    or agent_id
+                    or "orkio"
+                )
             ),
-            active_agent_name=agent_context.get("display_name") or agent_context.get("name") or "",
+            active_agent_name=(
+                "Team" if (body_manual_agent_lock and manual_target_slug == "team")
+                else (_agent_display_name_from_slug(manual_target_slug) if manual_target_slug else (agent_context.get("display_name") or agent_context.get("name") or ""))
+            ),
             include_internal=bool(is_admin),
             history_loaded=bool(overlay_meta.get("thread_context_loaded", True)),
             now_ts=started_at,
@@ -2506,6 +2662,39 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             "target_agent_slugs": _json_safe(_safe_getattr(body, "target_agent_slugs", None) or []),
             "multi_agent_turn": bool(_safe_getattr(body, "multi_agent_turn", False)),
             "response_control": str(_safe_getattr(body, "response_control", "") or "").strip(),
+            "manual_agent_lock": bool(_safe_getattr(body, "manual_agent_lock", False)),
+            "manual_target_slug": manual_target_slug or None,
+            "manual_authority_version": str(
+                _safe_getattr(body, "manual_authority_version", "")
+                or await _request_json_field(request, "manual_authority_version", "")
+                or ""
+            ).strip(),
+            "manual_authority_source": str(
+                _safe_getattr(body, "manual_authority_source", "")
+                or await _request_json_field(request, "manual_authority_source", "")
+                or ""
+            ).strip(),
+            "manual_team_panel_required": bool(
+                _safe_getattr(body, "manual_team_panel_required", False)
+                or await _request_json_field(request, "manual_team_panel_required", False)
+                or manual_target_slug == "team"
+            ),
+            "manual_team_panel_order": _json_safe(manual_team_panel_order),
+            "team_panel_version": str(
+                _safe_getattr(body, "team_panel_version", "")
+                or await _request_json_field(request, "team_panel_version", "")
+                or (PATCH_32_REV_D_TEAM_PANEL_VERSION if manual_target_slug == "team" else "")
+            ).strip(),
+            "team_panel_mode": str(
+                _safe_getattr(body, "team_panel_mode", "")
+                or await _request_json_field(request, "team_panel_mode", "")
+                or (PATCH_32_REV_D_TEAM_PANEL_MODE if manual_target_slug == "team" else "")
+            ).strip(),
+            "team_panel_voice_moderator_slug": str(
+                _safe_getattr(body, "team_panel_voice_moderator_slug", "")
+                or await _request_json_field(request, "team_panel_voice_moderator_slug", "")
+                or (PATCH_32_REV_D_TEAM_PANEL_VOICE_MODERATOR_SLUG if manual_target_slug == "team" else "")
+            ).strip(),
         }
 
         _maybe_persist_realtime_session(
@@ -2567,8 +2756,9 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         )
 
     @router.post("/api/realtime/events:batch")
-    def realtime_events_batch(
+    async def realtime_events_batch(
         body: RealtimeEventsBatchReq,
+        request: Request,
         x_org_slug: Optional[str] = Header(default=None),
         user: Any = Depends(get_current_user),
         db: Any = Depends(get_db),
@@ -2618,10 +2808,29 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 fallback_user_id=uid,
             )
             body_target_agent_slug = str(_safe_getattr(body, "target_agent_slug", "") or "").strip()
+            body_manual_target_raw = (
+                str(_safe_getattr(body, "manual_target_slug", "") or "").strip()
+                or str(await _request_json_field(request, "manual_target_slug", "") or "").strip()
+            )
+            body_manual_target_slug = _normalize_realtime_agent_slug(body_manual_target_raw, default="")
             body_visible_agent = str(_safe_getattr(body, "visible_agent", "") or "").strip()
             body_agent_id = str(_safe_getattr(body, "agent_id", "") or "").strip()
             body_dest_mode = str(_safe_getattr(body, "dest_mode", "") or "").strip().lower()
             body_meeting_state = _safe_getattr(body, "meeting_state", None)
+            if isinstance(body_meeting_state, dict):
+                state_session_id = str(body_meeting_state.get("session_id") or "").strip()
+                if state_session_id and state_session_id != session_id:
+                    try:
+                        logger.warning(
+                            "PATCH32_REV_C_STALE_SESSION_STATE_IGNORED session_id=%s stale_session_id=%s manual_agent_lock=%s manual_target_slug=%s",
+                            session_id,
+                            state_session_id,
+                            bool(_safe_getattr(body, "manual_agent_lock", False)),
+                            body_manual_target_slug or body_manual_target_raw or "",
+                        )
+                    except Exception:
+                        pass
+                    body_meeting_state = None
             body_target_agent_slugs = [
                 str(slug or "").strip().lower()
                 for slug in (_safe_getattr(body, "target_agent_slugs", None) or [])
@@ -2629,6 +2838,31 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             ]
             body_multi_agent_turn = bool(_safe_getattr(body, "multi_agent_turn", False))
             body_response_control = str(_safe_getattr(body, "response_control", "") or "").strip()
+            body_manual_team_panel_order = _coerce_manual_team_panel_order(
+                _safe_getattr(body, "manual_team_panel_order", None)
+                or await _request_json_field(request, "manual_team_panel_order", None)
+                or body_target_agent_slugs
+            ) if body_manual_target_slug == "team" else []
+            body_manual_team_panel_required = bool(
+                _safe_getattr(body, "manual_team_panel_required", False)
+                or await _request_json_field(request, "manual_team_panel_required", False)
+                or body_manual_target_slug == "team"
+            )
+            body_team_panel_version = str(
+                _safe_getattr(body, "team_panel_version", "")
+                or await _request_json_field(request, "team_panel_version", "")
+                or (PATCH_32_REV_D_TEAM_PANEL_VERSION if body_manual_target_slug == "team" else "")
+            ).strip()
+            body_team_panel_mode = str(
+                _safe_getattr(body, "team_panel_mode", "")
+                or await _request_json_field(request, "team_panel_mode", "")
+                or (PATCH_32_REV_D_TEAM_PANEL_MODE if body_manual_target_slug == "team" else "")
+            ).strip()
+            body_team_panel_voice_moderator_slug = str(
+                _safe_getattr(body, "team_panel_voice_moderator_slug", "")
+                or await _request_json_field(request, "team_panel_voice_moderator_slug", "")
+                or (PATCH_32_REV_D_TEAM_PANEL_VOICE_MODERATOR_SLUG if body_manual_target_slug == "team" else "")
+            ).strip()
             body_manual_agent_lock = bool(_safe_getattr(body, "manual_agent_lock", False))
             body_manual_authority_version = str(_safe_getattr(body, "manual_authority_version", "") or "").strip()
             body_auto_handoff_enabled = _safe_getattr(body, "auto_handoff_enabled", None)
@@ -2668,46 +2902,119 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 or ""
             )
             effective_dest_mode = body_dest_mode or session_ctx.get("dest_mode") or "team"
+            manual_lock_invalid = False
 
             if body_manual_authority_active and latest_user_transcript_for_meeting:
                 # PATCH 32:
                 # Manual button authority intentionally suppresses natural-language
                 # handoff/direct-address routing. The selected UI button is the source
                 # of truth for the current realtime turn.
-                manual_target_slug = _normalize_realtime_agent_slug(
-                    (body_target_agent_slug if body_target_agent_slug != "team" else "")
-                    or (body_target_agent_slugs[0] if body_target_agent_slugs else "")
-                    or current_agent_slug
-                    or "orkio",
-                    default="orkio",
-                )
-                meeting_directive = {
-                    "status": "directive",
-                    "kind": "manual_agent_button",
-                    "match_type": "manual_button",
-                    "transition_reason": "manual_agent_button",
-                    "target_agent_slug": manual_target_slug,
-                    "target_agent_slugs": body_target_agent_slugs or [manual_target_slug],
-                    "multi_agent_turn": bool(body_multi_agent_turn),
-                    "response_control": body_response_control or "manual_agent_authority_single",
-                    "confidence": 1.0,
-                    "dedupe_key": f"{session_id}:manual:{manual_target_slug}:{latest_user_transcript_for_meeting[:160]}",
-                    "manual_agent_lock": True,
-                    "manual_authority_version": PATCH_32_MANUAL_AGENT_AUTHORITY_VERSION,
-                    "session_voice_sync_version": PATCH_32_PREDEPLOY_PREMIUM_VERSION,
-                    "manual_button_authority": True,
-                    "should_create_response": False,
-                }
-                try:
-                    logger.warning(
-                        "PATCH32_PREDEPLOY_MANUAL_AGENT_BUTTON_AUTHORITY session_id=%s target=%s response_control=%s version=%s",
-                        session_id,
-                        manual_target_slug,
-                        meeting_directive.get("response_control"),
-                        PATCH_32_PREDEPLOY_PREMIUM_VERSION,
-                    )
-                except Exception:
-                    pass
+                if body_manual_agent_lock and not body_manual_target_slug:
+                    manual_lock_invalid = True
+                    meeting_state = existing_meeting_state if isinstance(existing_meeting_state, dict) else {}
+                    try:
+                        logger.warning(
+                            "PATCH32_REV_C_MANUAL_LOCK_MISSING_TARGET session_id=%s manual_agent_lock=%s manual_target_slug=%s active_speaker_slug=%s active_persona_slug=%s target_agent_slug=%s target_agent_slugs=%s response_control=%s match_type=%s transition_reason=%s",
+                            session_id,
+                            True,
+                            body_manual_target_raw or "",
+                            meeting_state.get("active_speaker_slug") if isinstance(meeting_state, dict) else "",
+                            meeting_state.get("active_persona_slug") if isinstance(meeting_state, dict) else "",
+                            meeting_state.get("target_agent_slug") if isinstance(meeting_state, dict) else "",
+                            meeting_state.get("target_agent_slugs") if isinstance(meeting_state, dict) else [],
+                            body_response_control,
+                            "manual_lock_invalid",
+                            "manual_lock_missing_target",
+                        )
+                    except Exception:
+                        pass
+                else:
+                    manual_target_slug = body_manual_target_slug
+                    if manual_target_slug == "team":
+                        manual_target_slugs = body_manual_team_panel_order or _coerce_manual_team_panel_order(body_target_agent_slugs)
+                        meeting_directive = {
+                            "status": "directive",
+                            "kind": "manual_team_button",
+                            "match_type": "manual_team_button",
+                            "transition_reason": "manual_team_button",
+                            "target_agent_slug": "team",
+                            "target_agent_slugs": manual_target_slugs,
+                            "multi_agent_turn": True,
+                            "response_control": "manual_team_panel",
+                            "confidence": 1.0,
+                            "dedupe_key": f"{session_id}:manual:team:{latest_user_transcript_for_meeting[:160]}",
+                            "manual_agent_lock": True,
+                            "manual_target_slug": "team",
+                            "manual_authority_version": PATCH_32_REV_C_MANUAL_TARGET_SOURCE_OF_TRUTH_VERSION,
+                            "session_voice_sync_version": PATCH_32_PREDEPLOY_PREMIUM_VERSION,
+                            "manual_button_authority": True,
+                            "should_create_response": False,
+                            "manual_team_panel_required": True,
+                            "manual_team_panel_order": manual_target_slugs,
+                            "team_panel_version": body_team_panel_version or PATCH_32_REV_D_TEAM_PANEL_VERSION,
+                            "team_panel_mode": body_team_panel_mode or PATCH_32_REV_D_TEAM_PANEL_MODE,
+                            "team_panel_voice_moderator_slug": body_team_panel_voice_moderator_slug or PATCH_32_REV_D_TEAM_PANEL_VOICE_MODERATOR_SLUG,
+                        }
+                        try:
+                            logger.warning(
+                                "PATCH32_REV_C_TEAM_HF4C_BYPASS session_id=%s manual_agent_lock=%s manual_target_slug=%s active_speaker_slug=%s active_persona_slug=%s target_agent_slug=%s target_agent_slugs=%s response_control=%s match_type=%s transition_reason=%s",
+                                session_id,
+                                True,
+                                "team",
+                                "team",
+                                "team",
+                                "team",
+                                json.dumps(manual_target_slugs, ensure_ascii=False),
+                                "manual_team_panel",
+                                "manual_team_button",
+                                "manual_team_button",
+                            )
+                            logger.warning(
+                                "PATCH32_REV_D_TEAM_PANEL_PRESTAGING session_id=%s team_panel_version=%s manual_team_panel_order=%s manual_team_panel_required=%s voice_moderator=%s",
+                                session_id,
+                                body_team_panel_version or PATCH_32_REV_D_TEAM_PANEL_VERSION,
+                                json.dumps(manual_target_slugs, ensure_ascii=False),
+                                True,
+                                body_team_panel_voice_moderator_slug or PATCH_32_REV_D_TEAM_PANEL_VOICE_MODERATOR_SLUG,
+                            )
+                        except Exception:
+                            pass
+                    else:
+                        meeting_directive = {
+                            "status": "directive",
+                            "kind": "manual_agent_button",
+                            "match_type": "manual_agent_button",
+                            "transition_reason": "manual_agent_button",
+                            "target_agent_slug": manual_target_slug,
+                            "target_agent_slugs": [manual_target_slug],
+                            "multi_agent_turn": False,
+                            "response_control": "manual_agent_authority_single",
+                            "confidence": 1.0,
+                            "dedupe_key": f"{session_id}:manual:{manual_target_slug}:{latest_user_transcript_for_meeting[:160]}",
+                            "manual_agent_lock": True,
+                            "manual_target_slug": manual_target_slug,
+                            "manual_authority_version": PATCH_32_REV_C_MANUAL_TARGET_SOURCE_OF_TRUTH_VERSION,
+                            "session_voice_sync_version": PATCH_32_PREDEPLOY_PREMIUM_VERSION,
+                            "manual_button_authority": True,
+                            "should_create_response": False,
+                        }
+                    if meeting_directive:
+                        try:
+                            logger.warning(
+                                "PATCH32_REV_C_MANUAL_TARGET_AUTHORITY session_id=%s manual_agent_lock=%s manual_target_slug=%s active_speaker_slug=%s active_persona_slug=%s target_agent_slug=%s target_agent_slugs=%s response_control=%s match_type=%s transition_reason=%s",
+                                session_id,
+                                True,
+                                manual_target_slug,
+                                manual_target_slug,
+                                manual_target_slug,
+                                meeting_directive.get("target_agent_slug"),
+                                json.dumps(meeting_directive.get("target_agent_slugs") or [], ensure_ascii=False),
+                                meeting_directive.get("response_control"),
+                                meeting_directive.get("match_type"),
+                                meeting_directive.get("transition_reason"),
+                            )
+                        except Exception:
+                            pass
             else:
                 meeting_directive = build_meeting_directive(
                     session_id=session_id,
@@ -2739,6 +3046,8 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                     meeting_directive["meeting_state_version"] = MEETING_STATE_VERSION
                 except Exception:
                     pass
+            elif manual_lock_invalid:
+                meeting_state = existing_meeting_state if isinstance(existing_meeting_state, dict) else {}
             else:
                 quarantine_echo, incoming_echo_slug, preserved_echo_slug = _rtb30_should_quarantine_client_echo(
                     existing_meeting_state,
@@ -2841,6 +3150,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             "meeting_state_version": MEETING_STATE_VERSION,
             "meeting_observability": _json_safe(summarize_transition_for_response(meeting_transition)),
             "meeting_observability_version": MEETING_OBSERVABILITY_VERSION,
+            "team_panel_version": PATCH_32_REV_D_TEAM_PANEL_VERSION,
             "speaker_authority_version": PATCH_30_SERVER_SPEAKER_AUTHORITY_VERSION,
             "meeting_state_persisted": bool(meeting_state_persisted),
         }
