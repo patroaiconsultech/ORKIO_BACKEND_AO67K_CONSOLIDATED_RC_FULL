@@ -1,6 +1,8 @@
 # ORKIO_RTB06_REALTIME_FINALS_MESSAGES_BRIDGE
 # Backend-only PATCH_MINIMUM for routes/realtime.py
 # PATCH_30_SERVER_SPEAKER_AUTHORITY_CLIENT_ECHO_QUARANTINE
+# PATCH_32_MANUAL_AGENT_AUTHORITY_MODE
+# PATCH_32_PREDEPLOY_PREMIUM_MANUAL_AGENT_AUTHORITY_AUDIT
 #
 # Purpose:
 # - Preserve existing Realtime endpoints.
@@ -75,6 +77,10 @@ except Exception:  # pragma: no cover
         target_agent_slugs: Optional[Any] = None
         multi_agent_turn: Optional[bool] = None
         response_control: Optional[str] = None
+        manual_agent_lock: Optional[bool] = None
+        manual_agent_source: Optional[str] = None
+        manual_authority_version: Optional[str] = None
+        auto_handoff_enabled: Optional[bool] = None
         client_controlled_response: Optional[bool] = None
 
     class RealtimeStartReq(BaseModel):
@@ -95,6 +101,10 @@ except Exception:  # pragma: no cover
         target_agent_slugs: Optional[Any] = None
         multi_agent_turn: Optional[bool] = None
         response_control: Optional[str] = None
+        manual_agent_lock: Optional[bool] = None
+        manual_agent_source: Optional[str] = None
+        manual_authority_version: Optional[str] = None
+        auto_handoff_enabled: Optional[bool] = None
         client_controlled_response: Optional[bool] = None
 
     class RealtimeEventIn(BaseModel):
@@ -254,6 +264,14 @@ class RealtimeEventsBatchReq(BaseModel):
     target_agent_slugs: Optional[List[str]] = None
     multi_agent_turn: Optional[bool] = None
     response_control: Optional[str] = None
+    # PATCH_32_MANUAL_AGENT_AUTHORITY_MODE:
+    # Optional/fail-open manual button contract from the App Console. When present,
+    # it tells realtime events:batch that the selected UI button is the authority
+    # and natural-language handoff should not override the active speaker.
+    manual_agent_lock: Optional[bool] = None
+    manual_agent_source: Optional[str] = None
+    manual_authority_version: Optional[str] = None
+    auto_handoff_enabled: Optional[bool] = None
 
 
 def _now_ts() -> int:
@@ -1783,6 +1801,9 @@ PATCH_30_SERVER_SPEAKER_AUTHORITY_VERSION = (
     "PATCH_30_SERVER_SPEAKER_AUTHORITY_CLIENT_ECHO_QUARANTINE_V1"
 )
 
+PATCH_32_MANUAL_AGENT_AUTHORITY_VERSION = "PATCH_32_MANUAL_AGENT_AUTHORITY_MODE_V1"
+PATCH_32_PREDEPLOY_PREMIUM_VERSION = "PATCH_32_PREDEPLOY_MANUAL_AGENT_AUTHORITY_VOICE_SYNC_V1"
+
 
 def _rtb30_latest_user_transcript(events: List[Any]) -> str:
     """Return the latest user transcript.final text for meeting-state authority checks."""
@@ -2608,6 +2629,15 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             ]
             body_multi_agent_turn = bool(_safe_getattr(body, "multi_agent_turn", False))
             body_response_control = str(_safe_getattr(body, "response_control", "") or "").strip()
+            body_manual_agent_lock = bool(_safe_getattr(body, "manual_agent_lock", False))
+            body_manual_authority_version = str(_safe_getattr(body, "manual_authority_version", "") or "").strip()
+            body_auto_handoff_enabled = _safe_getattr(body, "auto_handoff_enabled", None)
+            body_manual_authority_active = bool(
+                body_manual_agent_lock
+                or body_response_control.startswith("manual_")
+                or body_manual_authority_version.startswith("PATCH_32")
+                or body_auto_handoff_enabled is False
+            )
             existing_meeting_state = _merge_client_meeting_state(
                 session_ctx.get("meeting_state") if isinstance(session_ctx.get("meeting_state"), dict) else {},
                 body_meeting_state if isinstance(body_meeting_state, dict) else {},
@@ -2639,13 +2669,53 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             )
             effective_dest_mode = body_dest_mode or session_ctx.get("dest_mode") or "team"
 
-            meeting_directive = build_meeting_directive(
-                session_id=session_id,
-                events=events,
-                current_agent_slug=current_agent_slug,
-                dest_mode=effective_dest_mode,
-                promotion=promotion,
-            )
+            if body_manual_authority_active and latest_user_transcript_for_meeting:
+                # PATCH 32:
+                # Manual button authority intentionally suppresses natural-language
+                # handoff/direct-address routing. The selected UI button is the source
+                # of truth for the current realtime turn.
+                manual_target_slug = _normalize_realtime_agent_slug(
+                    (body_target_agent_slug if body_target_agent_slug != "team" else "")
+                    or (body_target_agent_slugs[0] if body_target_agent_slugs else "")
+                    or current_agent_slug
+                    or "orkio",
+                    default="orkio",
+                )
+                meeting_directive = {
+                    "status": "directive",
+                    "kind": "manual_agent_button",
+                    "match_type": "manual_button",
+                    "transition_reason": "manual_agent_button",
+                    "target_agent_slug": manual_target_slug,
+                    "target_agent_slugs": body_target_agent_slugs or [manual_target_slug],
+                    "multi_agent_turn": bool(body_multi_agent_turn),
+                    "response_control": body_response_control or "manual_agent_authority_single",
+                    "confidence": 1.0,
+                    "dedupe_key": f"{session_id}:manual:{manual_target_slug}:{latest_user_transcript_for_meeting[:160]}",
+                    "manual_agent_lock": True,
+                    "manual_authority_version": PATCH_32_MANUAL_AGENT_AUTHORITY_VERSION,
+                    "session_voice_sync_version": PATCH_32_PREDEPLOY_PREMIUM_VERSION,
+                    "manual_button_authority": True,
+                    "should_create_response": False,
+                }
+                try:
+                    logger.warning(
+                        "PATCH32_PREDEPLOY_MANUAL_AGENT_BUTTON_AUTHORITY session_id=%s target=%s response_control=%s version=%s",
+                        session_id,
+                        manual_target_slug,
+                        meeting_directive.get("response_control"),
+                        PATCH_32_PREDEPLOY_PREMIUM_VERSION,
+                    )
+                except Exception:
+                    pass
+            else:
+                meeting_directive = build_meeting_directive(
+                    session_id=session_id,
+                    events=events,
+                    current_agent_slug=current_agent_slug,
+                    dest_mode=effective_dest_mode,
+                    promotion=promotion,
+                )
 
             if meeting_directive:
                 if body_target_agent_slugs and not meeting_directive.get("target_agent_slugs"):
