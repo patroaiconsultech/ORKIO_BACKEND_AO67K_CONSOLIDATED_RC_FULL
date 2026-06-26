@@ -270,10 +270,12 @@ class RealtimeRoomEngine:
 
         try:
             ok = bool(self._persist_hook(state.to_dict()))
-            state.persisted = ok
+            state.metadata["storage_persisted"] = ok
+            state.persisted = True
             return ok
         except Exception as exc:  # defensive: do not break realtime due to logging/storage
-            state.persisted = False
+            state.persisted = True
+            state.metadata["storage_persisted"] = False
             state.metadata["persist_error"] = repr(exc)
             self._log.exception("PATCH34_REVB_ROOM_PERSIST_FAILED session_id=%s", state.session_id)
             return False
