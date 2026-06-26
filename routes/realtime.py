@@ -7,7 +7,11 @@
 # PATCH_32_REV_D_TEAM_PANEL_PRESTAGING
 # PATCH_32_REV_E_MANUAL_BUTTON_STICKY_STATE
 # PATCH_32_REV_F_MANUAL_BUTTON_LOCK_PERSISTENCE
+# PATCH_32_REV_G_MANUAL_LOCK_CONTRACT_PROPAGATION
 # PATCH_32_REV_H_MANUAL_LOCK_STAGING_PROOF
+# PATCH_32_REV_I_MANUAL_LOCK_STAGING_PROOF_SILENCE
+# PATCH_32_REV_J_MANUAL_LOCK_STAGING_PROOF_PRODUCTION_GUARD
+# PATCH_33_TEAM_CONVERSATION_ORCHESTRATOR
 #
 # Purpose:
 # - Preserve existing Realtime endpoints.
@@ -105,12 +109,20 @@ except Exception:  # pragma: no cover
         manual_sticky_state_version: Optional[str] = None
         manual_lock_persistence_version: Optional[str] = None
         manual_lock_staging_proof_version: Optional[str] = None
+        manual_lock_staging_proof_production_guard_version: Optional[str] = None
         auto_handoff_enabled: Optional[bool] = None
         manual_team_panel_required: Optional[bool] = None
         manual_team_panel_order: Optional[Any] = None
         team_panel_version: Optional[str] = None
         team_panel_mode: Optional[str] = None
         team_panel_voice_moderator_slug: Optional[str] = None
+        manual_team_conversation_active: Optional[bool] = None
+        manual_team_focus_slug: Optional[str] = None
+        manual_team_turn_queue: Optional[Any] = None
+        manual_team_turn_index: Optional[int] = None
+        team_conversation_mode: Optional[str] = None
+        team_conversation_orchestrator_version: Optional[str] = None
+        team_conversation_staging_verification_version: Optional[str] = None
         client_controlled_response: Optional[bool] = None
         preferred_address_names: Optional[Any] = None
         profile_address_preference_version: Optional[str] = None
@@ -140,12 +152,20 @@ except Exception:  # pragma: no cover
         manual_sticky_state_version: Optional[str] = None
         manual_lock_persistence_version: Optional[str] = None
         manual_lock_staging_proof_version: Optional[str] = None
+        manual_lock_staging_proof_production_guard_version: Optional[str] = None
         auto_handoff_enabled: Optional[bool] = None
         manual_team_panel_required: Optional[bool] = None
         manual_team_panel_order: Optional[Any] = None
         team_panel_version: Optional[str] = None
         team_panel_mode: Optional[str] = None
         team_panel_voice_moderator_slug: Optional[str] = None
+        manual_team_conversation_active: Optional[bool] = None
+        manual_team_focus_slug: Optional[str] = None
+        manual_team_turn_queue: Optional[Any] = None
+        manual_team_turn_index: Optional[int] = None
+        team_conversation_mode: Optional[str] = None
+        team_conversation_orchestrator_version: Optional[str] = None
+        team_conversation_staging_verification_version: Optional[str] = None
         client_controlled_response: Optional[bool] = None
         preferred_address_names: Optional[Any] = None
         profile_address_preference_version: Optional[str] = None
@@ -318,6 +338,7 @@ class RealtimeEventsBatchReq(BaseModel):
     manual_sticky_state_version: Optional[str] = None
     manual_lock_persistence_version: Optional[str] = None
     manual_lock_staging_proof_version: Optional[str] = None
+    manual_lock_staging_proof_production_guard_version: Optional[str] = None
     auto_handoff_enabled: Optional[bool] = None
     # PATCH_32_REV_D_TEAM_PANEL_PRESTAGING:
     # Optional/fail-open Team panel contract. When manual_target_slug=team, these
@@ -328,6 +349,15 @@ class RealtimeEventsBatchReq(BaseModel):
     team_panel_version: Optional[str] = None
     team_panel_mode: Optional[str] = None
     team_panel_voice_moderator_slug: Optional[str] = None
+    # PATCH_33_TEAM_CONVERSATION_ORCHESTRATOR:
+    # Optional/fail-open Team room contract.
+    manual_team_conversation_active: Optional[bool] = None
+    manual_team_focus_slug: Optional[str] = None
+    manual_team_turn_queue: Optional[List[str]] = None
+    manual_team_turn_index: Optional[int] = None
+    team_conversation_mode: Optional[str] = None
+    team_conversation_orchestrator_version: Optional[str] = None
+    team_conversation_staging_verification_version: Optional[str] = None
 
 
 def _now_ts() -> int:
@@ -1258,6 +1288,40 @@ def _coerce_manual_team_panel_order(value: Any = None) -> List[str]:
 def _manual_team_panel_names(slugs: Optional[List[str]] = None) -> List[str]:
     return [_agent_display_name_from_slug(slug) for slug in (slugs or PATCH_32_REV_D_TEAM_PANEL_ORDER)]
 
+def _patch33_is_team_conversation_active(*values: Any) -> bool:
+    for value in values:
+        if isinstance(value, bool) and value:
+            return True
+        raw = str(value or "").strip()
+        if not raw:
+            continue
+        low = raw.lower()
+        if low in {"1", "true", "yes", "on"}:
+            return True
+        if raw in {
+            PATCH_33_TEAM_CONVERSATION_ORCHESTRATOR_VERSION,
+            PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL,
+            PATCH_33_TEAM_CONVERSATION_MODE,
+        }:
+            return True
+    return False
+
+
+def _patch33_team_focus_slug(value: Any = None, default: str = "orkio") -> str:
+    slug = _normalize_realtime_agent_slug(value, default="")
+    if slug and slug != "team":
+        return slug
+    return default
+
+
+def _patch33_team_turn_queue(value: Any = None, focus_slug: str = "orkio") -> List[str]:
+    base = _coerce_manual_team_panel_order(value)
+    focus = _patch33_team_focus_slug(focus_slug, default="")
+    if focus and focus in PATCH_32_REV_D_TEAM_PANEL_ORDER:
+        return [focus] + [slug for slug in base if slug != focus]
+    return base
+
+
 def _find_agent_row_by_hint(deps: SimpleNamespace, db: Any, org: str, hint: str) -> Any:
     Agent = getattr(deps, "Agent", None)
     if db is None or Agent is None or select is None or not hint:
@@ -1938,6 +2002,11 @@ PATCH_32_REV_D_TEAM_PANEL_VOICE_MODERATOR_SLUG = "orkio"
 PATCH_32_REV_E_MANUAL_BUTTON_STICKY_STATE_VERSION = "PATCH_32_REV_E_MANUAL_BUTTON_STICKY_STATE_V1"
 PATCH_32_REV_F_MANUAL_BUTTON_LOCK_PERSISTENCE_VERSION = "PATCH_32_REV_F_MANUAL_BUTTON_LOCK_PERSISTENCE_V1"
 PATCH_32_REV_H_MANUAL_LOCK_STAGING_PROOF_VERSION = "PATCH_32_REV_H_MANUAL_LOCK_STAGING_PROOF_V1"
+PATCH_32_REV_J_MANUAL_LOCK_STAGING_PROOF_PRODUCTION_GUARD_VERSION = "PATCH_32_REV_J_MANUAL_LOCK_STAGING_PROOF_PRODUCTION_GUARD_V1"
+PATCH_33_TEAM_CONVERSATION_ORCHESTRATOR_VERSION = "PATCH_33_TEAM_CONVERSATION_ORCHESTRATOR_V1"
+PATCH_33_REV_A_TEAM_CONVERSATION_STAGING_VERIFICATION_VERSION = "PATCH_33_REV_A_TEAM_CONVERSATION_STAGING_VERIFICATION_V1"
+PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL = "team_conversation_orchestrator"
+PATCH_33_TEAM_CONVERSATION_MODE = "team_conversation_room"
 
 
 def _patch32_revf_event_payloads(event: Any) -> List[Dict[str, Any]]:
@@ -2625,16 +2694,60 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             or _safe_getattr(body, "target_agent_slugs", None)
             or []
         )
-        manual_team_panel_order = _coerce_manual_team_panel_order(raw_team_panel_order) if manual_target_slug == "team" else []
+        raw_team_conversation_version = (
+            str(_safe_getattr(body, "team_conversation_orchestrator_version", "") or "").strip()
+            or str(await _request_json_field(request, "team_conversation_orchestrator_version", "") or "").strip()
+        )
+        raw_team_conversation_staging_verification_version = (
+            str(_safe_getattr(body, "team_conversation_staging_verification_version", "") or "").strip()
+            or str(await _request_json_field(request, "team_conversation_staging_verification_version", "") or "").strip()
+        )
+        raw_team_conversation_mode = (
+            str(_safe_getattr(body, "team_conversation_mode", "") or "").strip()
+            or str(await _request_json_field(request, "team_conversation_mode", "") or "").strip()
+        )
+        raw_team_conversation_focus = (
+            str(_safe_getattr(body, "manual_team_focus_slug", "") or "").strip()
+            or str(await _request_json_field(request, "manual_team_focus_slug", "") or "").strip()
+            or str(_safe_getattr(body, "target_agent_slug", "") or "").strip()
+            or "orkio"
+        )
+        manual_team_conversation_active = _patch33_is_team_conversation_active(
+            _safe_getattr(body, "manual_team_conversation_active", None),
+            await _request_json_field(request, "manual_team_conversation_active", None),
+            raw_team_conversation_version,
+            raw_team_conversation_mode,
+            _safe_getattr(body, "response_control", None),
+        )
+        team_conversation_focus_slug = _patch33_team_focus_slug(raw_team_conversation_focus, default="orkio")
+        raw_team_turn_queue = (
+            _safe_getattr(body, "manual_team_turn_queue", None)
+            or await _request_json_field(request, "manual_team_turn_queue", None)
+            or raw_team_panel_order
+        )
+        manual_team_panel_order = (
+            _patch33_team_turn_queue(raw_team_turn_queue, team_conversation_focus_slug)
+            if (manual_target_slug == "team" or manual_team_conversation_active)
+            else []
+        )
         if body_manual_agent_lock and manual_target_slug:
             try:
-                body.target_agent_slug = manual_target_slug
-                body.visible_agent = _agent_display_name_from_slug(manual_target_slug)
-                body.dest_mode = "team" if manual_target_slug == "team" else "single"
-                if manual_target_slug == "team":
+                if manual_target_slug == "team" or manual_team_conversation_active:
+                    body.target_agent_slug = team_conversation_focus_slug
+                    body.visible_agent = "Team"
+                    body.dest_mode = "team"
                     body.target_agent_slugs = manual_team_panel_order
                     body.multi_agent_turn = True
-                    body.response_control = "manual_team_panel"
+                    body.response_control = PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL
+                    body.manual_team_conversation_active = True
+                    body.manual_team_focus_slug = team_conversation_focus_slug
+                    body.manual_team_turn_queue = manual_team_panel_order
+                    body.team_conversation_mode = PATCH_33_TEAM_CONVERSATION_MODE
+                    body.team_conversation_orchestrator_version = PATCH_33_TEAM_CONVERSATION_ORCHESTRATOR_VERSION
+                else:
+                    body.target_agent_slug = manual_target_slug
+                    body.visible_agent = _agent_display_name_from_slug(manual_target_slug)
+                    body.dest_mode = "single"
             except Exception:
                 pass
         agent_context = _resolve_realtime_agent_context(
@@ -2701,7 +2814,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             user_id=uid,
             dest_mode=str(agent_context.get("dest_mode") or _safe_getattr(body, "dest_mode", "") or "team").strip().lower(),
             active_agent_slug=(
-                "team" if (body_manual_agent_lock and manual_target_slug == "team") else (
+                team_conversation_focus_slug if (body_manual_agent_lock and (manual_target_slug == "team" or manual_team_conversation_active)) else (
                     manual_target_slug
                     or agent_context.get("slug")
                     or agent_context.get("agent_slug")
@@ -2711,7 +2824,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 )
             ),
             active_agent_name=(
-                "Team" if (body_manual_agent_lock and manual_target_slug == "team")
+                _agent_display_name_from_slug(team_conversation_focus_slug) if (body_manual_agent_lock and (manual_target_slug == "team" or manual_team_conversation_active))
                 else (_agent_display_name_from_slug(manual_target_slug) if manual_target_slug else (agent_context.get("display_name") or agent_context.get("name") or ""))
             ),
             include_internal=bool(is_admin),
@@ -2763,12 +2876,23 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 or await _request_json_field(request, "manual_lock_staging_proof_version", "")
                 or ""
             ).strip(),
+            "manual_lock_staging_proof_production_guard_version": str(
+                _safe_getattr(body, "manual_lock_staging_proof_production_guard_version", "")
+                or await _request_json_field(request, "manual_lock_staging_proof_production_guard_version", "")
+                or ""
+            ).strip(),
             "manual_team_panel_required": bool(
                 _safe_getattr(body, "manual_team_panel_required", False)
                 or await _request_json_field(request, "manual_team_panel_required", False)
                 or manual_target_slug == "team"
             ),
             "manual_team_panel_order": _json_safe(manual_team_panel_order),
+            "manual_team_conversation_active": bool(manual_team_conversation_active),
+            "manual_team_focus_slug": team_conversation_focus_slug if manual_team_conversation_active else "",
+            "manual_team_turn_queue": _json_safe(manual_team_panel_order if manual_team_conversation_active else []),
+            "team_conversation_mode": PATCH_33_TEAM_CONVERSATION_MODE if manual_team_conversation_active else "",
+            "team_conversation_orchestrator_version": PATCH_33_TEAM_CONVERSATION_ORCHESTRATOR_VERSION if manual_team_conversation_active else "",
+"team_conversation_staging_verification_version": (raw_team_conversation_staging_verification_version or PATCH_33_REV_A_TEAM_CONVERSATION_STAGING_VERIFICATION_VERSION) if manual_team_conversation_active else "",
             "team_panel_version": str(
                 _safe_getattr(body, "team_panel_version", "")
                 or await _request_json_field(request, "team_panel_version", "")
@@ -2839,7 +2963,14 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 "meeting_state_version": MEETING_STATE_VERSION,
                 "meeting_observability": _json_safe(summarize_transition_for_response(initial_meeting_observability)),
                 "meeting_observability_version": MEETING_OBSERVABILITY_VERSION,
-                "manual_lock_staging_proof_version": session_meta.get("manual_lock_staging_proof_version") or PATCH_32_REV_H_MANUAL_LOCK_STAGING_PROOF_VERSION,
+                "manual_lock_staging_proof_version": session_meta.get("manual_lock_staging_proof_version") or "",
+                "manual_lock_staging_proof_production_guard_version": session_meta.get("manual_lock_staging_proof_production_guard_version") or PATCH_32_REV_J_MANUAL_LOCK_STAGING_PROOF_PRODUCTION_GUARD_VERSION,
+                "manual_team_conversation_active": bool(session_meta.get("manual_team_conversation_active")),
+                "manual_team_focus_slug": session_meta.get("manual_team_focus_slug") or "",
+                "manual_team_turn_queue": _json_safe(session_meta.get("manual_team_turn_queue") or []),
+                "team_conversation_mode": session_meta.get("team_conversation_mode") or "",
+                "team_conversation_orchestrator_version": session_meta.get("team_conversation_orchestrator_version") or "",
+"team_conversation_staging_verification_version": session_meta.get("team_conversation_staging_verification_version") or "",
                 "serialization_safe": "RTB03_RTB06_EFATA777_V8_PATCH29",
                 "timebox_policy": "advisory_only_esg",
             }
@@ -2890,6 +3021,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         meeting_state_persisted = False
         meeting_transition: Dict[str, Any] = {}
         body_manual_lock_staging_proof_version = ""
+        body_manual_lock_staging_proof_production_guard_version = ""
         try:
             session_ctx = _rtb06_get_session_context(
                 deps,
@@ -2944,7 +3076,49 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             ]
             body_multi_agent_turn = bool(_safe_getattr(body, "multi_agent_turn", False))
             body_response_control = str(_safe_getattr(body, "response_control", "") or "").strip()
-            body_manual_team_panel_order = _coerce_manual_team_panel_order(
+            body_team_conversation_version = str(
+                _safe_getattr(body, "team_conversation_orchestrator_version", "")
+                or await _request_json_field(request, "team_conversation_orchestrator_version", "")
+                or ""
+            ).strip()
+            body_team_conversation_staging_verification_version = str(
+                _safe_getattr(body, "team_conversation_staging_verification_version", "")
+                or await _request_json_field(request, "team_conversation_staging_verification_version", "")
+                or ""
+            ).strip()
+            body_team_conversation_mode = str(
+                _safe_getattr(body, "team_conversation_mode", "")
+                or await _request_json_field(request, "team_conversation_mode", "")
+                or ""
+            ).strip()
+            body_manual_team_focus_slug = _patch33_team_focus_slug(
+                _safe_getattr(body, "manual_team_focus_slug", None)
+                or await _request_json_field(request, "manual_team_focus_slug", None)
+                or body_target_agent_slug
+                or "orkio",
+                default="orkio",
+            )
+            body_manual_team_conversation_active = _patch33_is_team_conversation_active(
+                _safe_getattr(body, "manual_team_conversation_active", None),
+                await _request_json_field(request, "manual_team_conversation_active", None),
+                body_team_conversation_version,
+                body_team_conversation_mode,
+                body_response_control,
+            )
+            if body_manual_team_conversation_active:
+                body_manual_target_slug = "team"
+                body_response_control = PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL
+                body_multi_agent_turn = True
+            body_manual_team_panel_order = _patch33_team_turn_queue(
+                _safe_getattr(body, "manual_team_turn_queue", None)
+                or await _request_json_field(request, "manual_team_turn_queue", None)
+                or _safe_getattr(body, "manual_team_panel_order", None)
+                or await _request_json_field(request, "manual_team_panel_order", None)
+                or body_target_agent_slugs,
+                body_manual_team_focus_slug,
+            ) if (body_manual_target_slug == "team" or body_manual_team_conversation_active) else []
+            # original PATCH_32_REV_D order fallback remains below for non-PATCH_33 payloads
+            body_manual_team_panel_order = body_manual_team_panel_order or _coerce_manual_team_panel_order(
                 _safe_getattr(body, "manual_team_panel_order", None)
                 or await _request_json_field(request, "manual_team_panel_order", None)
                 or body_target_agent_slugs
@@ -2953,21 +3127,22 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 _safe_getattr(body, "manual_team_panel_required", False)
                 or await _request_json_field(request, "manual_team_panel_required", False)
                 or body_manual_target_slug == "team"
+                or body_manual_team_conversation_active
             )
             body_team_panel_version = str(
                 _safe_getattr(body, "team_panel_version", "")
                 or await _request_json_field(request, "team_panel_version", "")
-                or (PATCH_32_REV_D_TEAM_PANEL_VERSION if body_manual_target_slug == "team" else "")
+                or (PATCH_32_REV_D_TEAM_PANEL_VERSION if (body_manual_target_slug == "team" or body_manual_team_conversation_active) else "")
             ).strip()
             body_team_panel_mode = str(
                 _safe_getattr(body, "team_panel_mode", "")
                 or await _request_json_field(request, "team_panel_mode", "")
-                or (PATCH_32_REV_D_TEAM_PANEL_MODE if body_manual_target_slug == "team" else "")
+                or (PATCH_33_TEAM_CONVERSATION_MODE if body_manual_team_conversation_active else (PATCH_32_REV_D_TEAM_PANEL_MODE if body_manual_target_slug == "team" else ""))
             ).strip()
             body_team_panel_voice_moderator_slug = str(
                 _safe_getattr(body, "team_panel_voice_moderator_slug", "")
                 or await _request_json_field(request, "team_panel_voice_moderator_slug", "")
-                or (PATCH_32_REV_D_TEAM_PANEL_VOICE_MODERATOR_SLUG if body_manual_target_slug == "team" else "")
+                or (body_manual_team_focus_slug if body_manual_team_conversation_active else (PATCH_32_REV_D_TEAM_PANEL_VOICE_MODERATOR_SLUG if body_manual_target_slug == "team" else ""))
             ).strip()
             body_manual_agent_lock = bool(_safe_getattr(body, "manual_agent_lock", False) or event_manual_target_slug)
             body_manual_authority_version = str(_safe_getattr(body, "manual_authority_version", "") or "").strip()
@@ -2986,6 +3161,11 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 or await _request_json_field(request, "manual_lock_staging_proof_version", "")
                 or ""
             ).strip()
+            body_manual_lock_staging_proof_production_guard_version = str(
+                _safe_getattr(body, "manual_lock_staging_proof_production_guard_version", "")
+                or await _request_json_field(request, "manual_lock_staging_proof_production_guard_version", "")
+                or ""
+            ).strip()
             body_auto_handoff_enabled = _safe_getattr(body, "auto_handoff_enabled", None)
             body_manual_authority_active = bool(
                 body_manual_agent_lock
@@ -2995,6 +3175,10 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 or body_manual_sticky_state_version.startswith("PATCH_32_REV_E")
                 or body_manual_lock_persistence_version.startswith("PATCH_32_REV_F")
                 or body_manual_lock_staging_proof_version.startswith("PATCH_32_REV_H")
+                or body_manual_lock_staging_proof_production_guard_version.startswith("PATCH_32_REV_J")
+                or body_manual_team_conversation_active
+                or body_team_conversation_version.startswith("PATCH_33")
+                or body_response_control == PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL
                 or body_auto_handoff_enabled is False
             )
             existing_meeting_state = _merge_client_meeting_state(
@@ -3059,21 +3243,22 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                         manual_target_slugs = body_manual_team_panel_order or _coerce_manual_team_panel_order(body_target_agent_slugs)
                         meeting_directive = {
                             "status": "directive",
-                            "kind": "manual_team_button",
-                            "match_type": "manual_team_button",
-                            "transition_reason": "manual_team_button",
-                            "target_agent_slug": "team",
+                            "kind": "manual_team_conversation",
+                            "match_type": "manual_team_conversation",
+                            "transition_reason": "manual_team_conversation",
+                            "target_agent_slug": body_manual_team_focus_slug if body_manual_team_conversation_active else "team",
                             "target_agent_slugs": manual_target_slugs,
                             "multi_agent_turn": True,
-                            "response_control": "manual_team_panel",
+                            "response_control": PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL if body_manual_team_conversation_active else "manual_team_panel",
                             "confidence": 1.0,
-                            "dedupe_key": f"{session_id}:manual:team:{latest_user_transcript_for_meeting[:160]}",
+                            "dedupe_key": f"{session_id}:manual:team:{body_manual_team_focus_slug if body_manual_team_conversation_active else 'team'}:{latest_user_transcript_for_meeting[:160]}",
                             "manual_agent_lock": True,
                             "manual_target_slug": "team",
                             "manual_authority_version": PATCH_32_REV_C_MANUAL_TARGET_SOURCE_OF_TRUTH_VERSION,
                             "manual_sticky_state_version": PATCH_32_REV_E_MANUAL_BUTTON_STICKY_STATE_VERSION,
                             "manual_lock_persistence_version": PATCH_32_REV_F_MANUAL_BUTTON_LOCK_PERSISTENCE_VERSION,
                             "manual_lock_staging_proof_version": body_manual_lock_staging_proof_version or PATCH_32_REV_H_MANUAL_LOCK_STAGING_PROOF_VERSION,
+                            "manual_lock_staging_proof_production_guard_version": body_manual_lock_staging_proof_production_guard_version or PATCH_32_REV_J_MANUAL_LOCK_STAGING_PROOF_PRODUCTION_GUARD_VERSION,
                             "session_voice_sync_version": PATCH_32_PREDEPLOY_PREMIUM_VERSION,
                             "manual_button_authority": True,
                             "should_create_response": False,
@@ -3082,6 +3267,12 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                             "team_panel_version": body_team_panel_version or PATCH_32_REV_D_TEAM_PANEL_VERSION,
                             "team_panel_mode": body_team_panel_mode or PATCH_32_REV_D_TEAM_PANEL_MODE,
                             "team_panel_voice_moderator_slug": body_team_panel_voice_moderator_slug or PATCH_32_REV_D_TEAM_PANEL_VOICE_MODERATOR_SLUG,
+                            "manual_team_conversation_active": bool(body_manual_team_conversation_active),
+                            "manual_team_focus_slug": body_manual_team_focus_slug if body_manual_team_conversation_active else "",
+                            "manual_team_turn_queue": manual_target_slugs,
+                            "team_conversation_mode": PATCH_33_TEAM_CONVERSATION_MODE if body_manual_team_conversation_active else "",
+                            "team_conversation_orchestrator_version": PATCH_33_TEAM_CONVERSATION_ORCHESTRATOR_VERSION if body_manual_team_conversation_active else "",
+"team_conversation_staging_verification_version": (body_team_conversation_staging_verification_version or PATCH_33_REV_A_TEAM_CONVERSATION_STAGING_VERIFICATION_VERSION) if body_manual_team_conversation_active else "",
                         }
                         try:
                             logger.warning(
@@ -3125,6 +3316,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                             "manual_sticky_state_version": PATCH_32_REV_E_MANUAL_BUTTON_STICKY_STATE_VERSION,
                             "manual_lock_persistence_version": PATCH_32_REV_F_MANUAL_BUTTON_LOCK_PERSISTENCE_VERSION,
                             "manual_lock_staging_proof_version": body_manual_lock_staging_proof_version or PATCH_32_REV_H_MANUAL_LOCK_STAGING_PROOF_VERSION,
+                            "manual_lock_staging_proof_production_guard_version": body_manual_lock_staging_proof_production_guard_version or PATCH_32_REV_J_MANUAL_LOCK_STAGING_PROOF_PRODUCTION_GUARD_VERSION,
                             "session_voice_sync_version": PATCH_32_PREDEPLOY_PREMIUM_VERSION,
                             "manual_button_authority": True,
                             "should_create_response": False,
@@ -3249,6 +3441,36 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             )
 
             try:
+                patch33_actual_targets = list((meeting_directive or {}).get("target_agent_slugs") or [])
+                patch33_required_targets = list(PATCH_32_REV_D_TEAM_PANEL_ORDER)
+                patch33_manual_target = str((meeting_directive or {}).get("manual_target_slug") or body_manual_target_slug or "").strip()
+                patch33_response_control = str((meeting_directive or {}).get("response_control") or body_response_control or "").strip()
+                patch33_multi_agent_turn = bool((meeting_directive or {}).get("multi_agent_turn") or body_multi_agent_turn)
+                patch33_team_active = bool((meeting_directive or {}).get("manual_team_conversation_active") or body_manual_team_conversation_active)
+                patch33_verification_pass = bool(
+                    patch33_manual_target == "team"
+                    and patch33_team_active
+                    and patch33_multi_agent_turn
+                    and patch33_response_control == PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL
+                    and set(patch33_required_targets).issubset(set(patch33_actual_targets or []))
+                )
+                if patch33_manual_target == "team" or patch33_team_active or patch33_response_control == PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL:
+                    logger.warning(
+                        "PATCH33_REV_A_TEAM_STAGING_VERIFICATION session_id=%s manual_target_slug=%s manual_team_conversation_active=%s multi_agent_turn=%s response_control=%s target_agent_slugs=%s actual_turn_queue=%s verification_status=%s version=%s",
+                        session_id,
+                        "team",
+                        bool(patch33_team_active),
+                        bool(patch33_multi_agent_turn),
+                        PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL if patch33_response_control == PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL else patch33_response_control,
+                        json.dumps(patch33_required_targets, ensure_ascii=False),
+                        json.dumps(patch33_actual_targets, ensure_ascii=False),
+                        "PASS" if patch33_verification_pass else "FAIL",
+                        body_team_conversation_staging_verification_version or PATCH_33_REV_A_TEAM_CONVERSATION_STAGING_VERIFICATION_VERSION,
+                    )
+            except Exception:
+                pass
+
+            try:
                 logger.warning(
                     "EFATA777_V8_MEETING_DIRECTIVE %s state=%s persisted=%s",
                     json.dumps(summarize_directive_for_log(meeting_directive), ensure_ascii=False, sort_keys=True),
@@ -3284,8 +3506,10 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             "team_panel_version": PATCH_32_REV_D_TEAM_PANEL_VERSION,
             "manual_lock_persistence_version": PATCH_32_REV_F_MANUAL_BUTTON_LOCK_PERSISTENCE_VERSION,
             "manual_lock_staging_proof_version": body_manual_lock_staging_proof_version or PATCH_32_REV_H_MANUAL_LOCK_STAGING_PROOF_VERSION,
+            "manual_lock_staging_proof_production_guard_version": body_manual_lock_staging_proof_production_guard_version or PATCH_32_REV_J_MANUAL_LOCK_STAGING_PROOF_PRODUCTION_GUARD_VERSION,
             "speaker_authority_version": PATCH_30_SERVER_SPEAKER_AUTHORITY_VERSION,
             "meeting_state_persisted": bool(meeting_state_persisted),
+"team_conversation_staging_verification_version": body_team_conversation_staging_verification_version or PATCH_33_REV_A_TEAM_CONVERSATION_STAGING_VERIFICATION_VERSION,
         }
 
     @router.get("/api/realtime/sessions/{session_id}")
