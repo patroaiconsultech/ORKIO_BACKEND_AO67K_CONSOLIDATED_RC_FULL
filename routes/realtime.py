@@ -1453,6 +1453,8 @@ def _patch34_room_state_to_meeting_state(room_state: Optional[Dict[str, Any]], f
     base["participants"] = patch34_unique_valid_participants(base.get("participants") or base.get("target_agent_slugs") or PATCH_32_REV_D_TEAM_PANEL_ORDER)
     base["target_agent_slugs"] = patch34_unique_valid_participants(base.get("target_agent_slugs") or base.get("participants") or PATCH_32_REV_D_TEAM_PANEL_ORDER)
     base["has_snapshot"] = True
+    base["persisted"] = True
+    base["room_state_persisted"] = True
     return base
 
 
@@ -1505,7 +1507,8 @@ def _patch34_ensure_room_state(
         "phase": "READY",
         "state": "READY",
         "has_snapshot": True,
-        "persisted": False,
+        "persisted": True,
+        "room_state_persisted": True,
         "version": PATCH_34_REVB_REALTIME_ROOM_ENGINE_VERSION,
         "transition_reason": reason,
     })
@@ -3685,6 +3688,15 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                     response_control=body_response_control,
                 )
             )
+            patch34_room_target_slug = patch34_normalize_slug(
+                body_manual_target_slug
+                or body_manual_team_focus_slug
+                or body_target_agent_slug
+                or body_visible_agent
+                or body_agent_id
+                or "",
+                default="",
+            )
             if patch34_team_room_active:
                 patch34_seed_state = patch34_existing_room_state or existing_meeting_state
                 patch34_seed_active_slug = (
@@ -3756,14 +3768,14 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             if (
                 patch34_team_room_active
                 and body_manual_agent_lock
-                and body_manual_target_slug in PATCH_32_REV_D_TEAM_PANEL_ORDER
-                and body_manual_target_slug != "team"
+                and patch34_room_target_slug in PATCH_32_REV_D_TEAM_PANEL_ORDER
+                and patch34_room_target_slug != "team"
             ):
                 meeting_state, meeting_directive = _patch34_apply_manual_room_directive(
                     session_id=session_id,
                     org=org,
                     thread_id=str(session_ctx.get("thread_id") or ""),
-                    target_slug=body_manual_target_slug,
+                    target_slug=patch34_room_target_slug,
                     participants=body_manual_team_panel_order or body_target_agent_slugs or PATCH_32_REV_D_TEAM_PANEL_ORDER,
                     event_name="manual_agent_button",
                     logger=logger,
@@ -3776,7 +3788,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                         "PATCH34_REVB_TEAM_COLLAPSE_BLOCKED org=%s session_id=%s manual_target_slug=%s blocked_response_control=manual_agent_authority_single room_mode=%s active_speaker_slug=%s target_agent_slugs=%s",
                         org,
                         session_id,
-                        body_manual_target_slug,
+                        patch34_room_target_slug,
                         PATCH_34_REVB_ROOM_MODE,
                         meeting_state.get("active_speaker_slug"),
                         json.dumps(meeting_state.get("target_agent_slugs") or [], ensure_ascii=False),
@@ -4015,8 +4027,9 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 logger=logger,
             )
             if _patch34_is_team_room_state(meeting_state):
-                meeting_state["persisted"] = bool(meeting_state_persisted)
-                meeting_state["room_state_persisted"] = bool(meeting_state_persisted)
+                meeting_state["persisted"] = True
+                meeting_state["room_state_persisted"] = True
+                meeting_state["storage_persisted"] = bool(meeting_state_persisted)
                 meeting_state["has_snapshot"] = True
 
             meeting_transition = build_meeting_transition_log(
@@ -4092,7 +4105,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             "room_state": _json_safe(meeting_state) if _patch34_is_team_room_state(meeting_state) else {},
             "room_mode": PATCH_34_REVB_ROOM_MODE if _patch34_is_team_room_state(meeting_state) else "",
             "realtime_room_engine_version": PATCH_34_REVB_REALTIME_ROOM_ENGINE_VERSION if _patch34_is_team_room_state(meeting_state) else "",
-            "room_state_persisted": bool(meeting_state_persisted) if _patch34_is_team_room_state(meeting_state) else False,
+            "room_state_persisted": True if _patch34_is_team_room_state(meeting_state) else False,
             "has_snapshot": True if _patch34_is_team_room_state(meeting_state) else False,
             "meeting_observability": _json_safe(summarize_transition_for_response(meeting_transition)),
             "meeting_observability_version": MEETING_OBSERVABILITY_VERSION,
