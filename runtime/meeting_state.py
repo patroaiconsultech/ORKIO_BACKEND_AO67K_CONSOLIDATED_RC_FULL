@@ -475,7 +475,7 @@ def summarize_meeting_state_for_log(state: Optional[Dict[str, Any]]) -> Dict[str
         "persona_version": state.get("persona_version") or "",
         "last_speaker_slug": state.get("last_speaker_slug") or "",
         "turn_index": state.get("turn_index") or 0,
-        "participants": list(state.get("participant_slugs") or []),
+        "participants": list(state.get("participants") or state.get("participant_slugs") or state.get("target_agent_slugs") or []),
         "multi_agent_turn": bool(state.get("multi_agent_turn")),
         "response_control": state.get("response_control") or "",
         "target_agent_slugs": list(state.get("target_agent_slugs") or []),
