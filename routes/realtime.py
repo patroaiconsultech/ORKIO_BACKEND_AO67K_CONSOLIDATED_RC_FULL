@@ -5,6 +5,9 @@
 # PATCH_32_PREDEPLOY_PREMIUM_MANUAL_AGENT_AUTHORITY_AUDIT
 # PATCH_32_REV_C_PROFILE_ADDRESS_MERGE
 # PATCH_32_REV_D_TEAM_PANEL_PRESTAGING
+# PATCH_32_REV_E_MANUAL_BUTTON_STICKY_STATE
+# PATCH_32_REV_F_MANUAL_BUTTON_LOCK_PERSISTENCE
+# PATCH_32_REV_H_MANUAL_LOCK_STAGING_PROOF
 #
 # Purpose:
 # - Preserve existing Realtime endpoints.
@@ -99,6 +102,9 @@ except Exception:  # pragma: no cover
         manual_agent_lock: Optional[bool] = None
         manual_agent_source: Optional[str] = None
         manual_authority_version: Optional[str] = None
+        manual_sticky_state_version: Optional[str] = None
+        manual_lock_persistence_version: Optional[str] = None
+        manual_lock_staging_proof_version: Optional[str] = None
         auto_handoff_enabled: Optional[bool] = None
         manual_team_panel_required: Optional[bool] = None
         manual_team_panel_order: Optional[Any] = None
@@ -131,6 +137,9 @@ except Exception:  # pragma: no cover
         manual_agent_lock: Optional[bool] = None
         manual_agent_source: Optional[str] = None
         manual_authority_version: Optional[str] = None
+        manual_sticky_state_version: Optional[str] = None
+        manual_lock_persistence_version: Optional[str] = None
+        manual_lock_staging_proof_version: Optional[str] = None
         auto_handoff_enabled: Optional[bool] = None
         manual_team_panel_required: Optional[bool] = None
         manual_team_panel_order: Optional[Any] = None
@@ -306,6 +315,9 @@ class RealtimeEventsBatchReq(BaseModel):
     manual_agent_lock: Optional[bool] = None
     manual_agent_source: Optional[str] = None
     manual_authority_version: Optional[str] = None
+    manual_sticky_state_version: Optional[str] = None
+    manual_lock_persistence_version: Optional[str] = None
+    manual_lock_staging_proof_version: Optional[str] = None
     auto_handoff_enabled: Optional[bool] = None
     # PATCH_32_REV_D_TEAM_PANEL_PRESTAGING:
     # Optional/fail-open Team panel contract. When manual_target_slug=team, these
@@ -1923,6 +1935,78 @@ PATCH_32_REV_D_TEAM_PANEL_VERSION = "PATCH_32_REV_D_TEAM_PANEL_PRESTAGING_V1"
 PATCH_32_REV_D_TEAM_PANEL_ORDER = ["orkio", "orion", "chris", "laura"]
 PATCH_32_REV_D_TEAM_PANEL_MODE = "manual_team_panel_deterministic_queue"
 PATCH_32_REV_D_TEAM_PANEL_VOICE_MODERATOR_SLUG = "orkio"
+PATCH_32_REV_E_MANUAL_BUTTON_STICKY_STATE_VERSION = "PATCH_32_REV_E_MANUAL_BUTTON_STICKY_STATE_V1"
+PATCH_32_REV_F_MANUAL_BUTTON_LOCK_PERSISTENCE_VERSION = "PATCH_32_REV_F_MANUAL_BUTTON_LOCK_PERSISTENCE_V1"
+PATCH_32_REV_H_MANUAL_LOCK_STAGING_PROOF_VERSION = "PATCH_32_REV_H_MANUAL_LOCK_STAGING_PROOF_V1"
+
+
+def _patch32_revf_event_payloads(event: Any) -> List[Dict[str, Any]]:
+    """Return event/root/meta/payload dicts for manual-button recovery."""
+    out: List[Dict[str, Any]] = []
+    try:
+        data = _rtb06_event_dict(event)
+    except Exception:
+        data = {}
+    if isinstance(data, dict):
+        out.append(data)
+        for key in ("meta", "payload", "data"):
+            nested = data.get(key)
+            if isinstance(nested, dict):
+                out.append(nested)
+    return out
+
+
+def _patch32_revf_extract_manual_target_from_events(events: List[Any]) -> str:
+    """Recover manual target from telemetry when api/body fields are missing.
+
+    REV F is intentionally defensive: response-authority release telemetry must
+    never clear the selected UI button. We only recover positive selections from
+    manual authority events and ignore response_authority_lock_released/reset-only
+    events.
+    """
+    for ev in reversed(events or []):
+        try:
+            event_name = _event_name(ev).strip().lower()
+        except Exception:
+            event_name = ""
+        if "response_authority_lock_released" in event_name or "authority_lock_released" in event_name:
+            continue
+        for obj in _patch32_revf_event_payloads(ev):
+            for key in (
+                "manual_target_slug",
+                "selected_agent_slug",
+                "selected_manual_agent_slug",
+                "target_agent_slug",
+                "manual_slug",
+            ):
+                slug = _normalize_realtime_agent_slug(obj.get(key), default="")
+                if slug in {"team", "orkio", "orion", "chris", "laura"}:
+                    return slug
+    return ""
+
+
+def _patch32_revf_is_empty_meeting_state_payload(state: Any) -> bool:
+    if not isinstance(state, dict):
+        return False
+    active_slug = _normalize_realtime_agent_slug(
+        state.get("active_speaker_slug")
+        or state.get("active_persona_slug")
+        or state.get("target_agent_slug")
+        or state.get("visible_agent")
+        or "",
+        default="",
+    )
+    participants = state.get("participant_slugs") if isinstance(state.get("participant_slugs"), list) else state.get("participants")
+    if not isinstance(participants, list):
+        participants = []
+    return bool(
+        not str(state.get("session_id") or "").strip()
+        and not active_slug
+        and not str(state.get("active_speaker_name") or state.get("active_agent_name") or "").strip()
+        and len(participants) == 0
+        and str(state.get("transition_reason") or "").strip().lower() in {"", "state_update"}
+        and not str(state.get("response_control") or "").strip()
+    )
 
 
 def _rtb30_latest_user_transcript(events: List[Any]) -> str:
@@ -2674,6 +2758,11 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 or await _request_json_field(request, "manual_authority_source", "")
                 or ""
             ).strip(),
+            "manual_lock_staging_proof_version": str(
+                _safe_getattr(body, "manual_lock_staging_proof_version", "")
+                or await _request_json_field(request, "manual_lock_staging_proof_version", "")
+                or ""
+            ).strip(),
             "manual_team_panel_required": bool(
                 _safe_getattr(body, "manual_team_panel_required", False)
                 or await _request_json_field(request, "manual_team_panel_required", False)
@@ -2750,6 +2839,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 "meeting_state_version": MEETING_STATE_VERSION,
                 "meeting_observability": _json_safe(summarize_transition_for_response(initial_meeting_observability)),
                 "meeting_observability_version": MEETING_OBSERVABILITY_VERSION,
+                "manual_lock_staging_proof_version": session_meta.get("manual_lock_staging_proof_version") or PATCH_32_REV_H_MANUAL_LOCK_STAGING_PROOF_VERSION,
                 "serialization_safe": "RTB03_RTB06_EFATA777_V8_PATCH29",
                 "timebox_policy": "advisory_only_esg",
             }
@@ -2799,6 +2889,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         meeting_state: Dict[str, Any] = {}
         meeting_state_persisted = False
         meeting_transition: Dict[str, Any] = {}
+        body_manual_lock_staging_proof_version = ""
         try:
             session_ctx = _rtb06_get_session_context(
                 deps,
@@ -2808,15 +2899,30 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 fallback_user_id=uid,
             )
             body_target_agent_slug = str(_safe_getattr(body, "target_agent_slug", "") or "").strip()
+            event_manual_target_slug = _patch32_revf_extract_manual_target_from_events(events)
             body_manual_target_raw = (
                 str(_safe_getattr(body, "manual_target_slug", "") or "").strip()
                 or str(await _request_json_field(request, "manual_target_slug", "") or "").strip()
+                or event_manual_target_slug
             )
             body_manual_target_slug = _normalize_realtime_agent_slug(body_manual_target_raw, default="")
             body_visible_agent = str(_safe_getattr(body, "visible_agent", "") or "").strip()
             body_agent_id = str(_safe_getattr(body, "agent_id", "") or "").strip()
             body_dest_mode = str(_safe_getattr(body, "dest_mode", "") or "").strip().lower()
             body_meeting_state = _safe_getattr(body, "meeting_state", None)
+            if _patch32_revf_is_empty_meeting_state_payload(body_meeting_state):
+                try:
+                    logger.warning(
+                        "PATCH32_REV_F_EMPTY_MEETING_STATE_IGNORED session_id=%s manual_agent_lock=%s manual_target_slug=%s event_manual_target_slug=%s version=%s",
+                        session_id,
+                        bool(_safe_getattr(body, "manual_agent_lock", False) or event_manual_target_slug),
+                        body_manual_target_slug or body_manual_target_raw or "",
+                        event_manual_target_slug or "",
+                        PATCH_32_REV_F_MANUAL_BUTTON_LOCK_PERSISTENCE_VERSION,
+                    )
+                except Exception:
+                    pass
+                body_meeting_state = None
             if isinstance(body_meeting_state, dict):
                 state_session_id = str(body_meeting_state.get("session_id") or "").strip()
                 if state_session_id and state_session_id != session_id:
@@ -2863,13 +2969,32 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 or await _request_json_field(request, "team_panel_voice_moderator_slug", "")
                 or (PATCH_32_REV_D_TEAM_PANEL_VOICE_MODERATOR_SLUG if body_manual_target_slug == "team" else "")
             ).strip()
-            body_manual_agent_lock = bool(_safe_getattr(body, "manual_agent_lock", False))
+            body_manual_agent_lock = bool(_safe_getattr(body, "manual_agent_lock", False) or event_manual_target_slug)
             body_manual_authority_version = str(_safe_getattr(body, "manual_authority_version", "") or "").strip()
+            body_manual_sticky_state_version = str(
+                _safe_getattr(body, "manual_sticky_state_version", "")
+                or await _request_json_field(request, "manual_sticky_state_version", "")
+                or ""
+            ).strip()
+            body_manual_lock_persistence_version = str(
+                _safe_getattr(body, "manual_lock_persistence_version", "")
+                or await _request_json_field(request, "manual_lock_persistence_version", "")
+                or ""
+            ).strip()
+            body_manual_lock_staging_proof_version = str(
+                _safe_getattr(body, "manual_lock_staging_proof_version", "")
+                or await _request_json_field(request, "manual_lock_staging_proof_version", "")
+                or ""
+            ).strip()
             body_auto_handoff_enabled = _safe_getattr(body, "auto_handoff_enabled", None)
             body_manual_authority_active = bool(
                 body_manual_agent_lock
+                or body_manual_target_slug
                 or body_response_control.startswith("manual_")
                 or body_manual_authority_version.startswith("PATCH_32")
+                or body_manual_sticky_state_version.startswith("PATCH_32_REV_E")
+                or body_manual_lock_persistence_version.startswith("PATCH_32_REV_F")
+                or body_manual_lock_staging_proof_version.startswith("PATCH_32_REV_H")
                 or body_auto_handoff_enabled is False
             )
             existing_meeting_state = _merge_client_meeting_state(
@@ -2904,7 +3029,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             effective_dest_mode = body_dest_mode or session_ctx.get("dest_mode") or "team"
             manual_lock_invalid = False
 
-            if body_manual_authority_active and latest_user_transcript_for_meeting:
+            if body_manual_authority_active and (latest_user_transcript_for_meeting or body_manual_target_slug):
                 # PATCH 32:
                 # Manual button authority intentionally suppresses natural-language
                 # handoff/direct-address routing. The selected UI button is the source
@@ -2946,6 +3071,9 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                             "manual_agent_lock": True,
                             "manual_target_slug": "team",
                             "manual_authority_version": PATCH_32_REV_C_MANUAL_TARGET_SOURCE_OF_TRUTH_VERSION,
+                            "manual_sticky_state_version": PATCH_32_REV_E_MANUAL_BUTTON_STICKY_STATE_VERSION,
+                            "manual_lock_persistence_version": PATCH_32_REV_F_MANUAL_BUTTON_LOCK_PERSISTENCE_VERSION,
+                            "manual_lock_staging_proof_version": body_manual_lock_staging_proof_version or PATCH_32_REV_H_MANUAL_LOCK_STAGING_PROOF_VERSION,
                             "session_voice_sync_version": PATCH_32_PREDEPLOY_PREMIUM_VERSION,
                             "manual_button_authority": True,
                             "should_create_response": False,
@@ -2994,6 +3122,9 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                             "manual_agent_lock": True,
                             "manual_target_slug": manual_target_slug,
                             "manual_authority_version": PATCH_32_REV_C_MANUAL_TARGET_SOURCE_OF_TRUTH_VERSION,
+                            "manual_sticky_state_version": PATCH_32_REV_E_MANUAL_BUTTON_STICKY_STATE_VERSION,
+                            "manual_lock_persistence_version": PATCH_32_REV_F_MANUAL_BUTTON_LOCK_PERSISTENCE_VERSION,
+                            "manual_lock_staging_proof_version": body_manual_lock_staging_proof_version or PATCH_32_REV_H_MANUAL_LOCK_STAGING_PROOF_VERSION,
                             "session_voice_sync_version": PATCH_32_PREDEPLOY_PREMIUM_VERSION,
                             "manual_button_authority": True,
                             "should_create_response": False,
@@ -3151,6 +3282,8 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             "meeting_observability": _json_safe(summarize_transition_for_response(meeting_transition)),
             "meeting_observability_version": MEETING_OBSERVABILITY_VERSION,
             "team_panel_version": PATCH_32_REV_D_TEAM_PANEL_VERSION,
+            "manual_lock_persistence_version": PATCH_32_REV_F_MANUAL_BUTTON_LOCK_PERSISTENCE_VERSION,
+            "manual_lock_staging_proof_version": body_manual_lock_staging_proof_version or PATCH_32_REV_H_MANUAL_LOCK_STAGING_PROOF_VERSION,
             "speaker_authority_version": PATCH_30_SERVER_SPEAKER_AUTHORITY_VERSION,
             "meeting_state_persisted": bool(meeting_state_persisted),
         }
