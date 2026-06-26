@@ -1,3 +1,4 @@
+# PATCH_33_REV_B_REALTIME_PROVIDER_PAYLOAD_SANITIZER
 # ORKIO_AO60A_REALTIME_SUPPORT_EXTRACTION
 """Realtime support primitives for ORKIO API.
 
@@ -61,6 +62,7 @@ class RealtimeClientSecretReq(BaseModel):
     team_conversation_mode: Optional[str] = Field(default=None, description="PATCH_33 Team conversation mode.")
     team_conversation_orchestrator_version: Optional[str] = Field(default=None, description="PATCH_33 Team orchestrator version.")
     team_conversation_staging_verification_version: Optional[str] = Field(default=None, description="PATCH_33_REV_A Team staging verification version.")
+    realtime_provider_payload_sanitizer_version: Optional[str] = Field(default=None, description="PATCH_33_REV_B Realtime provider payload sanitizer version.")
     agent_ids: Optional[Any] = Field(default=None, description="Optional multi-agent target ids/slugs.")
     client_controlled_response: Optional[bool] = Field(default=None, description="When true, backend starts Realtime with server_vad.create_response=false so frontend can route/handoff before speaking.")
     requested_agent_names: Optional[Any] = Field(default=None, description="Optional raw requested agent names.")
@@ -104,6 +106,7 @@ class RealtimeStartReq(BaseModel):
     team_conversation_mode: Optional[str] = Field(default=None, description="PATCH_33 Team conversation mode.")
     team_conversation_orchestrator_version: Optional[str] = Field(default=None, description="PATCH_33 Team orchestrator version.")
     team_conversation_staging_verification_version: Optional[str] = Field(default=None, description="PATCH_33_REV_A Team staging verification version.")
+    realtime_provider_payload_sanitizer_version: Optional[str] = Field(default=None, description="PATCH_33_REV_B Realtime provider payload sanitizer version.")
     client_controlled_response: Optional[bool] = Field(default=None, description="When true, backend starts Realtime with server_vad.create_response=false so frontend can route/handoff before speaking.")
     requested_agent_names: Optional[Any] = Field(default=None, description="Optional raw requested agent names.")
 
@@ -206,3 +209,45 @@ def build_realtime_pwa_error_payload(
     if status_code is not None:
         payload["status_code"] = int(status_code)
     return payload
+
+
+# =========================
+# PATCH 33 REV B — Provider Payload Sanitizer Contract
+# =========================
+PATCH_33_REV_B_REALTIME_PROVIDER_PAYLOAD_SANITIZER_VERSION = (
+    "PATCH_33_REV_B_REALTIME_PROVIDER_PAYLOAD_SANITIZER_V1"
+)
+
+PATCH_33_REV_B_PROVIDER_INTERNAL_SESSION_PREFIXES = (
+    "manual_",
+    "team_",
+    "target_agent",
+    "requested_agent",
+    "profile_address",
+)
+
+PATCH_33_REV_B_PROVIDER_INTERNAL_SESSION_KEYS = {
+    "agent_id",
+    "agent_ids",
+    "visible_agent",
+    "multi_agent_turn",
+    "response_control",
+    "dest_mode",
+    "session_voice_sync_version",
+    "auto_handoff_enabled",
+    "auto_handoff_ignored",
+    "realtime_voice_agent_slug",
+    "realtime_provider_payload_sanitizer_version",
+}
+
+
+def is_internal_realtime_provider_session_key(key: str | None) -> bool:
+    """Return True when a key belongs to Orkio orchestration, not provider session."""
+
+    safe_key = str(key or "").strip()
+    if not safe_key:
+        return False
+    return safe_key in PATCH_33_REV_B_PROVIDER_INTERNAL_SESSION_KEYS or any(
+        safe_key.startswith(prefix)
+        for prefix in PATCH_33_REV_B_PROVIDER_INTERNAL_SESSION_PREFIXES
+    )
