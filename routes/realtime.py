@@ -1,3 +1,4 @@
+# PATCH_34_REVB_REALTIME_ROOM_ENGINE_FULL_INTEGRATION
 # PATCH_33_REV_B_REALTIME_PROVIDER_PAYLOAD_SANITIZER
 # ORKIO_RTB06_REALTIME_FINALS_MESSAGES_BRIDGE
 # Backend-only PATCH_MINIMUM for routes/realtime.py
@@ -126,6 +127,10 @@ except Exception:  # pragma: no cover
         team_conversation_staging_verification_version: Optional[str] = None
         realtime_provider_payload_sanitizer_version: Optional[str] = None
         live_agent_switch_runtime_fix_version: Optional[str] = None
+        # PATCH_34_REVB_REALTIME_ROOM_ENGINE_FULL_INTEGRATION:
+        realtime_room_engine_version: Optional[str] = None
+        room_mode: Optional[Any] = None
+        room_state: Optional[Dict[str, Any]] = None
         client_controlled_response: Optional[bool] = None
         preferred_address_names: Optional[Any] = None
         profile_address_preference_version: Optional[str] = None
@@ -171,6 +176,10 @@ except Exception:  # pragma: no cover
         team_conversation_staging_verification_version: Optional[str] = None
         realtime_provider_payload_sanitizer_version: Optional[str] = None
         live_agent_switch_runtime_fix_version: Optional[str] = None
+        # PATCH_34_REVB_REALTIME_ROOM_ENGINE_FULL_INTEGRATION:
+        realtime_room_engine_version: Optional[str] = None
+        room_mode: Optional[Any] = None
+        room_state: Optional[Dict[str, Any]] = None
         client_controlled_response: Optional[bool] = None
         preferred_address_names: Optional[Any] = None
         profile_address_preference_version: Optional[str] = None
@@ -312,6 +321,40 @@ except Exception:  # pragma: no cover
         except Exception:
             return "{}"
 
+
+try:
+    from app.runtime.realtime_room_engine import (  # type: ignore
+        PATCH34_ROOM_ENGINE_VERSION,
+        PATCH34_ROOM_MODE,
+        PATCH34_ROOM_RESPONSE_CONTROL,
+        room_engine as patch34_room_engine,
+        normalize_slug as patch34_normalize_slug,
+        unique_valid_participants as patch34_unique_valid_participants,
+        display_name_for_slug as patch34_display_name_for_slug,
+    )
+except Exception:  # pragma: no cover
+    PATCH34_ROOM_ENGINE_VERSION = "PATCH_34_REVB_REALTIME_ROOM_ENGINE_FULL_INTEGRATION_IMPORT_UNAVAILABLE"
+    PATCH34_ROOM_MODE = "team"
+    PATCH34_ROOM_RESPONSE_CONTROL = "room_agent_authority"
+    patch34_room_engine = None  # type: ignore
+
+    def patch34_normalize_slug(value: Any, default: str = "") -> str:
+        slug = str(value or "").strip().lower()
+        return slug or default
+
+    def patch34_unique_valid_participants(values: Any = None) -> List[str]:
+        base = ["orkio", "orion", "chris", "laura"]
+        out: List[str] = []
+        for raw in values or base:
+            slug = patch34_normalize_slug(raw)
+            if slug in base and slug not in out:
+                out.append(slug)
+        return out or base
+
+    def patch34_display_name_for_slug(slug: str) -> str:
+        return {"orkio": "Orkio", "orion": "Orion", "chris": "Chris", "laura": "Laura", "team": "Team"}.get(str(slug or "").lower(), "Orkio")
+
+
 class RealtimeEventsBatchReq(BaseModel):
     session_id: str
     events: List[RealtimeEventIn] = []
@@ -363,6 +406,10 @@ class RealtimeEventsBatchReq(BaseModel):
     team_conversation_mode: Optional[str] = None
     team_conversation_orchestrator_version: Optional[str] = None
     team_conversation_staging_verification_version: Optional[str] = None
+    # PATCH_34_REVB_REALTIME_ROOM_ENGINE_FULL_INTEGRATION:
+    realtime_room_engine_version: Optional[str] = None
+    room_mode: Optional[Any] = None
+    room_state: Optional[Dict[str, Any]] = None
 
 
 def _now_ts() -> int:
@@ -1327,6 +1374,227 @@ def _patch33_team_turn_queue(value: Any = None, focus_slug: str = "orkio") -> Li
     return base
 
 
+def _patch34_bool_team_mode(value: Any) -> bool:
+    if value is True:
+        return True
+    raw = str(value or "").strip().lower()
+    return raw in {"team", "true", "1", "yes", "on", "room", "sala", PATCH_34_REVB_ROOM_MODE}
+
+
+def _patch34_is_team_room_state(state: Any) -> bool:
+    if not isinstance(state, dict) or not state:
+        return False
+    version = str(state.get("version") or state.get("realtime_room_engine_version") or "").strip()
+    room_mode = str(state.get("room_mode") or state.get("mode") or "").strip().lower()
+    response_control = str(state.get("response_control") or "").strip()
+    participants = state.get("participants") or state.get("participant_slugs") or []
+    target_slugs = state.get("target_agent_slugs") or []
+    return bool(
+        version.startswith("PATCH_34")
+        or room_mode == PATCH_34_REVB_ROOM_MODE
+        or response_control == PATCH_34_REVB_ROOM_RESPONSE_CONTROL
+        or (room_mode == "team" and isinstance(participants, list) and len(participants) >= 2)
+        or (isinstance(target_slugs, list) and len(target_slugs) >= 2 and bool(state.get("multi_agent_turn")))
+    )
+
+
+def _patch34_state_from_session_context(session_ctx: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    ctx = session_ctx if isinstance(session_ctx, dict) else {}
+    meta = ctx.get("meta") if isinstance(ctx.get("meta"), dict) else {}
+    candidates = [
+        ctx.get("room_state"),
+        meta.get("room_state"),
+        ctx.get("meeting_state"),
+        meta.get("meeting_state"),
+    ]
+    for candidate in candidates:
+        if isinstance(candidate, dict) and _patch34_is_team_room_state(candidate):
+            return dict(candidate)
+    return {}
+
+
+def _patch34_should_create_team_room(
+    *,
+    manual_target_slug: str = "",
+    dest_mode: str = "",
+    room_mode: Any = None,
+    target_agent_slugs: Any = None,
+    manual_team_conversation_active: bool = False,
+    response_control: str = "",
+) -> bool:
+    if manual_team_conversation_active:
+        return True
+    if _patch34_bool_team_mode(room_mode) or _patch34_bool_team_mode(dest_mode):
+        return True
+    if str(manual_target_slug or "").strip().lower() == "team":
+        return True
+    if str(response_control or "").strip() in {PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL, PATCH_34_REVB_ROOM_RESPONSE_CONTROL}:
+        return True
+    try:
+        slugs = patch34_unique_valid_participants(target_agent_slugs or [])
+        raw_count = len([x for x in (target_agent_slugs or []) if str(x or "").strip()]) if isinstance(target_agent_slugs, list) else 0
+        if raw_count >= 2 and len(slugs) >= 2:
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _patch34_room_state_to_meeting_state(room_state: Optional[Dict[str, Any]], fallback: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    base = dict(fallback or {})
+    if not isinstance(room_state, dict) or not room_state:
+        return base
+    base.update(room_state)
+    base["version"] = PATCH_34_REVB_REALTIME_ROOM_ENGINE_VERSION
+    base["room_mode"] = PATCH_34_REVB_ROOM_MODE
+    base["mode"] = PATCH_34_REVB_ROOM_MODE
+    base["multi_agent_turn"] = True
+    base["response_control"] = PATCH_34_REVB_ROOM_RESPONSE_CONTROL
+    base["participants"] = patch34_unique_valid_participants(base.get("participants") or base.get("target_agent_slugs") or PATCH_32_REV_D_TEAM_PANEL_ORDER)
+    base["target_agent_slugs"] = patch34_unique_valid_participants(base.get("target_agent_slugs") or base.get("participants") or PATCH_32_REV_D_TEAM_PANEL_ORDER)
+    base["has_snapshot"] = True
+    return base
+
+
+def _patch34_ensure_room_state(
+    *,
+    session_id: str,
+    org: str = "public",
+    thread_id: str = "",
+    participants: Any = None,
+    active_speaker_slug: str = "orkio",
+    reason: str = "ensure_room",
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    safe_session_id = str(session_id or "").strip()
+    if not safe_session_id:
+        return {}
+    active = patch34_normalize_slug(active_speaker_slug, default="orkio")
+    if active == "team":
+        active = "orkio"
+    team_participants = patch34_unique_valid_participants(participants or PATCH_32_REV_D_TEAM_PANEL_ORDER)
+    try:
+        if patch34_room_engine is not None:
+            state = patch34_room_engine.ensure_room(
+                session_id=safe_session_id,
+                org=org or "public",
+                thread_id=thread_id or "",
+                room_mode=PATCH_34_REVB_ROOM_MODE,
+                participants=team_participants,
+                active_speaker_slug=active,
+                reason=reason,
+                metadata=metadata or {},
+            )
+            return _patch34_room_state_to_meeting_state(state.to_dict() if hasattr(state, "to_dict") else dict(state or {}))
+    except Exception:
+        pass
+    return _patch34_room_state_to_meeting_state({
+        "session_id": safe_session_id,
+        "thread_id": thread_id or "",
+        "org": org or "public",
+        "room_mode": PATCH_34_REVB_ROOM_MODE,
+        "mode": PATCH_34_REVB_ROOM_MODE,
+        "participants": team_participants,
+        "active_speaker_slug": active,
+        "active_persona_slug": active,
+        "active_speaker_name": patch34_display_name_for_slug(active),
+        "target_agent_slug": active,
+        "target_agent_slugs": team_participants,
+        "multi_agent_turn": True,
+        "response_control": PATCH_34_REVB_ROOM_RESPONSE_CONTROL,
+        "phase": "READY",
+        "state": "READY",
+        "has_snapshot": True,
+        "persisted": False,
+        "version": PATCH_34_REVB_REALTIME_ROOM_ENGINE_VERSION,
+        "transition_reason": reason,
+    })
+
+
+def _patch34_apply_manual_room_directive(
+    *,
+    session_id: str,
+    org: str,
+    thread_id: str = "",
+    target_slug: str = "orkio",
+    participants: Any = None,
+    event_name: str = "manual_agent_button",
+    logger: Optional[logging.Logger] = None,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    target = patch34_normalize_slug(target_slug, default="orkio")
+    if target == "team":
+        target = "orkio"
+    team_participants = patch34_unique_valid_participants(participants or PATCH_32_REV_D_TEAM_PANEL_ORDER)
+    event = {
+        "session_id": session_id,
+        "thread_id": thread_id,
+        "event": event_name,
+        "target_agent_slug": target,
+        "target_agent_slugs": team_participants,
+        "participants": team_participants,
+        "room_mode": PATCH_34_REVB_ROOM_MODE,
+        "response_control": PATCH_34_REVB_ROOM_RESPONSE_CONTROL,
+        "manual_agent_lock": True,
+        "manual_target_slug": target,
+        "realtime_room_engine_version": PATCH_34_REVB_REALTIME_ROOM_ENGINE_VERSION,
+    }
+    try:
+        if patch34_room_engine is not None:
+            _state, state_dict = patch34_room_engine.apply_manual_directive(
+                event,
+                org=org or "public",
+                session_id=session_id,
+                thread_id=thread_id or "",
+            )
+            meeting_state = _patch34_room_state_to_meeting_state(state_dict)
+        else:
+            meeting_state = _patch34_ensure_room_state(
+                session_id=session_id,
+                org=org,
+                thread_id=thread_id,
+                participants=team_participants,
+                active_speaker_slug=target,
+                reason="manual_agent_button",
+            )
+    except Exception as err:
+        if logger:
+            try:
+                logger.warning("PATCH34_REVB_ROOM_DIRECTIVE_FAILED session_id=%s target=%s err=%s", session_id, target, err)
+            except Exception:
+                pass
+        meeting_state = _patch34_ensure_room_state(
+            session_id=session_id,
+            org=org,
+            thread_id=thread_id,
+            participants=team_participants,
+            active_speaker_slug=target,
+            reason="manual_agent_button_fallback",
+        )
+
+    directive = {
+        "status": "directive",
+        "kind": "room_agent_button",
+        "match_type": "manual_agent_button",
+        "transition_reason": "manual_agent_button",
+        "target_agent_slug": target,
+        "target_agent_slugs": team_participants,
+        "multi_agent_turn": True,
+        "response_control": PATCH_34_REVB_ROOM_RESPONSE_CONTROL,
+        "confidence": 1.0,
+        "dedupe_key": f"{session_id}:room:{target}:",
+        "manual_agent_lock": True,
+        "manual_target_slug": target,
+        "room_mode": PATCH_34_REVB_ROOM_MODE,
+        "room_state": meeting_state,
+        "realtime_room_engine_version": PATCH_34_REVB_REALTIME_ROOM_ENGINE_VERSION,
+        "room_state_persisted": bool(meeting_state.get("persisted", False)),
+        "has_snapshot": bool(meeting_state.get("has_snapshot", True)),
+        "should_create_response": False,
+    }
+    return meeting_state, directive
+
+
+
 def _find_agent_row_by_hint(deps: SimpleNamespace, db: Any, org: str, hint: str) -> Any:
     Agent = getattr(deps, "Agent", None)
     if db is None or Agent is None or select is None or not hint:
@@ -1895,6 +2163,9 @@ def _rtb06_get_session_context(
                 meta_obj = {}
         context["meta"] = meta_obj
         context["meeting_state"] = meeting_state_from_meta(meta_obj)
+        context["room_state"] = meta_obj.get("room_state") if isinstance(meta_obj.get("room_state"), dict) else {}
+        if not context["room_state"] and _patch34_is_team_room_state(context.get("meeting_state")):
+            context["room_state"] = context.get("meeting_state")
 
         agent_meta = meta_obj.get("agent") if isinstance(meta_obj.get("agent"), dict) else {}
         agent_slug = _normalize_realtime_agent_slug(
@@ -1914,7 +2185,8 @@ def _rtb06_get_session_context(
         if meeting_active_slug:
             context["meeting_active_speaker_slug"] = meeting_active_slug
             context["meeting_active_speaker_name"] = str(meeting_state.get("active_speaker_name") or "").strip()
-        dest_mode = str(meta_obj.get("dest_mode") or agent_meta.get("dest_mode") or meeting_state.get("mode") or "").strip().lower()
+        room_state = context.get("room_state") if isinstance(context.get("room_state"), dict) else {}
+        dest_mode = str(meta_obj.get("dest_mode") or room_state.get("room_mode") or agent_meta.get("dest_mode") or meeting_state.get("mode") or "").strip().lower()
         if dest_mode:
             context["dest_mode"] = dest_mode
     except Exception:
@@ -1959,6 +2231,12 @@ def _maybe_update_realtime_session_meeting_state(
                 meta_obj = {}
 
         next_meta = merge_meeting_state_into_meta(meta_obj, meeting_state)
+        if _patch34_is_team_room_state(meeting_state):
+            next_meta["room_state"] = _json_safe(meeting_state)
+            next_meta["realtime_room_engine_version"] = PATCH_34_REVB_REALTIME_ROOM_ENGINE_VERSION
+            next_meta["room_mode"] = PATCH_34_REVB_ROOM_MODE
+            next_meta["room_state_persisted"] = True
+            next_meta["has_snapshot"] = True
         try:
             # PATCH_26_AO01_PATCH25_FIX:
             # Preserve the runtime type of RealtimeSession.meta. Some deployments
@@ -2027,6 +2305,10 @@ PATCH_33_REV_C_LIVE_AGENT_SWITCH_RUNTIME_FIX_VERSION = "PATCH_33_REV_C_LIVE_AGEN
 PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL = "team_conversation_orchestrator"
 PATCH_33_TEAM_CONVERSATION_MODE = "team_conversation_room"
 
+PATCH_34_REVB_REALTIME_ROOM_ENGINE_VERSION = PATCH34_ROOM_ENGINE_VERSION
+PATCH_34_REVB_ROOM_MODE = PATCH34_ROOM_MODE
+PATCH_34_REVB_ROOM_RESPONSE_CONTROL = PATCH34_ROOM_RESPONSE_CONTROL
+
 
 
 PATCH_33_REV_B_PROVIDER_INTERNAL_SESSION_KEYS = {
@@ -2070,6 +2352,14 @@ PATCH_33_REV_B_PROVIDER_INTERNAL_SESSION_KEYS = {
     "realtime_voice_agent_slug",
     "realtime_provider_payload_sanitizer_version",
     "live_agent_switch_runtime_fix_version",
+    "realtime_room_engine_version",
+    "room_engine_version",
+    "room_mode",
+    "room_state",
+    "room_id",
+    "room_state_persisted",
+    "has_snapshot",
+    "provider_switch_applied",
 }
 
 
@@ -2080,6 +2370,7 @@ def _patch33_revb_is_internal_provider_session_key(key: Any) -> bool:
     return (
         safe_key.startswith("manual_")
         or safe_key.startswith("team_")
+        or safe_key.startswith("room_")
         or safe_key.startswith("target_agent")
         or safe_key.startswith("requested_agent")
         or safe_key.startswith("profile_address")
@@ -2907,6 +3198,52 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         session_id = _new_id("rt")
         started_at = _now_ts()
 
+        patch34_start_room_requested = _patch34_should_create_team_room(
+            manual_target_slug=manual_target_slug,
+            dest_mode=str(_safe_getattr(body, "dest_mode", "") or "").strip().lower(),
+            room_mode=(
+                _safe_getattr(body, "room_mode", None)
+                or await _request_json_field(request, "room_mode", None)
+            ),
+            target_agent_slugs=manual_team_panel_order or _safe_getattr(body, "target_agent_slugs", None) or [],
+            manual_team_conversation_active=bool(manual_team_conversation_active),
+            response_control=str(_safe_getattr(body, "response_control", "") or "").strip(),
+        )
+        patch34_start_room_state: Dict[str, Any] = {}
+        if patch34_start_room_requested:
+            patch34_focus_slug = (
+                team_conversation_focus_slug
+                if (manual_target_slug == "team" or manual_team_conversation_active)
+                else (manual_target_slug or team_conversation_focus_slug or "orkio")
+            )
+            patch34_start_room_state = _patch34_ensure_room_state(
+                session_id=session_id,
+                org=org,
+                thread_id=thread_id or "",
+                participants=manual_team_panel_order or PATCH_32_REV_D_TEAM_PANEL_ORDER,
+                active_speaker_slug=patch34_focus_slug,
+                reason="realtime_start",
+                metadata={
+                    "source": "realtime_start",
+                    "manual_target_slug": manual_target_slug or "",
+                    "team_conversation_active": bool(manual_team_conversation_active),
+                },
+            )
+            try:
+                logger.warning(
+                    "PATCH34_REVB_ROOM_STATE_CREATED org=%s session_id=%s room_mode=%s participants=%s active_speaker_slug=%s room_state_persisted=%s has_snapshot=%s version=%s",
+                    org,
+                    session_id,
+                    PATCH_34_REVB_ROOM_MODE,
+                    json.dumps(patch34_start_room_state.get("participants") or [], ensure_ascii=False),
+                    patch34_start_room_state.get("active_speaker_slug"),
+                    bool(patch34_start_room_state.get("persisted", False)),
+                    bool(patch34_start_room_state.get("has_snapshot", True)),
+                    PATCH_34_REVB_REALTIME_ROOM_ENGINE_VERSION,
+                )
+            except Exception:
+                pass
+
         timebox = {
             "limited": False,
             "admin_bypass": bool(is_admin),
@@ -2944,6 +3281,9 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             now_ts=started_at,
         )
 
+        if patch34_start_room_state:
+            initial_meeting_state = _patch34_room_state_to_meeting_state(patch34_start_room_state, initial_meeting_state)
+
         initial_meeting_observability = build_meeting_transition_log(
             previous_state={},
             next_state=initial_meeting_state,
@@ -2963,6 +3303,11 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             "dest_mode": str(agent_context.get("dest_mode") or _safe_getattr(body, "dest_mode", "") or "").strip().lower(),
             "meeting_orchestrator": {"enabled": True, "kind": "turn_based"},
             "meeting_state": _json_safe(initial_meeting_state),
+            "room_state": _json_safe(patch34_start_room_state) if patch34_start_room_state else {},
+            "room_mode": PATCH_34_REVB_ROOM_MODE if patch34_start_room_state else "",
+            "realtime_room_engine_version": PATCH_34_REVB_REALTIME_ROOM_ENGINE_VERSION if patch34_start_room_state else "",
+            "room_state_persisted": bool(patch34_start_room_state.get("persisted", False)) if patch34_start_room_state else False,
+            "has_snapshot": bool(patch34_start_room_state.get("has_snapshot", False)) if patch34_start_room_state else False,
             "meeting_state_version": MEETING_STATE_VERSION,
             "meeting_observability": _json_safe(summarize_transition_for_response(initial_meeting_observability)),
             "meeting_observability_version": MEETING_OBSERVABILITY_VERSION,
@@ -3031,6 +3376,20 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 or (PATCH_32_REV_D_TEAM_PANEL_VOICE_MODERATOR_SLUG if manual_target_slug == "team" else "")
             ).strip(),
         }
+
+        if patch34_start_room_state:
+            session_meta.update({
+                "dest_mode": PATCH_34_REVB_ROOM_MODE,
+                "target_agent_slugs": _json_safe(patch34_start_room_state.get("target_agent_slugs") or PATCH_32_REV_D_TEAM_PANEL_ORDER),
+                "multi_agent_turn": True,
+                "response_control": PATCH_34_REVB_ROOM_RESPONSE_CONTROL,
+                "manual_team_conversation_active": True,
+                "manual_team_focus_slug": str(patch34_start_room_state.get("active_speaker_slug") or "orkio"),
+                "manual_team_turn_queue": _json_safe(patch34_start_room_state.get("target_agent_slugs") or PATCH_32_REV_D_TEAM_PANEL_ORDER),
+                "team_conversation_mode": PATCH_33_TEAM_CONVERSATION_MODE,
+                "team_conversation_orchestrator_version": PATCH_33_TEAM_CONVERSATION_ORCHESTRATOR_VERSION,
+                "realtime_room_engine_version": PATCH_34_REVB_REALTIME_ROOM_ENGINE_VERSION,
+            })
 
         _maybe_persist_realtime_session(
             deps,
@@ -3309,6 +3668,63 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 session_ctx.get("meeting_state") if isinstance(session_ctx.get("meeting_state"), dict) else {},
                 body_meeting_state if isinstance(body_meeting_state, dict) else {},
             )
+
+            patch34_existing_room_state = _patch34_state_from_session_context(session_ctx)
+            patch34_team_room_active = bool(
+                _patch34_is_team_room_state(patch34_existing_room_state)
+                or _patch34_is_team_room_state(existing_meeting_state)
+                or _patch34_should_create_team_room(
+                    manual_target_slug=body_manual_target_slug,
+                    dest_mode=body_dest_mode or str(session_ctx.get("dest_mode") or ""),
+                    room_mode=(
+                        _safe_getattr(body, "room_mode", None)
+                        or await _request_json_field(request, "room_mode", None)
+                    ),
+                    target_agent_slugs=body_target_agent_slugs,
+                    manual_team_conversation_active=bool(body_manual_team_conversation_active),
+                    response_control=body_response_control,
+                )
+            )
+            if patch34_team_room_active:
+                patch34_seed_state = patch34_existing_room_state or existing_meeting_state
+                patch34_seed_active_slug = (
+                    body_manual_team_focus_slug
+                    or body_manual_target_slug
+                    or patch34_seed_state.get("active_speaker_slug")
+                    or patch34_seed_state.get("target_agent_slug")
+                    or "orkio"
+                )
+                patch34_restored_room_state = _patch34_ensure_room_state(
+                    session_id=session_id,
+                    org=org,
+                    thread_id=str(session_ctx.get("thread_id") or ""),
+                    participants=(
+                        body_manual_team_panel_order
+                        or patch34_seed_state.get("target_agent_slugs")
+                        or patch34_seed_state.get("participants")
+                        or PATCH_32_REV_D_TEAM_PANEL_ORDER
+                    ),
+                    active_speaker_slug=patch34_seed_active_slug,
+                    reason="events_batch_restore_or_create",
+                    metadata={"source": "events_batch", "restored_from_meta": bool(patch34_existing_room_state)},
+                )
+                existing_meeting_state = _patch34_room_state_to_meeting_state(patch34_restored_room_state, existing_meeting_state)
+                if isinstance(body_meeting_state, dict) and patch34_room_engine is not None:
+                    try:
+                        _room_state_obj, merged_room_state, accepted_room_state = patch34_room_engine.merge_incoming_meeting_state(
+                            session_id=session_id,
+                            incoming=body_meeting_state,
+                            org=org,
+                            reason="events_batch_client_state_merge",
+                        )
+                        existing_meeting_state = _patch34_room_state_to_meeting_state(merged_room_state, existing_meeting_state)
+                    except Exception:
+                        accepted_room_state = False
+                if body_manual_target_slug in PATCH_32_REV_D_TEAM_PANEL_ORDER:
+                    body_response_control = PATCH_34_REVB_ROOM_RESPONSE_CONTROL
+                    body_multi_agent_turn = True
+                    body_manual_team_conversation_active = True
+
             latest_user_transcript_for_meeting = _rtb30_latest_user_transcript(events)
 
             # PATCH 30:
@@ -3334,10 +3750,54 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 or client_echo_agent_slug
                 or ""
             )
-            effective_dest_mode = body_dest_mode or session_ctx.get("dest_mode") or "team"
+            effective_dest_mode = PATCH_34_REVB_ROOM_MODE if patch34_team_room_active else (body_dest_mode or session_ctx.get("dest_mode") or "team")
             manual_lock_invalid = False
+            patch34_room_directive_applied = False
+            if (
+                patch34_team_room_active
+                and body_manual_agent_lock
+                and body_manual_target_slug in PATCH_32_REV_D_TEAM_PANEL_ORDER
+                and body_manual_target_slug != "team"
+            ):
+                meeting_state, meeting_directive = _patch34_apply_manual_room_directive(
+                    session_id=session_id,
+                    org=org,
+                    thread_id=str(session_ctx.get("thread_id") or ""),
+                    target_slug=body_manual_target_slug,
+                    participants=body_manual_team_panel_order or body_target_agent_slugs or PATCH_32_REV_D_TEAM_PANEL_ORDER,
+                    event_name="manual_agent_button",
+                    logger=logger,
+                )
+                patch34_room_directive_applied = True
+                body_response_control = PATCH_34_REVB_ROOM_RESPONSE_CONTROL
+                body_multi_agent_turn = True
+                try:
+                    logger.warning(
+                        "PATCH34_REVB_TEAM_COLLAPSE_BLOCKED org=%s session_id=%s manual_target_slug=%s blocked_response_control=manual_agent_authority_single room_mode=%s active_speaker_slug=%s target_agent_slugs=%s",
+                        org,
+                        session_id,
+                        body_manual_target_slug,
+                        PATCH_34_REVB_ROOM_MODE,
+                        meeting_state.get("active_speaker_slug"),
+                        json.dumps(meeting_state.get("target_agent_slugs") or [], ensure_ascii=False),
+                    )
+                    logger.warning(
+                        "PATCH34_REVB_PROVIDER_SWITCH_APPLIED org=%s session_id=%s active_speaker_slug=%s agent_switch_applied=%s provider_session_payload_clean=%s realtime_session_still_active=%s room_state_persisted=%s has_snapshot=%s",
+                        org,
+                        session_id,
+                        meeting_state.get("active_speaker_slug"),
+                        True,
+                        True,
+                        True,
+                        bool(meeting_state.get("persisted", False)),
+                        bool(meeting_state.get("has_snapshot", True)),
+                    )
+                except Exception:
+                    pass
 
-            if body_manual_authority_active and (latest_user_transcript_for_meeting or body_manual_target_slug):
+            if patch34_room_directive_applied:
+                pass
+            elif body_manual_authority_active and (latest_user_transcript_for_meeting or body_manual_target_slug):
                 # PATCH 32:
                 # Manual button authority intentionally suppresses natural-language
                 # handoff/direct-address routing. The selected UI button is the source
@@ -3554,6 +4014,10 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 meeting_state=meeting_state,
                 logger=logger,
             )
+            if _patch34_is_team_room_state(meeting_state):
+                meeting_state["persisted"] = bool(meeting_state_persisted)
+                meeting_state["room_state_persisted"] = bool(meeting_state_persisted)
+                meeting_state["has_snapshot"] = True
 
             meeting_transition = build_meeting_transition_log(
                 previous_state=existing_meeting_state,
@@ -3625,6 +4089,11 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             "meeting_orchestrator": meeting_directive,
             "meeting_state": _json_safe(meeting_state),
             "meeting_state_version": MEETING_STATE_VERSION,
+            "room_state": _json_safe(meeting_state) if _patch34_is_team_room_state(meeting_state) else {},
+            "room_mode": PATCH_34_REVB_ROOM_MODE if _patch34_is_team_room_state(meeting_state) else "",
+            "realtime_room_engine_version": PATCH_34_REVB_REALTIME_ROOM_ENGINE_VERSION if _patch34_is_team_room_state(meeting_state) else "",
+            "room_state_persisted": bool(meeting_state_persisted) if _patch34_is_team_room_state(meeting_state) else False,
+            "has_snapshot": True if _patch34_is_team_room_state(meeting_state) else False,
             "meeting_observability": _json_safe(summarize_transition_for_response(meeting_transition)),
             "meeting_observability_version": MEETING_OBSERVABILITY_VERSION,
             "team_panel_version": PATCH_32_REV_D_TEAM_PANEL_VERSION,
@@ -3717,6 +4186,13 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
         session_id = str(_safe_getattr(body, "session_id", "") or "").strip() or None
         reason = str(_safe_getattr(body, "reason", "") or "client_end").strip() or "client_end"
         ended_at = _now_ts()
+
+        patch34_end_room_state = None
+        try:
+            if patch34_room_engine is not None and session_id:
+                patch34_end_room_state = patch34_room_engine.end_room(session_id=session_id, org=org, reason=reason)
+        except Exception:
+            patch34_end_room_state = None
 
         persisted = _maybe_mark_realtime_session_ended(
             deps,
