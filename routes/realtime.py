@@ -1367,11 +1367,13 @@ def _patch33_team_focus_slug(value: Any = None, default: str = "orkio") -> str:
 
 
 def _patch33_team_turn_queue(value: Any = None, focus_slug: str = "orkio") -> List[str]:
-    base = _coerce_manual_team_panel_order(value)
-    focus = _patch33_team_focus_slug(focus_slug, default="")
-    if focus and focus in PATCH_32_REV_D_TEAM_PANEL_ORDER:
-        return [focus] + [slug for slug in base if slug != focus]
-    return base
+    """PATCH_36: Team queue is canonical and must not be reordered by focus.
+
+    manual_team_focus_slug/active_speaker_slug may select who speaks now, but the
+    Team room queue remains deterministic: Orkio -> Orion -> Chris -> Laura.
+    """
+    _ = focus_slug
+    return _coerce_manual_team_panel_order(value)
 
 
 def _patch34_bool_team_mode(value: Any) -> bool:
@@ -1474,7 +1476,7 @@ def _patch34_ensure_room_state(
     active = patch34_normalize_slug(active_speaker_slug, default="orkio")
     if active == "team":
         active = "orkio"
-    team_participants = patch34_unique_valid_participants(participants or PATCH_32_REV_D_TEAM_PANEL_ORDER)
+    team_participants = _coerce_manual_team_panel_order(participants or PATCH_32_REV_D_TEAM_PANEL_ORDER)
     try:
         if patch34_room_engine is not None:
             state = patch34_room_engine.ensure_room(
@@ -1527,7 +1529,7 @@ def _patch34_apply_manual_room_directive(
     target = patch34_normalize_slug(target_slug, default="orkio")
     if target == "team":
         target = "orkio"
-    team_participants = patch34_unique_valid_participants(participants or PATCH_32_REV_D_TEAM_PANEL_ORDER)
+    team_participants = _coerce_manual_team_panel_order(participants or PATCH_32_REV_D_TEAM_PANEL_ORDER)
     event = {
         "session_id": session_id,
         "thread_id": thread_id,
@@ -2312,6 +2314,12 @@ PATCH_34_REVB_REALTIME_ROOM_ENGINE_VERSION = PATCH34_ROOM_ENGINE_VERSION
 PATCH_34_REVB_ROOM_MODE = PATCH34_ROOM_MODE
 PATCH_34_REVB_ROOM_RESPONSE_CONTROL = PATCH34_ROOM_RESPONSE_CONTROL
 
+PATCH_36_TEAM_STATE_MACHINE_CONTRACT_VERSION = "PATCH_36_TEAM_STATE_MACHINE_CONTRACT_V1"
+PATCH_36_TEAM_RESPONSE_CONTROL_VALUES = {
+    PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL,
+    PATCH_34_REVB_ROOM_RESPONSE_CONTROL,
+    "room_agent_authority",
+}
 
 
 PATCH_33_REV_B_PROVIDER_INTERNAL_SESSION_KEYS = {
@@ -3689,7 +3697,8 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 )
             )
             patch34_room_target_slug = patch34_normalize_slug(
-                (body_manual_team_focus_slug if body_manual_target_slug == "team" else body_manual_target_slug)
+                body_manual_target_slug
+                or body_manual_team_focus_slug
                 or body_target_agent_slug
                 or body_visible_agent
                 or body_agent_id
@@ -3847,14 +3856,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                             default="orkio",
                         )
                         if room_authority_slug == "team" or room_authority_slug not in PATCH_32_REV_D_TEAM_PANEL_ORDER:
-                            room_authority_slug = patch34_normalize_slug(
-                                body_manual_team_focus_slug
-                                or body_target_agent_slug
-                                or "orkio",
-                                default="orkio",
-                            )
-                            if room_authority_slug == "team" or room_authority_slug not in PATCH_32_REV_D_TEAM_PANEL_ORDER:
-                                room_authority_slug = "orkio"
+                            room_authority_slug = "orkio"
                         body_manual_team_focus_slug = room_authority_slug
                         body_manual_team_conversation_active = True
                         body_response_control = PATCH_34_REVB_ROOM_RESPONSE_CONTROL
@@ -4098,17 +4100,17 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                     patch33_manual_target == "team"
                     and patch33_team_active
                     and patch33_multi_agent_turn
-                    and patch33_response_control == PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL
-                    and set(patch33_required_targets).issubset(set(patch33_actual_targets or []))
+                    and patch33_response_control in PATCH_36_TEAM_RESPONSE_CONTROL_VALUES
+                    and patch33_actual_targets == patch33_required_targets
                 )
-                if patch33_manual_target == "team" or patch33_team_active or patch33_response_control == PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL:
+                if patch33_manual_target == "team" or patch33_team_active or patch33_response_control in PATCH_36_TEAM_RESPONSE_CONTROL_VALUES:
                     logger.warning(
                         "PATCH33_REV_A_TEAM_STAGING_VERIFICATION session_id=%s manual_target_slug=%s manual_team_conversation_active=%s multi_agent_turn=%s response_control=%s target_agent_slugs=%s actual_turn_queue=%s verification_status=%s version=%s",
                         session_id,
                         "team",
                         bool(patch33_team_active),
                         bool(patch33_multi_agent_turn),
-                        PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL if patch33_response_control == PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL else patch33_response_control,
+                        patch33_response_control,
                         json.dumps(patch33_required_targets, ensure_ascii=False),
                         json.dumps(patch33_actual_targets, ensure_ascii=False),
                         "PASS" if patch33_verification_pass else "FAIL",
