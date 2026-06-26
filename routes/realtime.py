@@ -3837,17 +3837,34 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                     manual_target_slug = body_manual_target_slug
                     if manual_target_slug == "team":
                         manual_target_slugs = body_manual_team_panel_order or _coerce_manual_team_panel_order(body_target_agent_slugs)
+                        room_authority_slug = patch34_normalize_slug(
+                            body_manual_team_focus_slug
+                            or body_target_agent_slug
+                            or (body_meeting_state.get("active_speaker_slug") if isinstance(body_meeting_state, dict) else "")
+                            or (body_meeting_state.get("target_agent_slug") if isinstance(body_meeting_state, dict) else "")
+                            or (existing_meeting_state.get("active_speaker_slug") if isinstance(existing_meeting_state, dict) else "")
+                            or (existing_meeting_state.get("target_agent_slug") if isinstance(existing_meeting_state, dict) else "")
+                            or "",
+                            default="orkio",
+                        )
+                        if room_authority_slug == "team" or room_authority_slug not in PATCH_32_REV_D_TEAM_PANEL_ORDER:
+                            room_authority_slug = "orkio"
+                        body_manual_team_focus_slug = room_authority_slug
+                        body_manual_team_conversation_active = True
+                        body_response_control = PATCH_34_REVB_ROOM_RESPONSE_CONTROL
+                        body_multi_agent_turn = True
+                        patch34_team_room_active = True
                         meeting_directive = {
                             "status": "directive",
-                            "kind": "manual_team_conversation",
-                            "match_type": "manual_team_conversation",
-                            "transition_reason": "manual_team_conversation",
-                            "target_agent_slug": body_manual_team_focus_slug if body_manual_team_conversation_active else "team",
+                            "kind": "room_agent_button",
+                            "match_type": "manual_team_room_authority",
+                            "transition_reason": "manual_team_room_authority",
+                            "target_agent_slug": room_authority_slug,
                             "target_agent_slugs": manual_target_slugs,
                             "multi_agent_turn": True,
-                            "response_control": PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL if body_manual_team_conversation_active else "manual_team_panel",
+                            "response_control": PATCH_34_REVB_ROOM_RESPONSE_CONTROL,
                             "confidence": 1.0,
-                            "dedupe_key": f"{session_id}:manual:team:{body_manual_team_focus_slug if body_manual_team_conversation_active else 'team'}:{latest_user_transcript_for_meeting[:160]}",
+                            "dedupe_key": f"{session_id}:room:{room_authority_slug}:{latest_user_transcript_for_meeting[:160]}",
                             "manual_agent_lock": True,
                             "manual_target_slug": "team",
                             "manual_authority_version": PATCH_32_REV_C_MANUAL_TARGET_SOURCE_OF_TRUTH_VERSION,
@@ -3863,12 +3880,17 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                             "team_panel_version": body_team_panel_version or PATCH_32_REV_D_TEAM_PANEL_VERSION,
                             "team_panel_mode": body_team_panel_mode or PATCH_32_REV_D_TEAM_PANEL_MODE,
                             "team_panel_voice_moderator_slug": body_team_panel_voice_moderator_slug or PATCH_32_REV_D_TEAM_PANEL_VOICE_MODERATOR_SLUG,
-                            "manual_team_conversation_active": bool(body_manual_team_conversation_active),
-                            "manual_team_focus_slug": body_manual_team_focus_slug if body_manual_team_conversation_active else "",
+                            "manual_team_conversation_active": True,
+                            "manual_team_focus_slug": room_authority_slug,
                             "manual_team_turn_queue": manual_target_slugs,
-                            "team_conversation_mode": PATCH_33_TEAM_CONVERSATION_MODE if body_manual_team_conversation_active else "",
-                            "team_conversation_orchestrator_version": PATCH_33_TEAM_CONVERSATION_ORCHESTRATOR_VERSION if body_manual_team_conversation_active else "",
-"team_conversation_staging_verification_version": (body_team_conversation_staging_verification_version or PATCH_33_REV_A_TEAM_CONVERSATION_STAGING_VERIFICATION_VERSION) if body_manual_team_conversation_active else "",
+                            "team_conversation_mode": PATCH_33_TEAM_CONVERSATION_MODE,
+                            "team_conversation_orchestrator_version": PATCH_33_TEAM_CONVERSATION_ORCHESTRATOR_VERSION,
+"team_conversation_staging_verification_version": body_team_conversation_staging_verification_version or PATCH_33_REV_A_TEAM_CONVERSATION_STAGING_VERIFICATION_VERSION,
+                            "room_mode": PATCH_34_REVB_ROOM_MODE,
+                            "realtime_room_engine_version": PATCH_34_REVB_REALTIME_ROOM_ENGINE_VERSION,
+                            "has_snapshot": True,
+                            "persisted": True,
+                            "room_state_persisted": True,
                         }
                         try:
                             logger.warning(
@@ -3949,17 +3971,35 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 if body_multi_agent_turn:
                     meeting_directive["multi_agent_turn"] = True
                     meeting_directive["response_control"] = body_response_control or meeting_directive.get("response_control") or "sequenced_team_turns"
-                meeting_state = update_meeting_state_from_directive(
-                    existing_meeting_state,
-                    meeting_directive,
-                    session_id=session_id,
-                    thread_id=session_ctx.get("thread_id"),
-                    org=org,
-                    user_id=uid,
-                    dest_mode=effective_dest_mode,
-                    include_internal=bool(_is_admin_user(user, None)),
-                    now_ts=_now_ts(),
-                )
+                if (
+                    str(meeting_directive.get("response_control") or "") == PATCH_34_REVB_ROOM_RESPONSE_CONTROL
+                    and str(meeting_directive.get("target_agent_slug") or "") in PATCH_32_REV_D_TEAM_PANEL_ORDER
+                ):
+                    meeting_state, room_directive = _patch34_apply_manual_room_directive(
+                        session_id=session_id,
+                        org=org,
+                        thread_id=session_ctx.get("thread_id") or "",
+                        target_slug=str(meeting_directive.get("target_agent_slug") or "orkio"),
+                        participants=meeting_directive.get("target_agent_slugs") or body_target_agent_slugs or PATCH_32_REV_D_TEAM_PANEL_ORDER,
+                        event_name="patch35_revc_room_authority",
+                        logger=logger,
+                    )
+                    meeting_directive.update(room_directive)
+                    meeting_directive["manual_target_slug"] = "team"
+                    meeting_directive["manual_team_focus_slug"] = meeting_state.get("active_speaker_slug") or meeting_directive.get("target_agent_slug")
+                    meeting_directive["room_authority_source"] = "PATCH35_PREMIUM_REV_C"
+                else:
+                    meeting_state = update_meeting_state_from_directive(
+                        existing_meeting_state,
+                        meeting_directive,
+                        session_id=session_id,
+                        thread_id=session_ctx.get("thread_id"),
+                        org=org,
+                        user_id=uid,
+                        dest_mode=effective_dest_mode,
+                        include_internal=bool(_is_admin_user(user, None)),
+                        now_ts=_now_ts(),
+                    )
                 try:
                     meeting_directive["meeting_state"] = _json_safe(meeting_state)
                     meeting_directive["meeting_state_version"] = MEETING_STATE_VERSION
@@ -4037,7 +4077,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 next_state=meeting_state,
                 directive=meeting_directive,
                 source="events_batch",
-                persisted=meeting_state_persisted,
+                persisted=bool(meeting_state.get("persisted", meeting_state_persisted)) if isinstance(meeting_state, dict) else bool(meeting_state_persisted),
                 now_ts=_now_ts(),
             )
 
@@ -4076,7 +4116,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                     "EFATA777_V8_MEETING_DIRECTIVE %s state=%s persisted=%s",
                     json.dumps(summarize_directive_for_log(meeting_directive), ensure_ascii=False, sort_keys=True),
                     json.dumps(summarize_meeting_state_for_log(meeting_state), ensure_ascii=False, sort_keys=True),
-                    bool(meeting_state_persisted),
+                    bool(meeting_state.get("persisted", meeting_state_persisted)) if isinstance(meeting_state, dict) else bool(meeting_state_persisted),
                 )
                 logger.warning("EFATA777_V12_MEETING_TRANSITION %s", transition_log_line(meeting_transition))
             except Exception:
