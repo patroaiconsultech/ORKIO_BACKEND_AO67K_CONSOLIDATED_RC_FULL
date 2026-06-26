@@ -3689,8 +3689,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 )
             )
             patch34_room_target_slug = patch34_normalize_slug(
-                body_manual_target_slug
-                or body_manual_team_focus_slug
+                (body_manual_team_focus_slug if body_manual_target_slug == "team" else body_manual_target_slug)
                 or body_target_agent_slug
                 or body_visible_agent
                 or body_agent_id
@@ -3848,7 +3847,14 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                             default="orkio",
                         )
                         if room_authority_slug == "team" or room_authority_slug not in PATCH_32_REV_D_TEAM_PANEL_ORDER:
-                            room_authority_slug = "orkio"
+                            room_authority_slug = patch34_normalize_slug(
+                                body_manual_team_focus_slug
+                                or body_target_agent_slug
+                                or "orkio",
+                                default="orkio",
+                            )
+                            if room_authority_slug == "team" or room_authority_slug not in PATCH_32_REV_D_TEAM_PANEL_ORDER:
+                                room_authority_slug = "orkio"
                         body_manual_team_focus_slug = room_authority_slug
                         body_manual_team_conversation_active = True
                         body_response_control = PATCH_34_REVB_ROOM_RESPONSE_CONTROL
