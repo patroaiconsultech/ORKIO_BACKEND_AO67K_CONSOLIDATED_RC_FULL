@@ -63,6 +63,7 @@ class RealtimeClientSecretReq(BaseModel):
     team_conversation_orchestrator_version: Optional[str] = Field(default=None, description="PATCH_33 Team orchestrator version.")
     team_conversation_staging_verification_version: Optional[str] = Field(default=None, description="PATCH_33_REV_A Team staging verification version.")
     realtime_provider_payload_sanitizer_version: Optional[str] = Field(default=None, description="PATCH_33_REV_B Realtime provider payload sanitizer version.")
+    live_agent_switch_runtime_fix_version: Optional[str] = Field(default=None, description="PATCH_33_REV_C Live agent switch runtime fix version.")
     agent_ids: Optional[Any] = Field(default=None, description="Optional multi-agent target ids/slugs.")
     client_controlled_response: Optional[bool] = Field(default=None, description="When true, backend starts Realtime with server_vad.create_response=false so frontend can route/handoff before speaking.")
     requested_agent_names: Optional[Any] = Field(default=None, description="Optional raw requested agent names.")
@@ -107,6 +108,7 @@ class RealtimeStartReq(BaseModel):
     team_conversation_orchestrator_version: Optional[str] = Field(default=None, description="PATCH_33 Team orchestrator version.")
     team_conversation_staging_verification_version: Optional[str] = Field(default=None, description="PATCH_33_REV_A Team staging verification version.")
     realtime_provider_payload_sanitizer_version: Optional[str] = Field(default=None, description="PATCH_33_REV_B Realtime provider payload sanitizer version.")
+    live_agent_switch_runtime_fix_version: Optional[str] = Field(default=None, description="PATCH_33_REV_C Live agent switch runtime fix version.")
     client_controlled_response: Optional[bool] = Field(default=None, description="When true, backend starts Realtime with server_vad.create_response=false so frontend can route/handoff before speaking.")
     requested_agent_names: Optional[Any] = Field(default=None, description="Optional raw requested agent names.")
 
@@ -238,6 +240,7 @@ PATCH_33_REV_B_PROVIDER_INTERNAL_SESSION_KEYS = {
     "auto_handoff_ignored",
     "realtime_voice_agent_slug",
     "realtime_provider_payload_sanitizer_version",
+    "live_agent_switch_runtime_fix_version",
 }
 
 
