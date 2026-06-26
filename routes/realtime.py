@@ -125,6 +125,7 @@ except Exception:  # pragma: no cover
         team_conversation_orchestrator_version: Optional[str] = None
         team_conversation_staging_verification_version: Optional[str] = None
         realtime_provider_payload_sanitizer_version: Optional[str] = None
+        live_agent_switch_runtime_fix_version: Optional[str] = None
         client_controlled_response: Optional[bool] = None
         preferred_address_names: Optional[Any] = None
         profile_address_preference_version: Optional[str] = None
@@ -168,6 +169,8 @@ except Exception:  # pragma: no cover
         team_conversation_mode: Optional[str] = None
         team_conversation_orchestrator_version: Optional[str] = None
         team_conversation_staging_verification_version: Optional[str] = None
+        realtime_provider_payload_sanitizer_version: Optional[str] = None
+        live_agent_switch_runtime_fix_version: Optional[str] = None
         client_controlled_response: Optional[bool] = None
         preferred_address_names: Optional[Any] = None
         profile_address_preference_version: Optional[str] = None
@@ -2020,6 +2023,7 @@ PATCH_32_REV_J_MANUAL_LOCK_STAGING_PROOF_PRODUCTION_GUARD_VERSION = "PATCH_32_RE
 PATCH_33_TEAM_CONVERSATION_ORCHESTRATOR_VERSION = "PATCH_33_TEAM_CONVERSATION_ORCHESTRATOR_V1"
 PATCH_33_REV_A_TEAM_CONVERSATION_STAGING_VERIFICATION_VERSION = "PATCH_33_REV_A_TEAM_CONVERSATION_STAGING_VERIFICATION_V1"
 PATCH_33_REV_B_REALTIME_PROVIDER_PAYLOAD_SANITIZER_VERSION = "PATCH_33_REV_B_REALTIME_PROVIDER_PAYLOAD_SANITIZER_V1"
+PATCH_33_REV_C_LIVE_AGENT_SWITCH_RUNTIME_FIX_VERSION = "PATCH_33_REV_C_LIVE_AGENT_SWITCH_RUNTIME_FIX_V1"
 PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL = "team_conversation_orchestrator"
 PATCH_33_TEAM_CONVERSATION_MODE = "team_conversation_room"
 
@@ -2065,6 +2069,7 @@ PATCH_33_REV_B_PROVIDER_INTERNAL_SESSION_KEYS = {
     "auto_handoff_ignored",
     "realtime_voice_agent_slug",
     "realtime_provider_payload_sanitizer_version",
+    "live_agent_switch_runtime_fix_version",
 }
 
 
@@ -3005,6 +3010,11 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 or await _request_json_field(request, "realtime_provider_payload_sanitizer_version", "")
                 or PATCH_33_REV_B_REALTIME_PROVIDER_PAYLOAD_SANITIZER_VERSION
             ).strip(),
+            "live_agent_switch_runtime_fix_version": str(
+                _safe_getattr(body, "live_agent_switch_runtime_fix_version", "")
+                or await _request_json_field(request, "live_agent_switch_runtime_fix_version", "")
+                or PATCH_33_REV_C_LIVE_AGENT_SWITCH_RUNTIME_FIX_VERSION
+            ).strip(),
             "team_panel_version": str(
                 _safe_getattr(body, "team_panel_version", "")
                 or await _request_json_field(request, "team_panel_version", "")
@@ -3084,6 +3094,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 "team_conversation_orchestrator_version": session_meta.get("team_conversation_orchestrator_version") or "",
 "team_conversation_staging_verification_version": session_meta.get("team_conversation_staging_verification_version") or "",
                 "realtime_provider_payload_sanitizer_version": session_meta.get("realtime_provider_payload_sanitizer_version") or PATCH_33_REV_B_REALTIME_PROVIDER_PAYLOAD_SANITIZER_VERSION,
+                "live_agent_switch_runtime_fix_version": session_meta.get("live_agent_switch_runtime_fix_version") or PATCH_33_REV_C_LIVE_AGENT_SWITCH_RUNTIME_FIX_VERSION,
                 "serialization_safe": "RTB03_RTB06_EFATA777_V8_PATCH29",
                 "timebox_policy": "advisory_only_esg",
             }
