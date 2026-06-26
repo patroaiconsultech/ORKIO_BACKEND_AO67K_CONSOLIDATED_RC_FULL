@@ -1,3 +1,4 @@
+# PATCH_33_REV_B_REALTIME_PROVIDER_PAYLOAD_SANITIZER
 # ORKIO_RTB06_REALTIME_FINALS_MESSAGES_BRIDGE
 # Backend-only PATCH_MINIMUM for routes/realtime.py
 # PATCH_30_SERVER_SPEAKER_AUTHORITY_CLIENT_ECHO_QUARANTINE
@@ -123,6 +124,7 @@ except Exception:  # pragma: no cover
         team_conversation_mode: Optional[str] = None
         team_conversation_orchestrator_version: Optional[str] = None
         team_conversation_staging_verification_version: Optional[str] = None
+        realtime_provider_payload_sanitizer_version: Optional[str] = None
         client_controlled_response: Optional[bool] = None
         preferred_address_names: Optional[Any] = None
         profile_address_preference_version: Optional[str] = None
@@ -1594,6 +1596,18 @@ async def _mint_client_secret(
         create_response=create_response,
     )
 
+    payload, patch33_revb_removed_keys = _patch33_revb_sanitize_provider_payload(payload)
+    try:
+        logger.warning(
+            "PATCH33_REV_B_REALTIME_PROVIDER_PAYLOAD_SANITIZER version=%s provider_session_payload_clean=%s removed_count=%s removed_keys=%s",
+            PATCH_33_REV_B_REALTIME_PROVIDER_PAYLOAD_SANITIZER_VERSION,
+            True,
+            len(patch33_revb_removed_keys),
+            json.dumps(patch33_revb_removed_keys, ensure_ascii=False),
+        )
+    except Exception:
+        pass
+
     try:
         logger.warning(
             "RTB03_REALTIME_CLIENT_SECRET_PAYLOAD %s",
@@ -2005,8 +2019,101 @@ PATCH_32_REV_H_MANUAL_LOCK_STAGING_PROOF_VERSION = "PATCH_32_REV_H_MANUAL_LOCK_S
 PATCH_32_REV_J_MANUAL_LOCK_STAGING_PROOF_PRODUCTION_GUARD_VERSION = "PATCH_32_REV_J_MANUAL_LOCK_STAGING_PROOF_PRODUCTION_GUARD_V1"
 PATCH_33_TEAM_CONVERSATION_ORCHESTRATOR_VERSION = "PATCH_33_TEAM_CONVERSATION_ORCHESTRATOR_V1"
 PATCH_33_REV_A_TEAM_CONVERSATION_STAGING_VERIFICATION_VERSION = "PATCH_33_REV_A_TEAM_CONVERSATION_STAGING_VERIFICATION_V1"
+PATCH_33_REV_B_REALTIME_PROVIDER_PAYLOAD_SANITIZER_VERSION = "PATCH_33_REV_B_REALTIME_PROVIDER_PAYLOAD_SANITIZER_V1"
 PATCH_33_TEAM_CONVERSATION_RESPONSE_CONTROL = "team_conversation_orchestrator"
 PATCH_33_TEAM_CONVERSATION_MODE = "team_conversation_room"
+
+
+
+PATCH_33_REV_B_PROVIDER_INTERNAL_SESSION_KEYS = {
+    "agent_id",
+    "agent_ids",
+    "visible_agent",
+    "target_agent_slug",
+    "target_agent_slugs",
+    "requested_agent_names",
+    "multi_agent_turn",
+    "response_control",
+    "dest_mode",
+    "manual_agent_lock",
+    "manual_agent_source",
+    "manual_authority_source",
+    "manual_authority_updated_at",
+    "manual_authority_version",
+    "manual_target_slug",
+    "manual_sticky_state_version",
+    "manual_lock_persistence_version",
+    "manual_lock_staging_proof_version",
+    "manual_lock_staging_proof_production_guard_version",
+    "manual_lock_contract_propagation_version",
+    "manual_team_panel_required",
+    "manual_team_panel_order",
+    "manual_team_conversation_active",
+    "manual_team_focus_slug",
+    "manual_team_turn_queue",
+    "manual_team_turn_index",
+    "team_panel_version",
+    "team_panel_mode",
+    "team_panel_voice_moderator_slug",
+    "team_conversation_mode",
+    "team_conversation_orchestrator_version",
+    "team_conversation_staging_verification_version",
+    "session_voice_sync_version",
+    "profile_address_preference_version",
+    "preferred_address_names",
+    "auto_handoff_enabled",
+    "auto_handoff_ignored",
+    "realtime_voice_agent_slug",
+    "realtime_provider_payload_sanitizer_version",
+}
+
+
+def _patch33_revb_is_internal_provider_session_key(key: Any) -> bool:
+    safe_key = str(key or "").strip()
+    if not safe_key:
+        return False
+    return (
+        safe_key.startswith("manual_")
+        or safe_key.startswith("team_")
+        or safe_key.startswith("target_agent")
+        or safe_key.startswith("requested_agent")
+        or safe_key.startswith("profile_address")
+        or safe_key in PATCH_33_REV_B_PROVIDER_INTERNAL_SESSION_KEYS
+    )
+
+
+def _patch33_revb_sanitize_provider_value(value: Any, prefix: str, removed: List[str]) -> Any:
+    if isinstance(value, list):
+        return [_patch33_revb_sanitize_provider_value(item, prefix, removed) for item in value]
+    if not isinstance(value, dict):
+        return value
+
+    out: Dict[str, Any] = {}
+    for key, nested in value.items():
+        path = f"{prefix}.{key}" if prefix else str(key)
+        if _patch33_revb_is_internal_provider_session_key(key):
+            removed.append(path)
+            continue
+        out[key] = _patch33_revb_sanitize_provider_value(nested, path, removed)
+    return out
+
+
+def _patch33_revb_sanitize_provider_payload(payload: Any) -> Tuple[Dict[str, Any], List[str]]:
+    """Remove Orkio-only manual/team context before calling Realtime provider.
+
+    PATCH 33 REV B keeps internal orchestration fields available in events:batch,
+    meeting_state and logs, but guarantees client_secrets/session payloads do not
+    contain provider-invalid keys such as session.manual_agent_lock.
+    """
+
+    if not isinstance(payload, dict):
+        return {}, ["payload"]
+
+    removed: List[str] = []
+    safe_payload = _patch33_revb_sanitize_provider_value(dict(payload), "", removed)
+    unique_removed = sorted(set(str(item or "") for item in removed if str(item or "").strip()))
+    return safe_payload if isinstance(safe_payload, dict) else {}, unique_removed
+
 
 
 def _patch32_revf_event_payloads(event: Any) -> List[Dict[str, Any]]:
@@ -2893,6 +3000,11 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
             "team_conversation_mode": PATCH_33_TEAM_CONVERSATION_MODE if manual_team_conversation_active else "",
             "team_conversation_orchestrator_version": PATCH_33_TEAM_CONVERSATION_ORCHESTRATOR_VERSION if manual_team_conversation_active else "",
 "team_conversation_staging_verification_version": (raw_team_conversation_staging_verification_version or PATCH_33_REV_A_TEAM_CONVERSATION_STAGING_VERIFICATION_VERSION) if manual_team_conversation_active else "",
+            "realtime_provider_payload_sanitizer_version": str(
+                _safe_getattr(body, "realtime_provider_payload_sanitizer_version", "")
+                or await _request_json_field(request, "realtime_provider_payload_sanitizer_version", "")
+                or PATCH_33_REV_B_REALTIME_PROVIDER_PAYLOAD_SANITIZER_VERSION
+            ).strip(),
             "team_panel_version": str(
                 _safe_getattr(body, "team_panel_version", "")
                 or await _request_json_field(request, "team_panel_version", "")
@@ -2971,6 +3083,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 "team_conversation_mode": session_meta.get("team_conversation_mode") or "",
                 "team_conversation_orchestrator_version": session_meta.get("team_conversation_orchestrator_version") or "",
 "team_conversation_staging_verification_version": session_meta.get("team_conversation_staging_verification_version") or "",
+                "realtime_provider_payload_sanitizer_version": session_meta.get("realtime_provider_payload_sanitizer_version") or PATCH_33_REV_B_REALTIME_PROVIDER_PAYLOAD_SANITIZER_VERSION,
                 "serialization_safe": "RTB03_RTB06_EFATA777_V8_PATCH29",
                 "timebox_policy": "advisory_only_esg",
             }
