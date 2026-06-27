@@ -3480,6 +3480,14 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
     ) -> Dict[str, Any]:
         org = _resolve_org_safe(deps, user, x_org_slug)
         events = list(_safe_getattr(body, "events", []) or [])
+        event_names = [_event_name(ev).strip().lower() for ev in events]
+        reflective_team_state_events = {
+            "telemetry.patch35_reve_team_participant_state_accepted",
+            "patch35_reve_team_participant_state_accepted",
+        }
+        reflective_team_state_only = bool(event_names) and all(
+            name in reflective_team_state_events for name in event_names
+        )
         session_id = str(_safe_getattr(body, "session_id", "") or "").strip()
         uid = str(_safe_getattr(user, "sub", None) or _safe_getattr(user, "id", "") or "").strip() or None
 
@@ -3778,6 +3786,7 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                 and body_manual_agent_lock
                 and patch34_room_target_slug in PATCH_32_REV_D_TEAM_PANEL_ORDER
                 and patch34_room_target_slug != "team"
+                and not reflective_team_state_only
             ):
                 meeting_state, meeting_directive = _patch34_apply_manual_room_directive(
                     session_id=session_id,
@@ -3811,6 +3820,18 @@ def build_realtime_router(deps: SimpleNamespace) -> APIRouter:
                         True,
                         bool(meeting_state.get("persisted", False)),
                         bool(meeting_state.get("has_snapshot", True)),
+                    )
+                except Exception:
+                    pass
+
+            if reflective_team_state_only:
+                try:
+                    logger.info(
+                        "PATCH38_REALTIME_TEAM_ECHO_LOOP_BLOCKED org=%s session_id=%s events=%s active_speaker_slug=%s",
+                        org,
+                        session_id,
+                        json.dumps(event_names, ensure_ascii=False),
+                        existing_meeting_state.get("active_speaker_slug") if isinstance(existing_meeting_state, dict) else "",
                     )
                 except Exception:
                     pass
