@@ -114,3 +114,11 @@ class LearningRecord:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+# OEP-001A_PREMIUM_PUBLIC_MODEL_CONTRACT
+# Public compatibility aliases:
+# - ExecutionRecord / LearningRecord remain internal explicit record names.
+# - Execution / Learning are the stable public domain contract expected by OEP smoke tests,
+#   future Orion Evolution workflows and external imports.
+Execution = ExecutionRecord
+Learning = LearningRecord
