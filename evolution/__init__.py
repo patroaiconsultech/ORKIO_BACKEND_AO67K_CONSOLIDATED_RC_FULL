@@ -1,0 +1,5 @@
+from .engine import EvolutionEngine
+
+OEP_001_EVOLUTION_FOUNDATION_VERSION = "OEP_001_EVOLUTION_FOUNDATION_V1"
+
+__all__ = ["EvolutionEngine", "OEP_001_EVOLUTION_FOUNDATION_VERSION"]
