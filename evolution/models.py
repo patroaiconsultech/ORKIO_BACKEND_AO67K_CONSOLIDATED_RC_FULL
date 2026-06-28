@@ -122,3 +122,22 @@ class LearningRecord:
 #   future Orion Evolution workflows and external imports.
 Execution = ExecutionRecord
 Learning = LearningRecord
+
+
+# OEP-002_EVOLUTION_REGISTRY_BACKEND_FOUNDATION
+# Public registry status contracts. Kept here to avoid hidden string contracts across engines.
+OEP_002_MODEL_VERSION = "OEP_002_EVOLUTION_REGISTRY_MODELS_V1"
+
+INCIDENT_STATUS_OPEN = "open"
+INCIDENT_STATUS_TRIAGE = "triage"
+INCIDENT_STATUS_PROPOSED = "proposed"
+INCIDENT_STATUS_APPROVED = "approved"
+INCIDENT_STATUS_CLOSED = "closed"
+INCIDENT_STATUS_ARCHIVED = "archived"
+
+PROPOSAL_STATUS_DRAFT = "draft"
+PROPOSAL_STATUS_READY_FOR_REVIEW = "ready_for_review"
+PROPOSAL_STATUS_APPROVED = "approved"
+PROPOSAL_STATUS_REJECTED = "rejected"
+PROPOSAL_STATUS_EXECUTED = "executed"
+PROPOSAL_STATUS_ROLLED_BACK = "rolled_back"
