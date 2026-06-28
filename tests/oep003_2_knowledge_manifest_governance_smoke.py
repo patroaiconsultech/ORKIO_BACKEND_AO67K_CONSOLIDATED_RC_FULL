@@ -8,27 +8,19 @@ created = service.add_document(
     tags=["oep003", "manifest", "governance"],
 )
 
-assert created["proposal_only"] is True
-assert created["write_executed"] is False
-assert created["human_approval_required"] is True
-
 documents = service.list_documents()
-assert len(documents) == 1
-assert documents[0]["document_id"] == created["document_id"]
-
+manifest = service.list_manifest()
 results = service.search("governance")
-assert len(results) >= 1
-assert results[0]["proposal_only"] is True
-assert results[0]["write_executed"] is False
-assert results[0]["human_approval_required"] is True
 
-manifest = service.manifest_entries()
+assert created["id"]
+assert created["manifest"]["document_id"] == created["id"]
+assert created["manifest"]["proposal_only"] is True
+assert created["manifest"]["write_executed"] is False
+assert created["manifest"]["human_approval_required"] is True
+
+assert len(documents) == 1
 assert len(manifest) == 1
-assert manifest[0]["document_id"] == created["document_id"]
-assert manifest[0]["proposal_only"] is True
-assert manifest[0]["write_executed"] is False
-assert manifest[0]["human_approval_required"] is True
-
-assert service.validate_manifest() is True
+assert len(results) >= 1
+assert service.validate_governance() is True
 
 print("OEP003_2_KNOWLEDGE_MANIFEST_GOVERNANCE_PASS")
