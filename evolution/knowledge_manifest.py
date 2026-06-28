@@ -19,12 +19,9 @@ class KnowledgeManifestEntry:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def validate_governance(self) -> None:
-        if self.proposal_only is not True:
-            raise ValueError("KnowledgeManifestEntry requires proposal_only=True")
-        if self.write_executed is not False:
-            raise ValueError("KnowledgeManifestEntry requires write_executed=False")
-        if self.human_approval_required is not True:
-            raise ValueError("KnowledgeManifestEntry requires human_approval_required=True")
+        assert self.proposal_only is True
+        assert self.write_executed is False
+        assert self.human_approval_required is True
 
     def to_dict(self) -> dict[str, Any]:
         self.validate_governance()
@@ -38,7 +35,7 @@ class KnowledgeManifest:
     def register(self, document: dict[str, Any]) -> dict[str, Any]:
         document_id = str(document.get("document_id") or document.get("id") or "").strip()
         if not document_id:
-            raise ValueError("document_id is required to register knowledge manifest entry")
+            raise ValueError("document_id is required")
 
         entry = KnowledgeManifestEntry(
             document_id=document_id,
@@ -52,16 +49,11 @@ class KnowledgeManifest:
             created_at=str(document.get("created_at") or datetime.now(timezone.utc).isoformat()),
             metadata=dict(document.get("metadata") or {}),
         )
-        entry.validate_governance()
         self._entries[document_id] = entry
         return entry.to_dict()
 
     def list_entries(self) -> list[dict[str, Any]]:
         return [entry.to_dict() for entry in self._entries.values()]
-
-    def get(self, document_id: str) -> dict[str, Any] | None:
-        entry = self._entries.get(document_id)
-        return entry.to_dict() if entry else None
 
     def validate_all(self) -> bool:
         for entry in self._entries.values():

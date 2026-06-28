@@ -31,3 +31,10 @@ class KnowledgeService:
 
     def search(self, query: str) -> list[dict[str, Any]]:
         return self._repository.search(query=query)
+
+
+    def list_manifest(self) -> list[dict]:
+        return self._repository.manifest_entries()
+
+    def validate_governance(self) -> bool:
+        return self._repository.validate_manifest()
