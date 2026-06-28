@@ -1,28 +1,21 @@
 # OEP-003.2 — Knowledge Manifest + Governance Check
 
-## Objetivo
+Este patch consolida o Knowledge Vault com um Manifest operacional.
 
-Consolidar o Knowledge Layer com manifesto e validação de governança.
+## Contrato de governança
 
-## Garantias
-
-- `proposal_only = true`
-- `write_executed = false`
-- `human_approval_required = true`
-
-## Escopo preservado
-
-Este patch não toca chat, realtime, Team, voice, frontend, auth ou banco.
-
-## Teste
-
-```bash
-PYTHONPATH=. python -m py_compile evolution/*.py tests/oep003_2_knowledge_manifest_governance_smoke.py
-PYTHONPATH=. python tests/oep003_2_knowledge_manifest_governance_smoke.py
+```text
+proposal_only=True
+write_executed=False
+human_approval_required=True
 ```
 
-Resultado esperado:
+## Resultado esperado
 
-```txt
+```text
 OEP003_2_KNOWLEDGE_MANIFEST_GOVERNANCE_PASS
 ```
+
+## Escopo negativo
+
+Este patch não altera chat, stream, realtime, voice, frontend ou banco.
