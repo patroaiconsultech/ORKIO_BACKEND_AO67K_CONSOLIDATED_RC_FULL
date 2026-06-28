@@ -8,9 +8,9 @@ from evolution.knowledge_vault import KnowledgeVault
 
 def create_knowledge_service() -> KnowledgeService:
     vault = KnowledgeVault()
+    repository = KnowledgeRepository(vault=vault)
     manifest = KnowledgeManifest()
-    repository = KnowledgeRepository(vault=vault, manifest=manifest)
-    return KnowledgeService(repository=repository)
+    return KnowledgeService(repository=repository, manifest=manifest)
 
 
 knowledge = create_knowledge_service()
