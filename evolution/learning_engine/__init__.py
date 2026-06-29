@@ -1,5 +1,10 @@
 from evolution.learning_engine.memory import LearningMemory, LearningMemoryRecord
 from evolution.learning_engine.service import LearningService, learning_service
+from evolution.learning_engine.outcome_models import OutcomeRecord
+from evolution.learning_engine.outcome_tracker import OutcomeTracker
+from evolution.learning_engine.confidence_calibration import ConfidenceCalibrator
+from evolution.learning_engine.experience_repository import ExperienceRecord, ExperienceRepository
+from evolution.learning_engine.recommendation_evolution import RecommendationEvolution
 
 
 class LearningEngineService(LearningService):
@@ -27,4 +32,10 @@ __all__ = [
     "LearningService",
     "LearningEngineService",
     "learning_service",
+    "OutcomeRecord",
+    "OutcomeTracker",
+    "ConfidenceCalibrator",
+    "ExperienceRecord",
+    "ExperienceRepository",
+    "RecommendationEvolution",
 ]
