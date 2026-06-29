@@ -1,0 +1,1 @@
+# Testing Guide\n\nUse PYTHONPATH=. for tests.\n

@@ -1,0 +1,1 @@
+# Compatibility Policy\n\nPreserve public APIs with facades when necessary.\n
