@@ -41501,7 +41501,9 @@ async def chat_stream(
             "document_status",
             "document_reference",
             "document_creation",
+            "direct_answer_request",
             "business_plan",
+            "business_advisory",
             "project_strategy",
             "product_design",
         }
