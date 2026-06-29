@@ -14,7 +14,7 @@ import re
 import unicodedata
 from typing import Any, Dict, Iterable, List, Optional
 
-ORKIO_CONTEXT_INTENT_VERSION = "AO75A_HF1_CONTEXT_INTENT_V1"
+ORKIO_CONTEXT_INTENT_VERSION = "AO75A_HF2_BUSINESS_TASK_GATE_V2"
 PUBLIC_SPEAKER = "Orkio"
 
 _DOCUMENT_FILE_PATTERN = re.compile(
@@ -88,9 +88,11 @@ def _contract(
         "document_status",
         "document_reference",
         "document_creation",
+        "direct_answer_request",
         "technical_diagnostic",
         "code_audit",
         "business_plan",
+        "business_advisory",
         "project_strategy",
         "product_design",
     }
@@ -133,6 +135,8 @@ def classify_orkio_context_intent(
     direct_answer_markers = (
         "responda apenas",
         "responda somente",
+        "responda exatamente",
+        "responder exatamente",
         "diga exatamente",
         "retorne somente",
         "answer only",
@@ -140,11 +144,11 @@ def classify_orkio_context_intent(
     )
     if _contains_any(text, direct_answer_markers):
         return _contract(
-            intent="general_conversation",
+            intent="direct_answer_request",
             reason="direct_answer_constraint",
             confidence=0.99,
             explicit=True,
-            public_fastpath_allowed=True,
+            public_fastpath_allowed=False,
             matched_markers=_matched(text, direct_answer_markers),
         )
 
@@ -639,6 +643,129 @@ def classify_orkio_context_intent(
             public_fastpath_allowed=False,
             memory_commit_allowed=False,
             matched_markers=_matched(text, project_markers),
+        )
+
+    business_action_markers = (
+        "analise",
+        "avalie",
+        "avaliar",
+        "compare",
+        "comparar",
+        "recomende",
+        "recomendar",
+        "informe",
+        "explique",
+        "oriente",
+        "resuma",
+        "recapitule",
+        "liste",
+        "defina",
+        "escreva",
+        "conduza",
+        "diagnostico",
+        "primeiro passo",
+        "proximo passo",
+        "como melhorar",
+        "como aumentar",
+        "como reduzir",
+        "como preparar",
+        "crie uma estrategia",
+        "crie um plano",
+        "estruture",
+        "transforme",
+        "calcule",
+        "mostre os calculos",
+        "identifique os riscos",
+        "proponha",
+        "elabore",
+        "prepare minha empresa",
+        "analyze",
+        "evaluate",
+        "compare",
+        "recommend",
+        "diagnose",
+        "first step",
+        "next step",
+        "how to improve",
+        "how to increase",
+        "how to reduce",
+    )
+    business_domain_markers = (
+        "empresa",
+        "negocio",
+        "plano",
+        "objetivo",
+        "indicador",
+        "risco",
+        "crescimento",
+        "expansao",
+        "projeto",
+        "servicos",
+        "b2b",
+        "margem",
+        "faturamento",
+        "receita",
+        "custo",
+        "lucro",
+        "fluxo de caixa",
+        "vendas",
+        "comercial",
+        "cliente",
+        "mercado",
+        "preco",
+        "estrategia",
+        "financeir",
+        "investimento",
+        "captacao",
+        "marketing",
+        "funil",
+        "operacao",
+        "processo",
+        "lideranca",
+        "equipe",
+        "esg",
+        "roi",
+        "cac",
+        "ltv",
+        "ebitda",
+        "company",
+        "business",
+        "plan",
+        "goal",
+        "indicator",
+        "risk",
+        "growth",
+        "expansion",
+        "project",
+        "services",
+        "margin",
+        "revenue",
+        "cost",
+        "profit",
+        "cash flow",
+        "sales",
+        "customer",
+        "market",
+        "pricing",
+        "strategy",
+        "financial",
+        "investment",
+        "marketing",
+        "operations",
+        "leadership",
+    )
+    if _contains_any(text, business_action_markers) and _contains_any(text, business_domain_markers):
+        return _contract(
+            intent="business_advisory",
+            reason="concrete_business_advisory_task",
+            confidence=0.94,
+            explicit=True,
+            public_fastpath_allowed=False,
+            memory_commit_allowed=False,
+            matched_markers=(
+                _matched(text, business_action_markers)
+                + _matched(text, business_domain_markers)
+            ),
         )
 
     return _contract(
