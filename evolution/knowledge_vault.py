@@ -140,9 +140,6 @@ class KnowledgeVault:
         self.documents[document.document_id] = document
         self._index_document(document)
 
-        if self.storage_path:
-            self.save()
-
         return document
 
     def get_document(self, document_id: str) -> Optional[KnowledgeDocument]:
@@ -219,12 +216,12 @@ class KnowledgeVault:
             )
         return results
 
-    def snapshot(self) -> Dict[str, Any]:
+    def snapshot(self, *, write_executed: bool = False) -> Dict[str, Any]:
         return {
             "schema": "oep003_knowledge_vault_v1",
             "generated_at": _utcnow(),
             "proposal_only": True,
-            "write_executed": False,
+            "write_executed": bool(write_executed),
             "human_approval_required": True,
             "documents": [asdict(doc) for doc in self.list_documents()],
             "chunks": [asdict(chunk) for chunk in self.chunks.values()],
@@ -235,7 +232,7 @@ class KnowledgeVault:
             raise ValueError("storage_path is not configured")
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
         self.storage_path.write_text(
-            json.dumps(self.snapshot(), ensure_ascii=False, indent=2),
+            json.dumps(self.snapshot(write_executed=True), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
 

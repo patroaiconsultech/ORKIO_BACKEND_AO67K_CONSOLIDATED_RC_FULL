@@ -8,7 +8,11 @@ from evolution.knowledge_vault import KnowledgeVault
 
 
 class KnowledgeRepository:
-    def __init__(self, vault: KnowledgeVault | None = None, manifest: KnowledgeManifest | None = None) -> None:
+    def __init__(
+        self,
+        vault: KnowledgeVault | None = None,
+        manifest: KnowledgeManifest | None = None,
+    ) -> None:
         self._vault = vault or KnowledgeVault()
         self._manifest = manifest or KnowledgeManifest()
 
@@ -23,6 +27,7 @@ class KnowledgeRepository:
             "created_at": getattr(doc, "created_at", None),
             "source": getattr(doc, "source", "manual"),
             "scope": getattr(doc, "scope", "general"),
+            "metadata": getattr(doc, "metadata", {}) or {},
         }
         payload = apply_knowledge_governance(payload)
         payload["manifest"] = self._manifest.register(payload)
@@ -31,32 +36,40 @@ class KnowledgeRepository:
     def list(self) -> list[dict[str, Any]]:
         docs = self._vault.list_documents()
         return [
-            {
-                "id": getattr(d, "document_id", getattr(d, "id", None)),
-                "document_id": getattr(d, "document_id", getattr(d, "id", None)),
-                "title": getattr(d, "title", ""),
-                "content": getattr(d, "content", ""),
-                "tags": getattr(d, "tags", []),
-                "created_at": getattr(d, "created_at", None),
-                "source": getattr(d, "source", "manual"),
-                "scope": getattr(d, "scope", "general"),
-            }
+            apply_knowledge_governance(
+                {
+                    "id": getattr(d, "document_id", getattr(d, "id", None)),
+                    "document_id": getattr(d, "document_id", getattr(d, "id", None)),
+                    "title": getattr(d, "title", ""),
+                    "content": getattr(d, "content", ""),
+                    "tags": getattr(d, "tags", []),
+                    "created_at": getattr(d, "created_at", None),
+                    "source": getattr(d, "source", "manual"),
+                    "scope": getattr(d, "scope", "general"),
+                    "metadata": getattr(d, "metadata", {}) or {},
+                }
+            )
             for d in docs
         ]
 
     def search(self, query: str) -> list[dict[str, Any]]:
         results = self._vault.search(query=query)
         return [
-            {
-                "id": getattr(r, "document_id", None),
-                "document_id": getattr(r, "document_id", None),
-                "chunk_id": getattr(r, "chunk_id", None),
-                "title": getattr(r, "title", ""),
-                "content": getattr(r, "text", getattr(r, "content", "")),
-                "text": getattr(r, "text", getattr(r, "content", "")),
-                "score": getattr(r, "score", 0),
-                "tags": getattr(r, "tags", []),
-            }
+            apply_knowledge_governance(
+                {
+                    "id": getattr(r, "document_id", None),
+                    "document_id": getattr(r, "document_id", None),
+                    "chunk_id": getattr(r, "chunk_id", None),
+                    "title": getattr(r, "title", ""),
+                    "content": getattr(r, "text", getattr(r, "content", "")),
+                    "text": getattr(r, "text", getattr(r, "content", "")),
+                    "score": getattr(r, "score", 0),
+                    "tags": getattr(r, "tags", []),
+                    "source": getattr(r, "source", "manual"),
+                    "scope": getattr(r, "scope", "general"),
+                    "metadata": getattr(r, "metadata", {}) or {},
+                }
+            )
             for r in results
         ]
 
