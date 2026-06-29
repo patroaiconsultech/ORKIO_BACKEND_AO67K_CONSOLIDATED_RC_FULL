@@ -1,0 +1,1 @@
+# ORKIO Platform Architecture v1\n\nPublic backbone: Knowledge, Conversation, Proposal, Learning, Planner and Governance APIs.\n
