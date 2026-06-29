@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
 
 TESTS = [
     "tests/oep003_knowledge_vault_smoke.py",
@@ -20,37 +20,48 @@ TESTS = [
     "tests/oep005_2_conflict_detection_smoke.py",
     "tests/oep005_3_approval_workflow_smoke.py",
     "tests/oep006_learning_engine_foundation_smoke.py",
+    "tests/oep006_1_learning_memory_smoke.py",
+    "tests/oep006_2_outcome_tracker_smoke.py",
+    "tests/oep006_3_confidence_calibration_smoke.py",
+    "tests/oep006_4_experience_repository_smoke.py",
+    "tests/oep006_5_recommendation_evolution_smoke.py",
 ]
 
+
 def main() -> int:
-    passed = 0
-    failed = 0
-    print("ORKIO RELEASE 0.5.0 REGRESSION SUITE")
+    root = Path(__file__).resolve().parents[2]
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(root)
+
+    print("ORKIO RELEASE 0.6.0 REGRESSION SUITE")
     print("=" * 44)
 
+    passed = 0
+    failed = 0
+
     for test in TESTS:
-        path = ROOT / test
+        path = root / test
         if not path.exists():
             failed += 1
-            print(f"MISSING ... {test}")
+            print(f"FAIL ...... {test}")
+            print(f"Missing test file: {test}\n")
             continue
 
-        result = subprocess.run(
+        proc = subprocess.run(
             [sys.executable, str(path)],
-            cwd=str(ROOT),
-            env={**dict(__import__("os").environ), "PYTHONPATH": str(ROOT)},
-            text=True,
+            cwd=str(root),
+            env=env,
             capture_output=True,
+            text=True,
         )
-
-        if result.returncode == 0:
+        if proc.returncode == 0:
             passed += 1
             print(f"PASS ...... {test}")
         else:
             failed += 1
-            print(f"FAIL ...... {test}")
-            print(result.stdout)
-            print(result.stderr)
+            print(f"FAIL ...... {test}\n")
+            print(proc.stdout)
+            print(proc.stderr)
 
     print("-" * 44)
     print(f"TOTAL PASS: {passed}")
@@ -59,8 +70,9 @@ def main() -> int:
     if failed:
         return 1
 
-    print("ORKIO_RELEASE_0_5_0_REGRESSION_PASS")
+    print("ORKIO_RELEASE_0_6_0_REGRESSION_PASS")
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
