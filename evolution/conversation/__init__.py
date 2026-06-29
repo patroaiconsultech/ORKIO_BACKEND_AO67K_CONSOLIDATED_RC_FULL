@@ -9,3 +9,7 @@ __all__ = [
     "make_idempotency_key",
     "normalize_conversation_text",
 ]
+
+# Backward-compatible facade for OEP-004 smoke
+def distill_conversation(conversation: str):
+    return ConversationDistiller().distill(conversation)
