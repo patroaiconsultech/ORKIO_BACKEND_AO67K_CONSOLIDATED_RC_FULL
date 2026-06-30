@@ -1,7 +1,5 @@
 import subprocess
-import sys
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -14,7 +12,7 @@ total_fail = 0
 
 for test in tests:
     result = subprocess.run(
-        [sys.executable, "-m", "pytest", test],
+        ["pytest", test],
         cwd=ROOT,
         text=True,
         capture_output=True,
