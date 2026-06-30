@@ -1,0 +1,38 @@
+{
+  "release": "0.10.3",
+  "name": "ORKIO OS Landing & Executive Positioning Foundation",
+  "hero": {
+    "headline": "Your business does not need more answers. It needs better decisions.",
+    "subheadline": "Orkio is a Cognitive Operating System that helps people and organizations understand complex problems, structure decisions, preserve context, and transform strategy into execution.",
+    "primary_cta": "Start a Mission",
+    "secondary_cta": "Explore Orkio OS"
+  },
+  "positioning": {
+    "category": "Cognitive Operating System",
+    "anti_positioning": "not another AI chatbot",
+    "promise": "understand complex problems, make better decisions, and transform strategy into execution"
+  },
+  "cores": [
+    "Platform Core",
+    "Cognitive Core",
+    "Experience Core",
+    "Governance Core"
+  ],
+  "mission_runtime": {
+    "concept": "missions coordinate platform execution, cognitive reasoning, user experience, and governance",
+    "example": {
+      "mission": "Build the Viabil platform",
+      "status": "Architecture",
+      "progress": "42%",
+      "next_step": "Financial engine"
+    }
+  },
+  "constitution_principles": [
+    "Context before response.",
+    "Evidence before hypothesis.",
+    "Mission before task.",
+    "Continuity before speed.",
+    "Governance before automation.",
+    "Human decision before automated authority."
+  ]
+}
