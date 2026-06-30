@@ -1552,6 +1552,14 @@ def append_orkio_ceo_scope_overlay(
     is_orkio = any(name in {"orkio", "@orkio", "orkio (ceo)"} for name in names)
     if not is_orkio:
         return base
-    if "ORKIO_PUBLIC_CEO_MODE" in base:
-        return base
-    return (base + "\n\n" + ORKIO_CEO_SCOPE_OVERLAY).strip() if base else ORKIO_CEO_SCOPE_OVERLAY
+    if "ORKIO_PUBLIC_CEO_MODE" not in base:
+        base = (base + "\n\n" + ORKIO_CEO_SCOPE_OVERLAY).strip() if base else ORKIO_CEO_SCOPE_OVERLAY
+
+    try:
+        from app.agents.orkio.advisor import append_orkio_advisor_overlay
+    except Exception:
+        try:
+            from agents.orkio.advisor import append_orkio_advisor_overlay
+        except Exception:
+            return base
+    return append_orkio_advisor_overlay(base)
