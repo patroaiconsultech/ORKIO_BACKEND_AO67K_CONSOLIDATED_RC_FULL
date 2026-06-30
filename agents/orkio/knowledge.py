@@ -7,7 +7,9 @@ ORKIO_KNOWLEDGE_VERSION = "AO68H_PATROAI_RESPONSE_WHATSAPP_CTA_V1"
 
 
 def get_knowledge_cards() -> list[KnowledgeCard]:
-    return [
+    from .knowledge_advisory import get_advisory_knowledge_cards
+
+    return get_advisory_knowledge_cards() + [
         KnowledgeCard(
             card_id="orkio.public.patroai_identity",
             agent_id="orkio",
