@@ -15023,7 +15023,8 @@ def _ao80_should_block_welcome_fastpath(
     return bool(prior_count > 0 or has_docs or continuity_intent)
 
 
-AO82_BUSINESS_RUNTIME_GATE_VERSION = "AO82_BUSINESS_RUNTIME_HARD_GATE_V1"
+AO84_RUNTIME_DEPLOY_PROOF_VERSION = "AO84_ORKIO_RUNTIME_DEPLOY_PROOF_V1"
+AO82_BUSINESS_RUNTIME_GATE_VERSION = "AO84_ORKIO_BUSINESS_RUNTIME_HARD_GATE_V1"
 
 
 def _ao82_business_runtime_gate(message: Any) -> Dict[str, Any]:
@@ -15039,7 +15040,8 @@ def _ao82_business_runtime_gate(message: Any) -> Dict[str, Any]:
     direct_answer_markers = (
         "responda apenas", "responda somente", "responda exatamente",
         "responder exatamente", "diga exatamente", "retorne somente",
-        "answer only", "reply only",
+        "responda em uma frase", "em uma frase objetiva",
+        "answer only", "reply only", "answer exactly",
     )
     if any(marker in text for marker in direct_answer_markers):
         return {
@@ -15051,7 +15053,7 @@ def _ao82_business_runtime_gate(message: Any) -> Dict[str, Any]:
     action_markers = (
         "analise", "avalie", "avaliar", "compare", "comparar", "recomende",
         "recomendar", "informe", "explique", "oriente", "resuma", "recapitule",
-        "liste", "defina", "escreva", "conduza", "diagnostico", "primeiro passo",
+        "liste", "defina", "escreva", "conduza", "monte", "roadmap", "diagnostico", "primeiro passo",
         "proximo passo", "como melhorar", "como aumentar", "como reduzir",
         "como preparar", "crie uma estrategia", "crie um plano", "estruture",
         "transforme", "calcule", "mostre os calculos", "identifique os riscos",
@@ -41175,6 +41177,15 @@ async def chat_stream(
             logger.warning("AO29_GEN_INNER_ENTER trace_id=%s thread_id=%s", trace_id, tid_seed)
         except Exception:
             pass
+        try:
+            logger.warning(
+                "AO84_RUNTIME_ACTIVE trace_id=%s thread_id=%s version=%s",
+                trace_id,
+                tid_seed,
+                AO84_RUNTIME_DEPLOY_PROOF_VERSION,
+            )
+        except Exception:
+            pass
         base = {
             "thread_id": tid_seed,
             "trace_id": trace_id,
@@ -46034,7 +46045,7 @@ async def chat_stream(
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
             "X-Trace-Id": trace_id,
-            "X-Orkio-Runtime-Revision": "ao82-business-gate-v1",
+            "X-Orkio-Runtime-Revision": "ao84-world-class-hard-gate-v1",
         },
     )
 
