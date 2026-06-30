@@ -11,6 +11,7 @@ import secrets
 import base64
 import asyncio
 import jwt
+import unicodedata
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
@@ -15020,6 +15021,65 @@ def _ao80_should_block_welcome_fastpath(
     # A first-contact welcome is only safe for an empty thread. In a restored or
     # document-bearing thread, prefer contextual runtime or a graceful fallback.
     return bool(prior_count > 0 or has_docs or continuity_intent)
+
+
+AO82_BUSINESS_RUNTIME_GATE_VERSION = "AO82_BUSINESS_RUNTIME_HARD_GATE_V1"
+
+
+def _ao82_business_runtime_gate(message: Any) -> Dict[str, Any]:
+    """Keep concrete business work out of institutional/welcome fast-paths."""
+    raw = str(message or "").strip()
+    try:
+        normalized = unicodedata.normalize("NFD", raw)
+        normalized = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+    except Exception:
+        normalized = raw
+    text = re.sub(r"\s+", " ", normalized.lower()).strip()
+
+    direct_answer_markers = (
+        "responda apenas", "responda somente", "responda exatamente",
+        "responder exatamente", "diga exatamente", "retorne somente",
+        "answer only", "reply only",
+    )
+    if any(marker in text for marker in direct_answer_markers):
+        return {
+            "version": AO82_BUSINESS_RUNTIME_GATE_VERSION,
+            "force_context_runtime": True,
+            "reason": "direct_answer_request",
+        }
+
+    action_markers = (
+        "analise", "avalie", "avaliar", "compare", "comparar", "recomende",
+        "recomendar", "informe", "explique", "oriente", "resuma", "recapitule",
+        "liste", "defina", "escreva", "conduza", "diagnostico", "primeiro passo",
+        "proximo passo", "como melhorar", "como aumentar", "como reduzir",
+        "como preparar", "crie uma estrategia", "crie um plano", "estruture",
+        "transforme", "calcule", "mostre os calculos", "identifique os riscos",
+        "proponha", "elabore", "prepare minha empresa", "analyze", "evaluate",
+        "recommend", "diagnose", "first step", "next step", "how to improve",
+        "how to increase", "how to reduce",
+    )
+    domain_markers = (
+        "empresa", "negocio", "plano", "objetivo", "indicador", "risco",
+        "crescimento", "expansao", "projeto", "servicos", "b2b", "margem",
+        "faturamento", "receita", "custo", "lucro", "fluxo de caixa", "vendas",
+        "comercial", "cliente", "mercado", "preco", "estrategia", "financeir",
+        "investimento", "captacao", "marketing", "funil", "operacao", "processo",
+        "lideranca", "equipe", "esg", "roi", "cac", "ltv", "ebitda", "company",
+        "business", "plan", "goal", "indicator", "risk", "growth", "expansion",
+        "project", "services", "margin", "revenue", "cost", "profit", "cash flow",
+        "sales", "customer", "market", "pricing", "strategy", "financial",
+        "investment", "marketing", "operations", "leadership",
+    )
+    should_force = bool(
+        any(marker in text for marker in action_markers)
+        and any(marker in text for marker in domain_markers)
+    )
+    return {
+        "version": AO82_BUSINESS_RUNTIME_GATE_VERSION,
+        "force_context_runtime": should_force,
+        "reason": "concrete_business_task" if should_force else "not_applicable",
+    }
 
 
 def _append_ao75_task_first_overlay(
@@ -41508,6 +41568,28 @@ async def chat_stream(
             "product_design",
         }
 
+        _ao82_business_gate = _ao82_business_runtime_gate(message)
+        _ao75_force_context_runtime = bool(
+            _ao75_force_context_runtime
+            or bool(_ao75_intent_contract.get("concrete_task"))
+            or bool(_ao82_business_gate.get("force_context_runtime"))
+        )
+        if _ao75_force_context_runtime:
+            _ao75_public_fastpath_allowed = False
+        try:
+            logger.info(
+                "AO82_BUSINESS_RUNTIME_GATE trace_id=%s version=%s force_context_runtime=%s reason=%s intent=%s concrete_task=%s public_fastpath_allowed=%s",
+                trace_id,
+                _ao82_business_gate.get("version"),
+                bool(_ao75_force_context_runtime),
+                _ao82_business_gate.get("reason"),
+                _ao75_intent_name,
+                bool(_ao75_intent_contract.get("concrete_task")),
+                bool(_ao75_public_fastpath_allowed),
+            )
+        except Exception:
+            pass
+
         # AO80B — rehydrate thread state before any public welcome/identity fast-path.
         # The first request after browser refresh can arrive with the correct
         # thread_id while the public fast-path still behaves as if the thread was
@@ -45952,6 +46034,7 @@ async def chat_stream(
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
             "X-Trace-Id": trace_id,
+            "X-Orkio-Runtime-Revision": "ao82-business-gate-v1",
         },
     )
 
