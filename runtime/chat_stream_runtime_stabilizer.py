@@ -266,9 +266,18 @@ def p0rs01_build_system_prompt(
         "- Mantenha a resposta entre 6 e 14 parágrafos curtos."
     )
 
-    if base:
-        return f"{base.strip()}\n\n{role}{guard}"
-    return f"{role}{guard}"
+    prompt = f"{base.strip()}\n\n{role}{guard}" if base else f"{role}{guard}"
+    if safe_agent_name.strip().lower().startswith("orkio"):
+        try:
+            from app.agents.orkio.advisor import append_orkio_advisor_overlay
+        except Exception:
+            try:
+                from agents.orkio.advisor import append_orkio_advisor_overlay
+            except Exception:
+                append_orkio_advisor_overlay = None
+        if append_orkio_advisor_overlay is not None:
+            prompt = append_orkio_advisor_overlay(prompt)
+    return prompt
 
 
 def p0rs01_build_provider_failure_text(*, agent_name: str = "Orkio", code: str = "", detail: str = "") -> str:
