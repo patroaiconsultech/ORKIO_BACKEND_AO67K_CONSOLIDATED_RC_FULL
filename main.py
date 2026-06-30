@@ -41290,6 +41290,7 @@ async def chat_stream(
         # AO-29C_BEFORE_FIRST_STATUS_YIELD_OBSERVABILITY
         try:
             logger.warning("AO29_BEFORE_FIRST_STATUS_YIELD trace_id=%s thread_id=%s", trace_id, tid_seed)
+            logger.info("SSE_STATUS_YIELD_ATTEMPT trace_id=%s thread_id=%s", trace_id, tid_seed)
         except Exception:
             pass
 
@@ -45926,6 +45927,7 @@ async def chat_stream(
                 yield ev
             try:
                 logger.warning("AO29_STREAM_EXIT trace_id=%s thread_id=%s reason=normal", trace_id, tid_seed)
+                logger.info("SSE_STREAM_EXIT_REACHED trace_id=%s thread_id=%s reason=normal", trace_id, tid_seed)
             except Exception:
                 pass
         except asyncio.CancelledError:
