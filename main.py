@@ -41294,12 +41294,48 @@ async def chat_stream(
         except Exception:
             pass
 
-        yield _metatron_sse("status", {
+        first_event = _metatron_sse("status", {
             **base,
             "status": "Stream iniciado.",
             "phase": "stream_open",
             "opened_at": started_at,
         })
+
+        try:
+            logger.warning(
+                "SSE_FIRST_EVENT_BUILD_OK trace_id=%s thread_id=%s bytes=%s",
+                trace_id,
+                tid_seed,
+                len(first_event.encode("utf-8")),
+            )
+            logger.warning(
+                "SSE_FIRST_EVENT_YIELD_ATTEMPT trace_id=%s thread_id=%s",
+                trace_id,
+                tid_seed,
+            )
+        except Exception:
+            pass
+
+        try:
+            yield first_event
+            try:
+                logger.warning(
+                    "SSE_FIRST_EVENT_YIELD_RETURNED trace_id=%s thread_id=%s",
+                    trace_id,
+                    tid_seed,
+                )
+            except Exception:
+                pass
+        except asyncio.CancelledError:
+            try:
+                logger.warning(
+                    "CLIENT_CANCELLED_DURING_FIRST_EVENT_HANDOFF trace_id=%s thread_id=%s",
+                    trace_id,
+                    tid_seed,
+                )
+            except Exception:
+                pass
+            raise
         yield _metatron_sse("execution", {
             **base,
             "step": "stream_open",
