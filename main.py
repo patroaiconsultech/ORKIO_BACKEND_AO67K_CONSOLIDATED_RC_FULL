@@ -2,7 +2,10 @@
 # Consolidated package for governed capability answers + analytical readonly + registry alignment + realtime self-heal hardening.
 
 from __future__ import annotations
-from platform_services.eos_health import get_eos_health_snapshot
+try:
+    from .platform_services.eos_health import get_eos_health_snapshot
+except ImportError:
+    from platform_services.eos_health import get_eos_health_snapshot
 
 import os
 import logging
