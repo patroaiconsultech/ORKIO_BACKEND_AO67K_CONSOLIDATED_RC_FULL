@@ -2,6 +2,7 @@
 # Consolidated package for governed capability answers + analytical readonly + registry alignment + realtime self-heal hardening.
 
 from __future__ import annotations
+from platform_services.eos_health import get_eos_health_snapshot
 
 import os
 import logging
@@ -27802,6 +27803,11 @@ def admin_valuation_update(inp: ValuationConfigIn, _admin=Depends(require_admin_
     db.commit()
     db.refresh(row)
     return {"ok": True, "config": _valuation_row_to_dict(row)}
+
+
+@app.get("/api/admin/eos/health")
+def admin_eos_health():
+    return get_eos_health_snapshot()
 
 @app.get("/api/admin/overview")
 def admin_overview(_admin=Depends(require_admin_access), db: Session = Depends(get_db)):
