@@ -1,0 +1,19 @@
+{
+  "package": "ORKIO_OS_2_PHASE_2A_MICROKERNEL_KNOWLEDGE",
+  "version": "0.1.0",
+  "created_at": "2026-07-01T19:13:25.240013Z",
+  "mode": "shadow_ready",
+  "production_routes_modified": false,
+  "contains_secrets": false,
+  "go": "branch_integration",
+  "no_go": "direct_production_enforcement",
+  "modules": [
+    "app/cognitive",
+    "app/cognitive/plugins",
+    "app/knowledge",
+    "tests/cognitive",
+    "tests/knowledge",
+    "docs",
+    "patches"
+  ]
+}
