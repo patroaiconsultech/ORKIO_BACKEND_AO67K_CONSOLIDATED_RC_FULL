@@ -1,0 +1,30 @@
+id: orkio_roadmap_registry
+version: rc1
+status: draft_governed
+updated_at: 2026-07-02
+
+roadmap:
+  - id: knowledge_canon
+    name: Canon institucional governado
+    status: roadmap
+    description: Ingestão curada de documentos e decisões oficiais.
+
+  - id: capability_resolver_runtime
+    name: Capability Resolver em runtime
+    status: roadmap
+    description: Responder perguntas sobre a plataforma usando registry oficial.
+
+  - id: decision_ledger
+    name: Decision Ledger
+    status: roadmap
+    description: Registro versionado de decisões, impacto e rollback.
+
+  - id: executive_memory
+    name: Memória executiva institucional
+    status: roadmap
+    description: Memória separada por plataforma, negócio, governança e fundador.
+
+  - id: autonomous_pr_flow
+    name: Fluxo assistido de branch/PR
+    status: proposal
+    description: Criar propostas técnicas com diff preview, sem merge automático.

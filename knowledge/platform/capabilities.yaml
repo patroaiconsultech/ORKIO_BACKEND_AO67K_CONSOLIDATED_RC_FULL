@@ -1,0 +1,50 @@
+id: orkio_capability_registry
+version: rc1
+status: draft_governed
+updated_at: 2026-07-02
+
+capabilities:
+  - id: chat
+    name: Chat com Orkio
+    status: production
+    description: Conversa com o agente Orkio pela interface web.
+
+  - id: sse_stream
+    name: Streaming SSE
+    status: production
+    description: Respostas por stream no endpoint de chat.
+
+  - id: agents
+    name: Agentes
+    status: production
+    description: Estrutura de agentes cadastrados e selecionáveis.
+
+  - id: threads_messages
+    name: Threads e mensagens
+    status: production
+    description: Criação, listagem e histórico de conversas.
+
+  - id: files
+    name: Arquivos e documentos
+    status: beta
+    description: Upload e uso de documentos conforme ambiente e configuração.
+
+  - id: governance
+    name: Governança de evolução
+    status: beta
+    description: Propostas, validação, riscos, rollback e aprovação humana.
+
+  - id: eos_health
+    name: EOS Health
+    status: beta
+    description: Painel institucional de saúde do sistema, em evolução.
+
+  - id: autonomous_execution
+    name: Execução autônoma
+    status: proposal
+    description: Conceito controlado por aprovação humana; não deve executar sozinho.
+
+  - id: institutional_knowledge_canon
+    name: Canon institucional
+    status: roadmap
+    description: Base governada de conhecimento oficial da PatroAI e ORKIO.

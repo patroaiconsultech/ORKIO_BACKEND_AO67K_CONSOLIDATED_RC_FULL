@@ -1,22 +1,26 @@
-from __future__ import annotations
+"""
+ORKIO Executive Cognitive System RC-1.
 
-from .profile import get_profile
-from .knowledge import get_knowledge_cards
-from .hooks import get_hooks, advise
-from .advisor import (
-    ORKIO_ADVISOR_MARKER,
-    ORKIO_ADVISOR_VERSION,
-    append_orkio_advisor_overlay,
-    build_orkio_advisor_overlay,
-)
+Módulos puros, sem efeitos colaterais, para elevar o Orkio a um agente executivo
+com identidade, raciocínio, verdade operacional e governança.
+
+RC-1 não altera banco, deploy, SSE nem frontend.
+"""
+from .identity import ORKIO_IDENTITY
+from .reasoning import build_reasoning_frame
+from .truth_engine import classify_truth_level, TruthLevel
+from .capability_resolver import CapabilityResolver
+from .decision_engine import classify_intent
+from .communication import format_executive_response
+from .orchestration import build_orchestration_plan
 
 __all__ = [
-    "get_profile",
-    "get_knowledge_cards",
-    "get_hooks",
-    "advise",
-    "ORKIO_ADVISOR_MARKER",
-    "ORKIO_ADVISOR_VERSION",
-    "build_orkio_advisor_overlay",
-    "append_orkio_advisor_overlay",
+    "ORKIO_IDENTITY",
+    "build_reasoning_frame",
+    "classify_truth_level",
+    "TruthLevel",
+    "CapabilityResolver",
+    "classify_intent",
+    "format_executive_response",
+    "build_orchestration_plan",
 ]
