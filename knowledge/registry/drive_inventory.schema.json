@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ORKIO Drive Inventory Report",
+  "type": "object",
+  "required": [
+    "policy",
+    "summary",
+    "items",
+    "classifications"
+  ],
+  "properties": {
+    "policy": {
+      "type": "object",
+      "required": [
+        "mode",
+        "runtime_use_allowed",
+        "requires_human_approval"
+      ]
+    },
+    "summary": {
+      "type": "object"
+    },
+    "items": {
+      "type": "array"
+    },
+    "classifications": {
+      "type": "array"
+    }
+  }
+}
