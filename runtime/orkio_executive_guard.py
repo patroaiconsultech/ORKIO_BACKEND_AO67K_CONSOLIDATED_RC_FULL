@@ -124,7 +124,7 @@ def executive_fastpath_allowed(decision: Any) -> bool:
 
 # EOS06-AO85-HF1 — Router Precedence Guard
 # Deterministic, readonly, no DB/network/provider/filesystem side effects.
-EOS06_AO85_HF1_VERSION = "EOS06_AO85_HF1_ROUTER_PRECEDENCE_GUARD_V1"
+EOS06_AO85_HF2_VERSION = "EOS06_AO85_HF2_EXECUTIVE_TURN_OWNERSHIP_V1"
 
 
 def _parse_pt_number(raw: str) -> float:
@@ -206,7 +206,8 @@ def _looks_like_financial_math_request(text: str) -> bool:
         return False
     math_markers = (
         "calcule", "calcular", "calculo", "cálculo", "formula", "fórmula",
-        "margem", "lucro", "gap", "custos variaveis", "custos variáveis",
+        "mostre a formula", "mostre a fórmula", "matematicamente",
+        "margem", "margem operacional", "lucro", "lucro necessario", "lucro necessário", "gap", "custos variaveis", "custos variáveis",
         "custos fixos", "faturamento", "receita", "ebitda",
     )
     return bool(
@@ -226,7 +227,8 @@ def _looks_like_eos06_governance_request(text: str) -> bool:
     ))
     structural_marker = any(x in low for x in (
         "mudanca estrutural", "mudança estrutural", "backend", "confiabilidade do chat",
-        "estado real da plataforma", "capacidade declarada", "validacao pendente",
+        "estado real da plataforma", "o que voce sabe", "o que você sabe",
+        "capacidade declarada", "precisa ser verificado", "validacao pendente",
         "validação pendente", "impacto", "risco", "rollback", "dependencias",
         "dependências", "nao execute", "não execute",
     ))
@@ -379,7 +381,7 @@ def eos06_build_router_precedence_payload(message: Any) -> Dict[str, Any]:
         return {
             "handled": True,
             "category": "quantitative_business_math",
-            "route_family": "eos06_router_precedence_guard",
+            "route_family": "eos06_executive_turn_ownership_guard",
             "answer": answer,
             "message": answer,
             "final_text": answer,
@@ -387,9 +389,11 @@ def eos06_build_router_precedence_payload(message: Any) -> Dict[str, Any]:
             "agent_name": "Orkio",
             "runtime_hints": {
                 "routing": {
-                    "routing_source": "eos06_ao85_hf1_router_precedence_guard",
+                    "routing_source": "eos06_ao85_hf2_executive_turn_ownership",
                     "route_applied": True,
                     "route_family": "executive_quantitative_answer",
+                    "turn_owner": "EOS06_AO85",
+                    "block_public_deterministic_fastpaths": True,
                     "proposal_only": False,
                     "observe_only": True,
                     "write_executed": False,
@@ -403,7 +407,7 @@ def eos06_build_router_precedence_payload(message: Any) -> Dict[str, Any]:
         return {
             "handled": True,
             "category": "eos06_governance_proposal_only",
-            "route_family": "eos06_router_precedence_guard",
+            "route_family": "eos06_executive_turn_ownership_guard",
             "answer": answer,
             "message": answer,
             "final_text": answer,
@@ -411,9 +415,11 @@ def eos06_build_router_precedence_payload(message: Any) -> Dict[str, Any]:
             "agent_name": "Orkio",
             "runtime_hints": {
                 "routing": {
-                    "routing_source": "eos06_ao85_hf1_router_precedence_guard",
+                    "routing_source": "eos06_ao85_hf2_executive_turn_ownership",
                     "route_applied": True,
                     "route_family": "executive_governance_proposal_only",
+                    "turn_owner": "EOS06_AO85",
+                    "block_public_deterministic_fastpaths": True,
                     "proposal_only": True,
                     "observe_only": True,
                     "write_executed": False,
@@ -433,7 +439,7 @@ def eos06_build_router_precedence_payload(message: Any) -> Dict[str, Any]:
     return {
         "handled": False,
         "category": "not_eos06_precedence_case",
-        "route_family": "eos06_router_precedence_guard",
+        "route_family": "eos06_executive_turn_ownership_guard",
     }
 
 
