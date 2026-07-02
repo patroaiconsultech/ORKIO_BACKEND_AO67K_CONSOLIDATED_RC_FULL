@@ -2,6 +2,10 @@
 # Consolidated package for governed capability answers + analytical readonly + registry alignment + realtime self-heal hardening.
 
 from __future__ import annotations
+try:
+    from .platform_services.eos_health import get_eos_health_snapshot
+except ImportError:
+    from platform_services.eos_health import get_eos_health_snapshot
 
 import os
 import logging
@@ -1890,17 +1894,43 @@ def _try_refresh_openai_pricing(db: Session, org: str) -> None:
 
 
 def cors_list() -> List[str]:
-    raw = _clean_env(os.getenv("CORS_ORIGINS", ""), default="").strip()
-    if not raw:
-        return []
-    # split by commas, strip whitespace and any lingering quotes
-    out: List[str] = []
-    for x in raw.split(","):
-        v = _clean_env(x, default="").strip()
-        if v:
-            out.append(v)
-    return out
+    """Return the explicit CORS allowlist for browser clients.
 
+    AO-01 CORS HF — production login recovery:
+    - The frontend is served from patroai.com / www.patroai.com.
+    - If Railway env CORS_ORIGINS is empty, keep a safe production allowlist
+      instead of returning [] and breaking the browser preflight.
+    - If CORS_ORIGINS is set, normalize it and still merge the public PatroAI
+      origins unless DISABLE_PUBLIC_CORS_DEFAULTS=true.
+    """
+    default_origins = [
+        "https://patroai.com",
+        "https://www.patroai.com",
+    ]
+
+    raw = _clean_env(os.getenv("CORS_ORIGINS", ""), default="").strip()
+    out: List[str] = []
+
+    if raw:
+        # split by commas, strip whitespace, quotes and trailing slashes
+        for x in raw.split(","):
+            v = _clean_env(x, default="").strip().rstrip("/")
+            if v:
+                out.append(v)
+
+    if not raw or os.getenv("DISABLE_PUBLIC_CORS_DEFAULTS", "false").strip().lower() not in ("1", "true", "yes", "on"):
+        out.extend(default_origins)
+
+    # preserve order / remove duplicates
+    seen = set()
+    uniq: List[str] = []
+    for origin in out:
+        key = origin.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(origin)
+    return uniq
 
 
 def cors_origin_regex() -> Optional[str]:
@@ -27802,6 +27832,11 @@ def admin_valuation_update(inp: ValuationConfigIn, _admin=Depends(require_admin_
     db.commit()
     db.refresh(row)
     return {"ok": True, "config": _valuation_row_to_dict(row)}
+
+
+@app.get("/api/admin/eos/health")
+def admin_eos_health():
+    return get_eos_health_snapshot()
 
 @app.get("/api/admin/overview")
 def admin_overview(_admin=Depends(require_admin_access), db: Session = Depends(get_db)):
