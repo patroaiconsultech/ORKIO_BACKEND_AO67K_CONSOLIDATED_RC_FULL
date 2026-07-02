@@ -236,6 +236,7 @@ def p0rs01_build_system_prompt(
     agent_name: str = "Orkio",
     mode: str = "plain_useful_lite",
     base_system_prompt: Optional[str] = None,
+    executive_context_overlay: Optional[str] = None,
 ) -> str:
     safe_agent_name = _norm(agent_name) or "Orkio"
     base = _norm(base_system_prompt)
@@ -277,6 +278,9 @@ def p0rs01_build_system_prompt(
                 append_orkio_advisor_overlay = None
         if append_orkio_advisor_overlay is not None:
             prompt = append_orkio_advisor_overlay(prompt)
+    executive_overlay = _norm(executive_context_overlay)
+    if executive_overlay and executive_overlay not in prompt:
+        prompt = f"{prompt}\n\n{executive_overlay}".strip()
     return prompt
 
 

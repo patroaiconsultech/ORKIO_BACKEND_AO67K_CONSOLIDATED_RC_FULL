@@ -97,6 +97,12 @@ from .runtime.orkio_context_intent import (
     public_fastpath_allowed as orkio_public_fastpath_allowed,
     requires_document_context as orkio_requires_document_context,
 )
+from .runtime.orkio_executive_guard import classify_orkio_executive_request
+from .runtime.executive_intelligence import (
+    append_executive_intelligence,
+    build_executive_context_envelope,
+    build_executive_intelligence_overlay,
+)
 from .runtime.realtime_unlock_journey import (
     build_realtime_unlock_journey_decision,
     decorate_orkio_policy_decision_with_realtime_unlock,
@@ -127,8 +133,9 @@ except Exception:  # pragma: no cover - fail-open partial deploy protection
         except Exception:
             return 45
 
-    def p0rs01_build_system_prompt(*, agent_name="Orkio", mode="plain_useful_lite", base_system_prompt=None):
-        return (base_system_prompt or f"Você é {agent_name}. Responda com clareza e segurança operacional.")
+    def p0rs01_build_system_prompt(*, agent_name="Orkio", mode="plain_useful_lite", base_system_prompt=None, executive_context_overlay=None):
+        base = base_system_prompt or f"Você é {agent_name}. Responda com clareza e segurança operacional."
+        return f"{base}\n\n{executive_context_overlay}".strip() if executive_context_overlay else base
 
     def p0rs01_build_provider_failure_text(*, agent_name="Orkio", code="", detail=""):
         return f"{agent_name} recebeu sua solicitação, mas o provedor de IA não concluiu esta chamada. Código: {code or 'LLM_ERROR'}."
@@ -15085,11 +15092,16 @@ def _ao80_should_block_welcome_fastpath(
 
 
 AO84_RUNTIME_DEPLOY_PROOF_VERSION = "AO84_ORKIO_RUNTIME_DEPLOY_PROOF_V1"
-AO82_BUSINESS_RUNTIME_GATE_VERSION = "AO84_ORKIO_BUSINESS_RUNTIME_HARD_GATE_V1"
+AO82_BUSINESS_RUNTIME_GATE_VERSION = "AO85_ORKIO_EXECUTIVE_RUNTIME_AUTHORITY_V1"
 
 
 def _ao82_business_runtime_gate(message: Any) -> Dict[str, Any]:
     """Keep concrete business work out of institutional/welcome fast-paths."""
+    try:
+        return classify_orkio_executive_request(message)
+    except Exception:
+        # Fail open to the prior local classifier during a partial deploy.
+        pass
     raw = str(message or "").strip()
     try:
         normalized = unicodedata.normalize("NFD", raw)
@@ -26248,6 +26260,15 @@ def _build_runtime_enrichment(
     system_overlay = _append_orkio_lord_grace_overlay(
         build_system_overlay(intent_package, first_win_plan, continuity_hints, chain)
     )
+    executive_envelope = build_executive_context_envelope(
+        intent_package=intent_package,
+        eos_health=get_eos_health_snapshot(),
+        capability_registry=registry,
+    )
+    system_overlay = append_executive_intelligence(
+        system_overlay,
+        executive_envelope,
+    )
     runtime_hints = build_runtime_hints(
         intent_package,
         continuity_hints,
@@ -26279,6 +26300,7 @@ def _build_runtime_enrichment(
         "system_overlay": system_overlay,
         "runtime_hints": runtime_hints,
         "thread_dispatch_contract": thread_dispatch_contract,
+        "executive_intelligence": executive_envelope,
     }
 
 def _persist_trial_state(
@@ -40933,10 +40955,18 @@ async def chat_stream(
             agent_name2 = str(getattr(agent2, "name", None) or display_hint)
             base_system2 = str(getattr(agent2, "system_prompt", None) or "").strip() or None
             mode2 = str((rs01_decision or {}).get("mode") or "plain_useful_lite").strip() or "plain_useful_lite"
+            executive_envelope2 = build_executive_context_envelope(
+                intent_package=classify_orkio_context_intent(inp.message),
+                eos_health=get_eos_health_snapshot(),
+                capability_registry=get_capability_registry(),
+            )
             system_prompt2 = p0rs01_build_system_prompt(
                 agent_name=agent_name2,
                 mode=mode2,
                 base_system_prompt=base_system2,
+                executive_context_overlay=build_executive_intelligence_overlay(
+                    executive_envelope2
+                ),
             )
 
             temperature2 = None
@@ -44796,6 +44826,22 @@ async def chat_stream(
                 "admin_internal_agent_orchestration_probe": 35,
                 "admin_internal_agent_orchestration": 34,
             }.get(str(_hf4k_kind or ""), 999)
+
+            # AO85: the executive guard is authoritative over HF6R1. Earlier
+            # classifiers may still identify a deterministic route, but a
+            # substantive business request must reach the contextual runtime.
+            if _ao75_force_context_runtime and _hf4k_kind and _hf4k_final_text:
+                try:
+                    logger.warning(
+                        "AO85_EXECUTIVE_FASTPATH_BLOCKED trace_id=%s route_kind=%s reason=%s",
+                        trace_id,
+                        _hf4k_kind,
+                        _ao82_business_gate.get("reason"),
+                    )
+                except Exception:
+                    pass
+                _hf4k_kind = ""
+                _hf4k_final_text = ""
 
             if _hf4k_kind and _hf4k_final_text:
                 _hf4k_persisted = await asyncio.to_thread(
