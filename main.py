@@ -36587,12 +36587,51 @@ async def chat_stream(
                 except Exception:
                     pass
 
+            # EOS06-AO85-HF4 — Single Assistant Commit Guard
+            # Prevent the same assistant answer from being committed twice for the same
+            # thread during short stream/reconcile races. This is intentionally generic,
+            # local to persistence, and fail-open: if the lookup fails, the previous
+            # behavior continues.
+            _assistant_content = str(text or "").strip()
+            try:
+                _recent_floor = max(int(now_ts()) - 180, 0)
+                _existing_assistant = db2.execute(
+                    select(Message).where(
+                        Message.org_slug == org,
+                        Message.thread_id == tid,
+                        Message.role == "assistant",
+                        Message.content == _assistant_content,
+                        Message.created_at >= _recent_floor,
+                    ).order_by(Message.created_at.desc()).limit(1)
+                ).scalars().first()
+                if _existing_assistant:
+                    try:
+                        logger.warning(
+                            "EOS06_AO85_HF4_SINGLE_COMMIT_GUARD duplicate_suppressed trace_id=%s thread_id=%s assistant_message_id=%s",
+                            trace_id,
+                            tid,
+                            getattr(_existing_assistant, "id", None),
+                        )
+                    except Exception:
+                        pass
+                    return {
+                        "thread_id": tid,
+                        "assistant_message_id": getattr(_existing_assistant, "id", None),
+                        "assistant_persisted": True,
+                        "assistant_duplicate_suppressed": True,
+                    }
+            except Exception:
+                try:
+                    logger.exception("EOS06_AO85_HF4_SINGLE_COMMIT_GUARD_LOOKUP_FAILED trace_id=%s thread_id=%s", trace_id, tid)
+                except Exception:
+                    pass
+
             m_ass = Message(
                 id=new_id(),
                 org_slug=org,
                 thread_id=tid,
                 role="assistant",
-                content=str(text or "").strip(),
+                content=_assistant_content,
                 agent_id=agent_id,
                 agent_name=agent_name,
                 created_at=now_ts(),
@@ -36603,6 +36642,7 @@ async def chat_stream(
                 "thread_id": tid,
                 "assistant_message_id": m_ass.id,
                 "assistant_persisted": True,
+                "assistant_duplicate_suppressed": False,
             }
         except Exception:
             try:
@@ -41290,28 +41330,6 @@ async def chat_stream(
             "final_speaker": "Aria" if glip_aria_mode else "Orkio",
         }
 
-        try:
-            _eos06_audit_msg = str(message or "")
-            _eos06_audit_guard = classify_orkio_executive_request(_eos06_audit_msg)
-            logger.warning(
-                "EOS06_TRACE_POINT name=stream_inner_entry trace_id=%s thread_id=%s message_len=%s guard_force=%s guard_reason=%s guard_confidence=%s matched=%s visible_agent=%s target_agent=%s dest_mode=%s",
-                trace_id,
-                tid_seed,
-                len(_eos06_audit_msg),
-                bool(_eos06_audit_guard.get("force_context_runtime")) if isinstance(_eos06_audit_guard, dict) else False,
-                (_eos06_audit_guard.get("reason") if isinstance(_eos06_audit_guard, dict) else "guard_not_dict"),
-                (_eos06_audit_guard.get("confidence") if isinstance(_eos06_audit_guard, dict) else None),
-                (_eos06_audit_guard.get("matched_markers") if isinstance(_eos06_audit_guard, dict) else []),
-                getattr(inp, "visible_agent", None),
-                getattr(inp, "target_agent_slug", None),
-                getattr(inp, "dest_mode", None),
-            )
-        except Exception:
-            try:
-                logger.exception("EOS06_TRACE_POINT_FAILED name=stream_inner_entry trace_id=%s", trace_id)
-            except Exception:
-                pass
-
         if glip_aria_mode:
             try:
                 logger.info(
@@ -41568,6 +41586,13 @@ async def chat_stream(
                 "agent_id": agent_id or "orkio",
                 "agent_name": agent_name,
                 "final_speaker": agent_name,
+                # EOS06-AO85-HF4 — propagate the persisted assistant identity in every
+                # SSE event, not only in done. This lets the frontend reconcile the
+                # streamed bubble with the persisted message instead of rendering a
+                # second, visually identical assistant response after /api/messages reload.
+                "assistant_message_id": assistant_message_id,
+                "message_id": assistant_message_id,
+                "assistant_persisted": assistant_persisted,
             }
 
             if not final_text:
@@ -41631,26 +41656,6 @@ async def chat_stream(
         except Exception:
             _eos06_ao85_hf2_payload = {}
 
-        try:
-            _eos06_payload_keys = sorted(list(_eos06_ao85_hf2_payload.keys()))[:24] if isinstance(_eos06_ao85_hf2_payload, dict) else []
-            logger.warning(
-                "EOS06_TRACE_POINT name=after_hf2_payload trace_id=%s thread_id=%s payload_type=%s handled=%s category=%s route_family=%s reason=%s answer_len=%s keys=%s",
-                trace_id,
-                tid_seed,
-                type(_eos06_ao85_hf2_payload).__name__,
-                bool(_eos06_ao85_hf2_payload.get("handled")) if isinstance(_eos06_ao85_hf2_payload, dict) else False,
-                (_eos06_ao85_hf2_payload.get("category") if isinstance(_eos06_ao85_hf2_payload, dict) else None),
-                (_eos06_ao85_hf2_payload.get("route_family") if isinstance(_eos06_ao85_hf2_payload, dict) else None),
-                (_eos06_ao85_hf2_payload.get("reason") if isinstance(_eos06_ao85_hf2_payload, dict) else None),
-                len(str((_eos06_ao85_hf2_payload.get("answer") or _eos06_ao85_hf2_payload.get("final_text") or "") if isinstance(_eos06_ao85_hf2_payload, dict) else "")),
-                _eos06_payload_keys,
-            )
-        except Exception:
-            try:
-                logger.exception("EOS06_TRACE_POINT_FAILED name=after_hf2_payload trace_id=%s", trace_id)
-            except Exception:
-                pass
-
         if isinstance(_eos06_ao85_hf2_payload, dict) and _eos06_ao85_hf2_payload.get("handled"):
             try:
                 _eos06_text = str(
@@ -41670,6 +41675,16 @@ async def chat_stream(
                         )
                         if isinstance(_eos06_persisted, dict):
                             _eos06_ao85_hf2_payload.update(_eos06_persisted)
+                            try:
+                                logger.warning(
+                                    "EOS06_AO85_HF4_SINGLE_COMMIT_GUARD trace_id=%s thread_id=%s assistant_message_id=%s duplicate_suppressed=%s",
+                                    trace_id,
+                                    _eos06_persisted.get("thread_id") or tid_seed,
+                                    _eos06_persisted.get("assistant_message_id"),
+                                    bool(_eos06_persisted.get("assistant_duplicate_suppressed")),
+                                )
+                            except Exception:
+                                pass
                         _eos06_ao85_hf2_payload["assistant_persisted"] = True
                     except Exception:
                         try:
@@ -41722,17 +41737,6 @@ async def chat_stream(
         except Exception:
             _literal_top_text = ""
             _literal_top_safe = False
-
-        try:
-            logger.warning(
-                "EOS06_TRACE_POINT name=before_literal_top_fastpath trace_id=%s thread_id=%s literal_safe=%s literal_len=%s",
-                trace_id,
-                tid_seed,
-                bool(_literal_top_safe),
-                len(str(_literal_top_text or "")),
-            )
-        except Exception:
-            pass
 
         if _literal_top_safe:
             try:
@@ -41846,19 +41850,6 @@ async def chat_stream(
                 _ao82_business_gate.get("reason"),
                 _ao75_intent_name,
                 bool(_ao75_intent_contract.get("concrete_task")),
-                bool(_ao75_public_fastpath_allowed),
-            )
-        except Exception:
-            pass
-
-        try:
-            logger.warning(
-                "EOS06_TRACE_POINT name=after_ao75_intent trace_id=%s thread_id=%s intent=%s concrete_task=%s force_context_runtime=%s public_fastpath_allowed=%s",
-                trace_id,
-                tid_seed,
-                _ao75_intent_contract.get("intent") if isinstance(_ao75_intent_contract, dict) else None,
-                bool(_ao75_intent_contract.get("concrete_task")) if isinstance(_ao75_intent_contract, dict) else False,
-                bool(_ao75_force_context_runtime),
                 bool(_ao75_public_fastpath_allowed),
             )
         except Exception:
@@ -42231,18 +42222,6 @@ async def chat_stream(
                 except Exception:
                     pass
 
-        try:
-            logger.warning(
-                "EOS06_TRACE_POINT name=before_public_policy trace_id=%s thread_id=%s public_fastpath_allowed=%s force_context_runtime=%s admin_bypass=%s",
-                trace_id,
-                tid_seed,
-                bool(_ao75_public_fastpath_allowed),
-                bool(_ao75_force_context_runtime),
-                bool(ao68b_admin_internal_agent_bypass),
-            )
-        except Exception:
-            pass
-
         # ORKIO_PUBLIC_POLICY_MODULE_FASTPATH
         # Public Orkio CEO/product behavior lives in app.runtime.public_orkio_policy.
         # Keep this hook small: decide -> persist -> emit.
@@ -42269,20 +42248,6 @@ async def chat_stream(
                 )
         except Exception:
             _public_orkio_decision = {"handled": False, "reason": "policy_exception"}
-
-        try:
-            logger.warning(
-                "EOS06_TRACE_POINT name=after_public_policy_decision trace_id=%s thread_id=%s decision_type=%s handled=%s reason=%s public_fastpath_allowed=%s force_context_runtime=%s",
-                trace_id,
-                tid_seed,
-                type(_public_orkio_decision).__name__,
-                bool(_public_orkio_decision.get("handled")) if isinstance(_public_orkio_decision, dict) else False,
-                (_public_orkio_decision.get("reason") if isinstance(_public_orkio_decision, dict) else None),
-                bool(_ao75_public_fastpath_allowed),
-                bool(_ao75_force_context_runtime),
-            )
-        except Exception:
-            pass
 
         if _ao75_public_fastpath_allowed and (not ao68b_admin_internal_agent_bypass) and isinstance(_public_orkio_decision, dict) and _public_orkio_decision.get("handled"):
             try:
