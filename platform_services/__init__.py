@@ -3,6 +3,7 @@ from platform_services.workspaces import WorkspaceService, workspace_service
 from platform_services.projects import ProjectService, project_service
 from platform_services.rbac import RBACService, rbac_service
 from platform_services.audit_log import AuditLogService, audit_log_service
+from platform_services.eos_health import get_eos_health_snapshot
 
 __all__ = [
     "OrganizationService", "organization_service",
@@ -10,4 +11,5 @@ __all__ = [
     "ProjectService", "project_service",
     "RBACService", "rbac_service",
     "AuditLogService", "audit_log_service",
+    "get_eos_health_snapshot",
 ]
