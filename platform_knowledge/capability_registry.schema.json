@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ORKIO Capability Registry",
+  "type": "object",
+  "required": [
+    "version",
+    "last_review",
+    "capabilities"
+  ],
+  "properties": {
+    "version": {
+      "type": "string"
+    },
+    "last_review": {
+      "type": "string"
+    },
+    "truth_policy": {
+      "type": "string"
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "status",
+          "public_answer",
+          "evidence_level"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "production",
+              "beta",
+              "internal",
+              "planned",
+              "proposal",
+              "deprecated",
+              "unknown"
+            ]
+          },
+          "public_answer": {
+            "type": "string"
+          },
+          "evidence_level": {
+            "type": "string"
+          },
+          "limits": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

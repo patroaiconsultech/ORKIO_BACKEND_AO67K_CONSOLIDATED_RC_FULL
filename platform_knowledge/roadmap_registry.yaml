@@ -1,0 +1,31 @@
+version: ORKIO_ROADMAP_REGISTRY_V1
+last_review: '2026-07-02'
+items:
+- id: eos_health_dynamic
+  name: EOS Health dinâmico
+  status: planned
+  description: Trocar health parcialmente declarativo por checagens reais de runtime,
+    banco, agentes, filas, knowledge e propostas.
+- id: knowledge_fabric
+  name: Knowledge Fabric
+  status: planned
+  description: Criar inventário, classificação, canonização e contexto governado para
+    documentos institucionais.
+- id: decision_ledger
+  name: Decision Ledger
+  status: planned
+  description: Registrar decisões estruturais com evidência, impacto, rollback e responsável.
+- id: capability_registry_runtime
+  name: Capability Registry integrado ao runtime
+  status: planned
+  description: Permitir que Orkio consulte o catálogo antes de responder perguntas
+    sobre produto.
+- id: premium_ux
+  name: UX premium
+  status: planned
+  description: Refinar landing, onboarding, avatar, prechat, continuidade e mobile/PWA.
+- id: commercial_product
+  name: Produto comercial completo
+  status: planned
+  description: Consolidar planos, checkout, wallet, trial, entitlement, usage e billing
+    dashboard.

@@ -1,0 +1,129 @@
+version: ORKIO_CAPABILITY_REGISTRY_V1
+last_review: '2026-07-02'
+truth_policy: registered_status_is_authoritative_for_public_product_answers
+statuses:
+  production: Disponível e apresentável como funcionalidade ativa.
+  beta: Disponível em beta, com ressalvas de estabilidade/escopo.
+  internal: Disponível apenas para operação/admin/interno.
+  planned: Roadmap aprovado ou previsto, ainda não disponível.
+  proposal: Ideia/proposta arquitetural, ainda não implementada.
+  unknown: Não confirmado; exige validação.
+capabilities:
+- id: chat_text
+  name: Chat com Orkio
+  status: production
+  public_answer: Sim. O Orkio permite conversa por texto com respostas assistidas
+    por IA.
+  evidence_level: runtime_observed
+  limits:
+  - A qualidade depende do contexto, do roteamento e do provedor LLM ativo.
+- id: chat_stream_sse
+  name: Streaming de respostas via SSE
+  status: production
+  public_answer: Sim. A plataforma usa streaming/SSE no chat.
+  evidence_level: runtime_observed
+  limits:
+  - Deve emitir eventos terminais e liberar o input ao final.
+- id: executive_intelligence_eos06
+  name: Executive Intelligence EOS-06
+  status: beta
+  public_answer: Sim, em beta. O Orkio já consegue responder certos pedidos executivos
+    separando estado comprovado, capacidade declarada e validação pendente.
+  evidence_level: runtime_observed
+  limits:
+  - Ainda exige validação contra duplicação de mensagens e cobertura de casos.
+- id: financial_math_basic
+  name: Cálculos empresariais básicos
+  status: beta
+  public_answer: Sim. O Orkio pode calcular margens, lucro-alvo, gaps e fórmulas simples
+    quando os dados são fornecidos.
+  evidence_level: runtime_observed
+  limits:
+  - Não substitui contabilidade, auditoria ou aconselhamento financeiro profissional.
+- id: agents_catalog
+  name: Catálogo de agentes
+  status: production
+  public_answer: Sim. A plataforma possui catálogo/listagem de agentes.
+  evidence_level: runtime_observed
+  limits:
+  - Disponibilidade efetiva de cada agente depende do ambiente e configuração.
+- id: threads_history
+  name: Threads e histórico de mensagens
+  status: production
+  public_answer: Sim. A plataforma possui threads e histórico de mensagens.
+  evidence_level: runtime_observed
+  limits:
+  - Reconciliar mensagens de stream com mensagens persistidas é requisito de estabilidade.
+- id: file_uploads
+  name: Upload e leitura de arquivos
+  status: beta
+  public_answer: Sim, quando habilitado. A plataforma tem base para upload, extração
+    e uso de arquivos.
+  evidence_level: declared_and_partial_runtime
+  limits:
+  - Tipos, tamanho e disponibilidade dependem do ambiente e permissões.
+- id: rag_document_context
+  name: Contexto documental/RAG
+  status: beta
+  public_answer: Sim, quando habilitado por agente/ambiente. O Orkio pode usar documentos
+    como contexto.
+  evidence_level: declared_and_partial_runtime
+  limits:
+  - Deve citar fontes quando usar documentos e não deve misturar documentos pessoais
+    com Canon institucional.
+- id: voice_realtime
+  name: Voz/realtime
+  status: beta
+  public_answer: Existe suporte em evolução para voz/realtime, mas a disponibilidade
+    depende do ambiente.
+  evidence_level: declared
+  limits:
+  - Não afirmar disponibilidade sem teste no ambiente atual.
+- id: admin_console
+  name: Admin Console
+  status: internal
+  public_answer: Existe console administrativo para operação interna/autorizada.
+  evidence_level: declared_and_runtime_routes
+  limits:
+  - Não expor detalhes administrativos a usuário público.
+- id: eos_health
+  name: EOS Health
+  status: beta
+  public_answer: Existe uma base de EOS Health para leitura da saúde institucional
+    da plataforma.
+  evidence_level: declared_and_runtime_routes
+  limits:
+  - Parte das métricas ainda pode ser declarativa e não prova disponibilidade operacional
+    completa.
+- id: governed_evolution
+  name: Evolução governada
+  status: internal
+  public_answer: A plataforma possui bases internas para propostas e governança de
+    evolução, sempre com aprovação humana.
+  evidence_level: declared_and_runtime_routes
+  limits:
+  - Não executar nem prometer autoexecução para usuário comum.
+- id: autonomous_code_execution
+  name: Execução autônoma de código
+  status: proposal
+  public_answer: Não. Autoexecução plena não deve ser tratada como disponível. Mudanças
+    estruturais exigem proposal_only e aprovação humana.
+  evidence_level: governance_policy
+  limits:
+  - Nunca afirmar commit, PR, deploy ou escrita externa sem evidência e autorização.
+- id: knowledge_fabric
+  name: Knowledge Fabric / Memória Institucional Governada
+  status: planned
+  public_answer: Está no roadmap transformar documentos e conhecimento institucional
+    em uma memória governada.
+  evidence_level: roadmap
+  limits:
+  - Não tratar todo Google Drive ou histórico pessoal como Canon automaticamente.
+- id: capability_registry
+  name: Capability Registry
+  status: planned
+  public_answer: Está sendo estruturado um catálogo oficial de capacidades para o
+    Orkio responder com precisão o que existe, o que está em beta e o que é roadmap.
+  evidence_level: this_registry
+  limits:
+  - Até integração runtime, este arquivo é a fonte de verdade documental.

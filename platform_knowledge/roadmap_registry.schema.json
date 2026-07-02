@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ORKIO Roadmap Registry",
+  "type": "object",
+  "required": [
+    "version",
+    "last_review",
+    "items"
+  ],
+  "properties": {
+    "version": {
+      "type": "string"
+    },
+    "last_review": {
+      "type": "string"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "status",
+          "description"
+        ]
+      }
+    }
+  }
+}
