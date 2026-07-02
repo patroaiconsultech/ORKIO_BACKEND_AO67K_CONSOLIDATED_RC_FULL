@@ -2,12 +2,43 @@
 # Consolidated package for governed capability answers + analytical readonly + registry alignment + realtime self-heal hardening.
 
 from __future__ import annotations
+
+# AO-01 BOOT HOTFIX — root-level main.py compatibility for Railway/uvicorn main:app.
+# This repository deploys main.py at /app/main.py while many imports are written as
+# package-relative imports (from .db, from .models, etc.) and some as absolute app.*.
+# When uvicorn loads "main:app", __package__ is empty; this shim maps the repository
+# root to a lightweight package named "app" before any internal imports execute.
+import os
+import sys
+import types
+
+if __package__ in (None, ""):
+    _AO01_ROOT = os.path.dirname(os.path.abspath(__file__))
+    if _AO01_ROOT not in sys.path:
+        sys.path.insert(0, _AO01_ROOT)
+
+    _AO01_APP_PACKAGE = sys.modules.get("app")
+    if _AO01_APP_PACKAGE is None or not hasattr(_AO01_APP_PACKAGE, "__path__"):
+        _AO01_APP_PACKAGE = types.ModuleType("app")
+        _AO01_APP_PACKAGE.__path__ = [_AO01_ROOT]  # type: ignore[attr-defined]
+        _AO01_APP_PACKAGE.__file__ = os.path.join(_AO01_ROOT, "__init__.py")
+        sys.modules["app"] = _AO01_APP_PACKAGE
+
+    __package__ = "app"
+
+# AO-01 BOOT HOTFIX — fail-open EOS health import.
+# The current public repo contains platform_services/, but not eos_health.py.
+# This must not block the whole FastAPI bootstrap.
 try:
     from .platform_services.eos_health import get_eos_health_snapshot
-except ImportError:
-    from platform_services.eos_health import get_eos_health_snapshot
+except Exception:
+    def get_eos_health_snapshot(*args, **kwargs):
+        return {
+            "status": "degraded",
+            "reason": "platform_services.eos_health_unavailable",
+            "source": "ao01_boot_hotfix",
+        }
 
-import os
 import logging
 import hashlib
 import json, time, uuid, re, math
