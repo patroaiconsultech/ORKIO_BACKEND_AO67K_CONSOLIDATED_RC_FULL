@@ -1,62 +1,69 @@
-from __future__ import annotations
-
-"""ORKIO Platform Knowledge Contract.
-
-Pure helper for future runtime integration. It does not read files, call network,
-write to database or execute external actions. The data lives in YAML files under
-platform_knowledge/ and should be loaded by an explicit caller when integration
-is approved.
+"""
+ORKIO Platform Knowledge Contract
+Pure-Python helper for future runtime integration.
+No DB, no network, no side effects.
 """
 
-from typing import Any, Dict, Iterable, Optional
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Dict, List, Literal, Optional
 
 
-VALID_CAPABILITY_STATUSES = {
+CapabilityStatus = Literal[
     "production",
     "beta",
-    "internal",
+    "beta_admin",
     "planned",
     "proposal",
-    "deprecated",
-    "unknown",
+    "not_available_public_beta",
+]
+
+
+@dataclass(frozen=True)
+class Capability:
+    key: str
+    status: CapabilityStatus
+    public_label: str
+    description: str
+    evidence_level: str
+
+
+CURRENT_CAPABILITIES: Dict[str, Capability] = {
+    "chat": Capability("chat", "production", "Disponível", "Conversas com Orkio via interface web.", "runtime_observed"),
+    "sse_streaming": Capability("sse_streaming", "production", "Disponível", "Streaming SSE em /api/chat/stream.", "runtime_observed"),
+    "authentication": Capability("authentication", "production", "Disponível", "Login, sessão e heartbeat.", "runtime_observed"),
+    "threads_messages": Capability("threads_messages", "production", "Disponível", "Threads e mensagens.", "runtime_observed"),
+    "agents": Capability("agents", "beta", "Beta", "Agentes e roteamento interno em evolução.", "runtime_observed"),
+    "executive_intelligence": Capability("executive_intelligence", "beta", "Beta", "EOS-06/AO85 para inteligência executiva.", "runtime_observed"),
+    "governance_proposals": Capability("governance_proposals", "beta", "Beta", "Proposal_only, riscos, rollback e aprovação humana.", "schema_observed"),
+    "autonomous_execution": Capability("autonomous_execution", "not_available_public_beta", "Não disponível", "Execução autônoma sem aprovação humana não está disponível.", "governance_rule"),
 }
 
 
-def normalize_status(value: Any) -> str:
-    raw = str(value or "").strip().lower()
-    return raw if raw in VALID_CAPABILITY_STATUSES else "unknown"
+def get_capability(key: str) -> Optional[Capability]:
+    return CURRENT_CAPABILITIES.get((key or "").strip().lower())
 
 
-def public_capability_answer(capability: Dict[str, Any]) -> Dict[str, Any]:
-    """Return a safe public answer contract for one capability object."""
-    status = normalize_status(capability.get("status"))
+def list_capabilities(status: Optional[CapabilityStatus] = None) -> List[Capability]:
+    values = list(CURRENT_CAPABILITIES.values())
+    if status is None:
+        return values
+    return [cap for cap in values if cap.status == status]
+
+
+def platform_answer_guard(question: str) -> Dict[str, object]:
+    q = (question or "").lower()
+    is_platform_question = any(term in q for term in [
+        "o que é", "plataforma", "orkio", "consegue", "capacidade", "oferece", "roadmap", "produção", "beta"
+    ])
+    is_execution_question = any(term in q for term in [
+        "deploy", "pull request", "pr", "merge", "executar", "criar código", "alterar backend"
+    ])
     return {
-        "id": str(capability.get("id") or "").strip(),
-        "name": str(capability.get("name") or "").strip(),
-        "status": status,
-        "public_answer": str(capability.get("public_answer") or "").strip(),
-        "evidence_level": str(capability.get("evidence_level") or "unknown").strip(),
-        "limits": [
-            str(item).strip()
-            for item in (capability.get("limits") or [])
-            if str(item).strip()
-        ][:12],
-        "truth_rule": "do_not_upgrade_status_without_registry_update",
+        "is_platform_question": is_platform_question,
+        "requires_truth_separation": is_platform_question,
+        "must_state_human_approval": is_execution_question,
+        "default_mode": "observe_only",
+        "proposal_only": True,
     }
-
-
-def classify_capability_availability(status: Any) -> str:
-    status = normalize_status(status)
-    if status == "production":
-        return "available"
-    if status == "beta":
-        return "available_with_beta_caveat"
-    if status == "internal":
-        return "internal_only"
-    if status == "planned":
-        return "roadmap_not_available"
-    if status == "proposal":
-        return "concept_not_available"
-    if status == "deprecated":
-        return "not_recommended"
-    return "requires_validation"

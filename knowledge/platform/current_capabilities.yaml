@@ -1,0 +1,70 @@
+id: orkio-current-capabilities
+version: 1.0.0
+updated_at: 2026-07-02
+
+capabilities:
+  chat:
+    status: production
+    public_label: "Disponível"
+    description: "Conversas com Orkio via interface web."
+    evidence_level: "runtime_observed"
+
+  sse_streaming:
+    status: production
+    public_label: "Disponível"
+    description: "Streaming SSE em /api/chat/stream com eventos de status, chunks e terminal."
+    evidence_level: "runtime_observed"
+
+  authentication:
+    status: production
+    public_label: "Disponível"
+    description: "Login, sessão e heartbeat de autenticação."
+    evidence_level: "runtime_observed"
+
+  threads_messages:
+    status: production
+    public_label: "Disponível"
+    description: "Criação/listagem de threads e carregamento de mensagens."
+    evidence_level: "runtime_observed"
+
+  agents:
+    status: beta
+    public_label: "Beta"
+    description: "Lista de agentes e roteamento interno em evolução."
+    evidence_level: "runtime_observed"
+
+  file_uploads:
+    status: beta
+    public_label: "Beta"
+    description: "Base de arquivos e requests de arquivo em consolidação."
+    evidence_level: "schema_observed"
+
+  executive_intelligence:
+    status: beta
+    public_label: "Beta"
+    description: "Camada EOS-06/AO85 para respostas executivas, cálculos e governança observe_only/proposal_only."
+    evidence_level: "runtime_observed"
+
+  governance_proposals:
+    status: beta
+    public_label: "Beta"
+    description: "Governança de evolução com proposal_only, aprovação humana, riscos e rollback."
+    evidence_level: "schema_observed"
+
+  eos_health:
+    status: beta
+    public_label: "Beta"
+    description: "Endpoint/painel inicial de saúde EOS; ainda em evolução para dados dinâmicos."
+    evidence_level: "module_observed"
+
+  billing_wallet_valuation:
+    status: beta_admin
+    public_label: "Administrativo/Beta"
+    description: "Módulos administrativos de billing, wallet e valuation em base operacional."
+    evidence_level: "declared_in_platform_status"
+
+  autonomous_execution:
+    status: not_available_public_beta
+    public_label: "Não disponível no beta público"
+    description: "Execução autônoma de código, branch, PR, merge ou deploy não deve ocorrer sem aprovação humana."
+    evidence_level: "governance_rule"

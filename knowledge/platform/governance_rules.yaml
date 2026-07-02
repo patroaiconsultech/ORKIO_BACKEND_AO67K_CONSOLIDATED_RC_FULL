@@ -1,0 +1,33 @@
+id: orkio-governance-rules
+version: 1.0.0
+updated_at: 2026-07-02
+
+execution_contract:
+  observe_only_default: true
+  proposal_only_default: true
+  human_approval_required_before_write: true
+
+blocked_without_approval:
+  - write_file
+  - apply_patch
+  - create_branch
+  - create_pull_request
+  - merge_pull_request
+  - deploy
+  - database_migration
+  - delete_data
+  - alter_billing
+  - alter_auth
+
+required_for_structural_change:
+  - objective
+  - evidence
+  - current_state
+  - declared_capability
+  - validation_pending
+  - impact
+  - risks
+  - dependencies
+  - rollback
+  - validation_checklist
+  - human_approval

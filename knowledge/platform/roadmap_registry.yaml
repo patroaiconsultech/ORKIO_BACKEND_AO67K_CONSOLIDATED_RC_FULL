@@ -1,0 +1,36 @@
+id: orkio-roadmap-registry
+version: 1.0.0
+updated_at: 2026-07-02
+
+roadmap:
+  eos_health_dynamic:
+    status: planned
+    description: "Transformar EOS Health em painel dinâmico de runtime, banco, agentes, filas, proposals e knowledge."
+
+  capability_registry_runtime:
+    status: planned
+    description: "Conectar o catálogo oficial de capacidades ao runtime do Orkio."
+
+  knowledge_fabric:
+    status: planned
+    description: "Ingestão governada de Google Drive, documentos, decisões e memória institucional."
+
+  canon_registry:
+    status: planned
+    description: "Separar Founder Canon, Engineering Canon, Business Canon e Product Canon."
+
+  decision_ledger:
+    status: planned
+    description: "Registrar decisões, alternativas, evidências, impactos e rollback."
+
+  institutional_memory:
+    status: planned
+    description: "Memória institucional da PatroAI separada de memória pessoal e arquivos brutos."
+
+  autoevolution_governed:
+    status: proposal
+    description: "Evolução assistida com proposal_only, diff preview, risco, rollback e aprovação humana."
+
+  premium_ux:
+    status: planned
+    description: "Refino de landing, onboarding, avatar, prechat, mobile/PWA e percepção enterprise."

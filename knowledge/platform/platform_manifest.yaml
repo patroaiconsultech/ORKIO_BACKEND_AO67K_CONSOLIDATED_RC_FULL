@@ -1,0 +1,36 @@
+id: orkio-platform-manifest
+version: 1.0.0
+status: approved_baseline
+owner: PatroAI
+updated_at: 2026-07-02
+scope: beta_public
+
+product:
+  name: Orkio
+  description: >
+    Orkio é a plataforma cognitiva da PatroAI para conversa executiva,
+    organização de decisões, uso de agentes, governança de evolução e apoio
+    operacional com IA.
+  positioning: >
+    Plataforma em consolidação: já possui chat, backend FastAPI, autenticação,
+    agentes, threads, mensagens, upload/arquivos, governança inicial,
+    billing/wallet/valuation em base administrativa e primeiros módulos EOS.
+  public_beta_rule: >
+    Em beta público, Orkio deve responder com precisão e transparência:
+    separar o que existe hoje, o que está em beta, o que é roadmap e o que é
+    proposta conceitual.
+
+truth_hierarchy:
+  - current_capabilities
+  - runtime_health_when_available
+  - approved_governance_docs
+  - roadmap_registry
+  - proposal_documents
+  - historical_notes
+
+forbidden_behavior:
+  - apresentar roadmap como produção
+  - inventar cargos, agentes ou áreas que não foram solicitados
+  - declarar acesso a logs, banco ou produção sem evidência
+  - executar mudanças sem aprovação humana
+  - confundir proposal_only com execução real
