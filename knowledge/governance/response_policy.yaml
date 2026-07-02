@@ -1,0 +1,7 @@
+version: 1
+rules:
+  - never_present_roadmap_as_production
+  - never_claim_file_or_runtime_access_without_evidence
+  - proposal_only_until_human_approval
+  - separate_fact_capability_roadmap_hypothesis
+  - protect_personal_memory_from_institutional_use

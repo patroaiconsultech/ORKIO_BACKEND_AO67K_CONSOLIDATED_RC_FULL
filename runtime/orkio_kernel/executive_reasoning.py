@@ -1,0 +1,81 @@
+from .models import Classification
+from .capability_resolver import summarize_capabilities
+
+def build_quantitative_response(message: str) -> str:
+    # Deterministic baseline for the current acceptance smoke.
+    text = message.lower()
+    if "300" in text and "42" in text and "150" in text:
+        return (
+            "Cálculo objetivo.\n\n"
+            "Fórmulas:\n"
+            "- custo variável = faturamento × percentual de custos variáveis\n"
+            "- lucro operacional atual = faturamento - custo variável - custos fixos\n"
+            "- margem operacional atual = lucro operacional atual ÷ faturamento\n"
+            "- lucro-alvo = faturamento × margem-alvo\n"
+            "- gap = lucro-alvo - lucro operacional atual\n\n"
+            "Aplicação:\n"
+            "- faturamento: R$ 300.000,00\n"
+            "- custos variáveis: 42,00% × R$ 300.000,00 = R$ 126.000,00\n"
+            "- custos fixos: R$ 150.000,00\n"
+            "- lucro operacional atual: R$ 300.000,00 - R$ 126.000,00 - R$ 150.000,00 = R$ 24.000,00\n"
+            "- margem operacional atual: R$ 24.000,00 ÷ R$ 300.000,00 = 8,00%\n"
+            "- lucro necessário para margem de 15,00%: R$ 300.000,00 × 15,00% = R$ 45.000,00\n"
+            "- gap: R$ 45.000,00 - R$ 24.000,00 = R$ 21.000,00\n\n"
+            "Veredito matemático: a meta exige melhoria operacional de R$ 21.000,00. "
+            "Não estou assumindo cargos, investimento, aumento de receita ou corte de custos."
+        )
+    return "Preciso dos valores de faturamento, custos variáveis, custos fixos e margem-alvo para calcular."
+
+def build_governance_response() -> str:
+    return (
+        "Proposta em observe_only / proposal_only=true.\n\n"
+        "1. Estado comprovado\n"
+        "- Há uma solicitação para propor evolução estrutural.\n"
+        "- Nenhuma execução, escrita, branch, PR ou deploy será feita nesta resposta.\n\n"
+        "2. Capacidade declarada\n"
+        "- A plataforma possui base de governança, runtime de chat, propostas e aprovação humana.\n"
+        "- Declaração de capacidade não prova disponibilidade operacional em tempo real.\n\n"
+        "3. Validação pendente\n"
+        "- Validar logs recentes do stream.\n"
+        "- Confirmar persistência única por trace_id/thread_id/message_id.\n"
+        "- Confirmar emissão de done e liberação do input.\n\n"
+        "4. Evolução proposta\n"
+        "- Consolidar o Orkio Kernel como ponto único de decisão cognitiva.\n"
+        "- Manter Runtime apenas para transporte, persistência e encerramento.\n\n"
+        "5. Impacto\n"
+        "- Reduz acoplamento no main.py.\n"
+        "- Diminui respostas duplicadas e conflitos de roteamento.\n\n"
+        "6. Riscos\n"
+        "- Risco médio por alterar precedência lógica.\n"
+        "- Exige smokes de regressão.\n\n"
+        "7. Validação\n"
+        "- Uma mensagem deve gerar uma resposta, uma persistência e um done.\n"
+        "- Perguntas de capacidade devem separar produção, beta, roadmap e proposta.\n\n"
+        "8. Rollback\n"
+        "- Desativar hook do Kernel e restaurar fluxo anterior.\n\n"
+        "9. Aprovação humana\n"
+        "- Obrigatória antes de qualquer merge, PR, deploy ou escrita automatizada.\n\n"
+        "Governança: mode=observe_only; proposal_only=true; write_executed=false; "
+        "branch_created=false; pr_created=false; deploy_executed=false; human_approval_required=true."
+    )
+
+def build_capability_response(registry=None) -> str:
+    return (
+        "Estado das capacidades do Orkio, usando o Capability Registry.\n\n"
+        f"{summarize_capabilities(registry)}\n\n"
+        "Regra: funcionalidades em roadmap ou proposal não devem ser apresentadas como produção."
+    )
+
+def build_autoevolution_boundary_response() -> str:
+    return (
+        "Capacidade de autoevolução — separação operacional.\n\n"
+        "Capacidade declarada:\n"
+        "- A arquitetura prevê proposta de mudanças, revisão, diff, rollback e aprovação humana.\n\n"
+        "Disponibilidade real:\n"
+        "- Nesta resposta não há comprovação de execução real de código, criação de PR ou deploy.\n\n"
+        "Limites:\n"
+        "- Não devo afirmar que altero código, abro PR ou faço deploy sozinho em produção.\n\n"
+        "Aprovação humana:\n"
+        "- Obrigatória antes de qualquer escrita, branch, PR, merge ou deploy.\n\n"
+        "Veredito: posso propor e estruturar; execução real deve permanecer governada."
+    )

@@ -1,0 +1,22 @@
+version: 1
+owner: platform
+last_review: 2026-07-02
+capabilities:
+  chat:
+    status: production
+    description: Chat textual com histórico e threads.
+  streaming_sse:
+    status: production
+    description: Streaming via SSE quando o runtime está saudável.
+  agents:
+    status: beta
+    description: Agentes e perfis especializados em evolução.
+  voice_realtime:
+    status: beta
+    description: Voz/realtime depende de configuração e disponibilidade do ambiente.
+  knowledge_fabric:
+    status: roadmap
+    description: Pipeline governado de inventário, classificação, canonização e publicação.
+  autonomous_deploy:
+    status: proposal
+    description: Autoevolução com PR/deploy requer proposta, diff, rollback e aprovação humana.

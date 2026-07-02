@@ -1,0 +1,20 @@
+# Runtime Events
+
+Standard event names for logs:
+
+- STREAM_REQUEST_ENTER
+- STREAM_FIRST_STATUS
+- STREAM_FIRST_CHUNK
+- KERNEL_DECISION_READY
+- ASSISTANT_PERSIST_ATTEMPT
+- ASSISTANT_PERSIST_CREATED
+- ASSISTANT_PERSIST_SKIPPED_DUPLICATE
+- STREAM_DONE_EMITTED
+- TERMINAL_GUARD_V7_UNLOCK
+
+Required fields:
+
+- trace_id
+- thread_id
+- message_id or assistant_turn_id
+- elapsed_ms

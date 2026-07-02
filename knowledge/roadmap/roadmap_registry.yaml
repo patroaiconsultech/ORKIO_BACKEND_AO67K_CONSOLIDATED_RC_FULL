@@ -1,0 +1,11 @@
+version: 1
+items:
+  knowledge_fabric:
+    status: roadmap
+    description: Ingestão governada do Google Drive e Canon institucional.
+  executive_observability:
+    status: roadmap
+    description: Painel de métricas executivas de runtime, capacidades e governança.
+  autonomous_execution:
+    status: proposal
+    description: Execução automatizada com diff, rollback e aprovação humana obrigatória.
