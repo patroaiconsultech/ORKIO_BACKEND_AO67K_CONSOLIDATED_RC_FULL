@@ -41596,6 +41596,70 @@ async def chat_stream(
             except Exception:
                 pass
 
+
+        # EOS06-AO85-HF2 — Executive Turn Ownership Gate
+        # Must run immediately after _emit_result_payload is available and BEFORE
+        # any deterministic public fast-path (AO27 literal, HF6R1 welcome,
+        # public Orkio policy, governed_evolution_pipeline, identity/capability routes).
+        # Purpose: when EOS-06/AO85 recognizes a substantive executive turn, it owns
+        # the turn and terminally emits the answer. No provider call, no DB schema
+        # mutation, no branch, PR, deploy or external side effect is performed.
+        try:
+            _eos06_ao85_hf2_payload = eos06_build_router_precedence_payload(message)
+        except Exception:
+            _eos06_ao85_hf2_payload = {}
+
+        if isinstance(_eos06_ao85_hf2_payload, dict) and _eos06_ao85_hf2_payload.get("handled"):
+            try:
+                _eos06_text = str(
+                    _eos06_ao85_hf2_payload.get("answer")
+                    or _eos06_ao85_hf2_payload.get("final_text")
+                    or _eos06_ao85_hf2_payload.get("message")
+                    or ""
+                ).strip()
+                if _eos06_text:
+                    try:
+                        _eos06_persisted = await asyncio.to_thread(
+                            _persist_assistant_message,
+                            text=_eos06_text,
+                            thread_id=tid_seed,
+                            agent_id=str(_eos06_ao85_hf2_payload.get("agent_id") or "orkio"),
+                            agent_name=str(_eos06_ao85_hf2_payload.get("agent_name") or "Orkio"),
+                        )
+                        if isinstance(_eos06_persisted, dict):
+                            _eos06_ao85_hf2_payload.update(_eos06_persisted)
+                        _eos06_ao85_hf2_payload["assistant_persisted"] = True
+                    except Exception:
+                        try:
+                            logger.exception("EOS06_AO85_HF2_PERSIST_FAILED trace_id=%s thread_id=%s", trace_id, tid_seed)
+                        except Exception:
+                            pass
+                        _eos06_ao85_hf2_payload["assistant_persisted"] = False
+
+                try:
+                    logger.warning(
+                        "EOS06_AO85_HF2_TURN_OWNERSHIP trace_id=%s category=%s route_family=%s blocked_legacy_public_fastpaths=%s",
+                        trace_id,
+                        _eos06_ao85_hf2_payload.get("category"),
+                        _eos06_ao85_hf2_payload.get("route_family"),
+                        True,
+                    )
+                except Exception:
+                    pass
+
+                async for ev in _emit_result_payload(
+                    _eos06_ao85_hf2_payload,
+                    routing_source="stream_eos06_ao85_hf2_executive_turn_ownership",
+                ):
+                    yield ev
+                return
+            except Exception:
+                try:
+                    logger.exception("EOS06_AO85_HF2_TURN_OWNERSHIP_FAILED trace_id=%s", trace_id)
+                except Exception:
+                    pass
+                # Fail-open to previous protected runtime if the HF2 guard itself fails.
+
         # AO-27_LITERAL_TOP_PERSISTED_FASTPATH
         # Literal answer requests must be resolved before technical/audit routers.
         # This restores a deterministic useful response and guarantees /api/messages
