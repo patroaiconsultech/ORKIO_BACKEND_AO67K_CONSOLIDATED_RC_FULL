@@ -97,7 +97,7 @@ from .runtime.orkio_context_intent import (
     public_fastpath_allowed as orkio_public_fastpath_allowed,
     requires_document_context as orkio_requires_document_context,
 )
-from .runtime.orkio_executive_guard import classify_orkio_executive_request
+from .runtime.orkio_executive_guard import classify_orkio_executive_request, eos06_build_router_precedence_payload
 from .runtime.executive_intelligence import (
     append_executive_intelligence,
     build_executive_context_envelope,
@@ -43703,7 +43703,26 @@ async def chat_stream(
                 and not any(_term in _ao01_norm for _term in _hf6r3b_approval_terms)
             )
 
-            if _hf6r3b_mutation_without_approval:
+            _eos06_ao85_hf1_payload = {}
+            try:
+                _eos06_ao85_hf1_payload = eos06_build_router_precedence_payload(_hf4k_msg)
+            except Exception:
+                _eos06_ao85_hf1_payload = {}
+
+            if isinstance(_eos06_ao85_hf1_payload, dict) and _eos06_ao85_hf1_payload.get("handled"):
+                _hf4k_kind = str(_eos06_ao85_hf1_payload.get("category") or "eos06_ao85_router_precedence")
+                _hf4k_final_text = str(_eos06_ao85_hf1_payload.get("answer") or _eos06_ao85_hf1_payload.get("final_text") or "").strip()
+                try:
+                    logger.warning(
+                        "EOS06_AO85_HF1_FASTPATH_PRECEDENCE trace_id=%s kind=%s route_family=%s",
+                        trace_id,
+                        _hf4k_kind,
+                        _eos06_ao85_hf1_payload.get("route_family"),
+                    )
+                except Exception:
+                    pass
+
+            elif _hf6r3b_mutation_without_approval:
                 _hf4k_kind = "mutation_without_approval_blocked"
                 _hf4k_final_text = (
                     "ORKIO — EXECUÇÃO BLOQUEADA SEM APROVAÇÃO\n\n"
@@ -45099,6 +45118,54 @@ async def chat_stream(
             async for ev in _emit_result_payload(payload, routing_source="stream_ao42d_specialist_readonly_precedence"):
                 yield ev
             return
+
+        # EOS06-AO85-HF1 — Executive router authority must beat legacy governed_evolution_pipeline.
+        # This is narrow and deterministic: it only handles quantitative executive math and
+        # EOS-06 governance/proposal_only requests. It performs no write, commit, branch, PR,
+        # deploy, DB schema change or provider call.
+        try:
+            _eos06_ao85_hf1_payload = eos06_build_router_precedence_payload(message)
+        except Exception:
+            _eos06_ao85_hf1_payload = {}
+
+        if isinstance(_eos06_ao85_hf1_payload, dict) and _eos06_ao85_hf1_payload.get("handled"):
+            try:
+                _eos06_text = str(
+                    _eos06_ao85_hf1_payload.get("answer")
+                    or _eos06_ao85_hf1_payload.get("final_text")
+                    or ""
+                ).strip()
+                _eos06_persisted = await asyncio.to_thread(
+                    _persist_assistant_message,
+                    text=_eos06_text,
+                    thread_id=tid_seed,
+                    agent_id=str(_eos06_ao85_hf1_payload.get("agent_id") or "orkio"),
+                    agent_name=str(_eos06_ao85_hf1_payload.get("agent_name") or "Orkio"),
+                )
+                if isinstance(_eos06_persisted, dict):
+                    _eos06_ao85_hf1_payload.update(_eos06_persisted)
+                _eos06_ao85_hf1_payload["assistant_persisted"] = True
+                try:
+                    logger.warning(
+                        "EOS06_AO85_HF1_ROUTER_PRECEDENCE trace_id=%s category=%s route_family=%s",
+                        trace_id,
+                        _eos06_ao85_hf1_payload.get("category"),
+                        _eos06_ao85_hf1_payload.get("route_family"),
+                    )
+                except Exception:
+                    pass
+                async for ev in _emit_result_payload(
+                    _eos06_ao85_hf1_payload,
+                    routing_source="stream_eos06_ao85_hf1_router_precedence",
+                ):
+                    yield ev
+                return
+            except Exception:
+                try:
+                    logger.exception("EOS06_AO85_HF1_ROUTER_PRECEDENCE_FAILED trace_id=%s", trace_id)
+                except Exception:
+                    pass
+                # Fail-open: existing routers may still answer safely.
 
         if _is_governed_evolution_pipeline_request(message):
             try:
