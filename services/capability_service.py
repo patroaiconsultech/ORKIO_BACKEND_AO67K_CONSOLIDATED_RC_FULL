@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Dict, Optional
 
-from app.core.orkio_capabilities import load_governed_capabilities
+from core.orkio_capabilities import load_governed_capabilities
 
 
 def load_runtime_governed_capabilities(existing_registry: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, Any]]:
