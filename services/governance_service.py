@@ -3,10 +3,10 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Dict, Iterable, Optional
 
-from app.core.orkio_constitution import load_constitution
-from app.core.orkio_identity import load_identity
-from app.core.orkio_permissions import get_permission_rule, load_permissions
-from app.services.capability_service import resolve_capability_profile
+from core.orkio_constitution import load_constitution
+from core.orkio_identity import load_identity
+from core.orkio_permissions import get_permission_rule, load_permissions
+from services.capability_service import resolve_capability_profile
 
 
 def _message_text(context: Optional[Dict[str, Any]]) -> str:
