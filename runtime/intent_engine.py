@@ -7,9 +7,9 @@ from typing import Any, Dict, Optional
 import json
 import re
 
-from app.config.runtime import RUNTIME_FLAGS
-from app.services.governance_service import evaluate_governance_action
-from app.runtime.capability_registry import is_team_roster_question_text, is_presence_status_question_text, is_war_room_readonly_architecture_plan_text, is_readonly_implementation_plan_text, get_full_agent_roster
+from config.runtime import RUNTIME_FLAGS
+from services.governance_service import evaluate_governance_action
+from runtime.capability_registry import is_team_roster_question_text, is_presence_status_question_text, is_war_room_readonly_architecture_plan_text, is_readonly_implementation_plan_text, get_full_agent_roster
 
 
 def _normalize(text: str) -> str:
