@@ -1,26 +1,31 @@
 #!/usr/bin/env python3
 """
-ORKIO CORE RC2 Runtime Foundation — Shadow Candidate Applier.
+ORKIO CORE RC2-R2 Runtime Foundation — Repo-Ready Shadow Applier R1.
 
-Scope:
-- Baseline locked to 94ba9246bcd3d2a5c40d42657ae7ca17c80a2826
-- Applies only approved EPIC-002A..002F shadow changes
-- Copies Runtime Persistence Foundation payload
-- Normalizes target-only legacy imports revealed by integrated import audit
-- No main.py edits, no SSE edits, no DB migrations, no shim, no fallback
+This script is intentionally repo-ready:
+- It expects to run from the backend repository root after the ZIP contents
+  were copied/extracted into that root.
+- It does NOT look for payload/.
+- It refuses to run unless HEAD is the locked baseline SHA.
+- It refuses pre-existing app/config/runtime.py before planning/writing.
+- It applies only approved target-only import hygiene replacements.
+- It does not edit main.py, SSE routes, database migrations, routers, guards,
+  or production behavior.
 """
 
 from __future__ import annotations
 
 import argparse
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 EXPECTED_BASELINE_SHA = "94ba9246bcd3d2a5c40d42657ae7ca17c80a2826"
 
-PAYLOAD_FILES = (
+# Files expected to be present after repo-ready extraction/upload.
+# They are not copied from payload/; repo-ready means they already live at
+# their final repository paths.
+REPO_READY_FILES = (
     "runtime/orkio_runtime_foundation/persistence.py",
     "tests/runtime/test_runtime_persistence_shadow.py",
     "architecture/contracts/runtime_persistence_canonical_contract.md",
@@ -50,14 +55,15 @@ REPLACEMENTS = {
     ),
 }
 
-REQUIRED_DESTINATIONS = (
+REQUIRED_BASELINE_FILES = (
     "config/runtime.py",
-    "services/governance_service.py",
+    "runtime/intent_engine.py",
     "runtime/capability_registry.py",
+    "services/governance_service.py",
+    "services/capability_service.py",
     "core/orkio_constitution.py",
     "core/orkio_identity.py",
     "core/orkio_permissions.py",
-    "services/capability_service.py",
     "core/orkio_capabilities.py",
 )
 
@@ -92,7 +98,6 @@ def ensure_expected_git_sha(root: Path) -> None:
         )
 
 
-
 def ensure_no_forbidden_preexisting_paths(root: Path) -> None:
     for rel in FORBIDDEN_PREEXISTING_PATHS:
         if (root / rel).exists():
@@ -101,13 +106,13 @@ def ensure_no_forbidden_preexisting_paths(root: Path) -> None:
             )
 
 
-def ensure_environment(root: Path, package_root: Path) -> None:
-    for rel in REQUIRED_DESTINATIONS:
+def ensure_environment(root: Path) -> None:
+    for rel in REQUIRED_BASELINE_FILES:
         if not (root / rel).exists():
             raise ApplyError(f"required baseline file missing: {rel}")
-    for rel in PAYLOAD_FILES:
-        if not (package_root / "payload" / rel).exists():
-            raise ApplyError(f"package payload missing: {rel}")
+    for rel in REPO_READY_FILES:
+        if not (root / rel).exists():
+            raise ApplyError(f"repo-ready file missing after extraction/upload: {rel}")
 
 
 def transform_text(text: str, replacements: tuple[tuple[str, str], ...]) -> tuple[str, list[str]]:
@@ -120,23 +125,16 @@ def transform_text(text: str, replacements: tuple[tuple[str, str], ...]) -> tupl
     return out, changed
 
 
-def apply_changes(root: Path, package_root: Path, write: bool) -> list[str]:
+def apply_changes(root: Path, write: bool) -> list[str]:
     summary: list[str] = []
 
-    # payload copy
-    for rel in PAYLOAD_FILES:
-        src = package_root / "payload" / rel
-        dst = root / rel
-        if not src.exists():
-            raise ApplyError(f"payload missing: {rel}")
-        if dst.exists() and dst.read_bytes() == src.read_bytes():
-            continue
-        summary.append(f"PAYLOAD {rel}")
-        if write:
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dst)
+    # Verify repo-ready files are present. No payload copy in repo-ready mode.
+    for rel in REPO_READY_FILES:
+        path = root / rel
+        if not path.exists():
+            raise ApplyError(f"repo-ready file missing: {rel}")
 
-    # import hygiene
+    # Import hygiene.
     for target, replacements in REPLACEMENTS.items():
         path = root / target
         if not path.exists():
@@ -147,6 +145,7 @@ def apply_changes(root: Path, package_root: Path, write: bool) -> list[str]:
             summary.append(f"IMPORT {target}: " + "; ".join(changed))
             if write:
                 path.write_text(new_text, encoding="utf-8")
+
     return summary
 
 
@@ -162,24 +161,23 @@ def main() -> int:
         return 2
 
     root = Path(args.repo).resolve()
-    package_root = Path(__file__).resolve().parents[1]
 
     try:
         ensure_expected_git_sha(root)
         ensure_no_forbidden_preexisting_paths(root)
-        ensure_environment(root, package_root)
-        summary = apply_changes(root, package_root, write=args.write)
+        ensure_environment(root)
+        summary = apply_changes(root, write=args.write)
     except ApplyError as exc:
-        print(f"RC2_APPLIER_FAIL: {exc}", file=sys.stderr)
+        print(f"RC2_REPO_READY_APPLIER_FAIL: {exc}", file=sys.stderr)
         return 1
 
     mode = "WRITE" if args.write else "CHECK"
     if summary:
-        print(f"RC2_APPLIER_{mode}: PASS")
+        print(f"RC2_REPO_READY_APPLIER_{mode}: PASS")
         for item in summary:
             print(f"- {item}")
     else:
-        print(f"RC2_APPLIER_{mode}: PASS_NOOP_ALREADY_APPLIED")
+        print(f"RC2_REPO_READY_APPLIER_{mode}: PASS_NOOP_ALREADY_APPLIED")
     return 0
 
 
