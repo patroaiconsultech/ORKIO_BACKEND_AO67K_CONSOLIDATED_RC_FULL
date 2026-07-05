@@ -1,0 +1,31 @@
+package_id: OES-RC-0002-R4
+package_title: Canonical Domain Model R4
+package_version: 0.1-rc-r4
+status: Release Candidate
+owner: Chief Architecture & Engineering Officer (AO-01)
+approver: Vision Owner + Independent Engineering Auditor
+generated_at: 2026-07-05T00:00:00Z
+target_repository: patroaiconsultech/ORKIO_BACKEND_AO67K_CONSOLIDATED_RC_FULL
+target_path: specification/
+read_only_repository_head_from_latest_audit: f9b083e76c4016f328b0c90abbeee37e76a9409e
+foundation_applied_commit_sha: PENDING_EXTERNAL_PROMOTION_EVIDENCE
+required_foundation_package: OES-RC-0001-R3
+required_foundation_package_sha256: 8EBF8749AB64896C1E53A5F8EDB4F1D5BB50E78B5111A2BA138A6D4F1A11AB00
+collision_policy:
+  non_destructive: true
+  intentional_replacements: []
+  allowed_paths:
+    - specification/OES-005_CANONICAL_DOMAIN_MODEL.md
+    - specification/packages/OES-RC-0002-R4/
+  blocked:
+    - root_level_file_creation
+    - deletion
+    - undeclared_replacement
+    - writes_outside_specification
+
+r3_patch_focus:
+  - canonical_reference_vocabulary_closure
+  - stable_reference_ids
+  - coverage_check_reinforcement
+
+validation_tooling_policy: "Runtime code, cache and compiled artifacts are prohibited; package-local validation tooling is permitted as source text only."

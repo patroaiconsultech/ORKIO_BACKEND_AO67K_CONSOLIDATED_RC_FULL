@@ -1,47 +1,26 @@
-# ORKIO OS 2 — Phase 2A Microkernel + Knowledge Layer
+# ORKIO Engineering Specification
 
-## Objective
+Version: OES-RC-0001-R3
+Status: RELEASE CANDIDATE
+Generated: 2026-07-04
 
-This package introduces an isolated Cognitive Microkernel and a first Knowledge Ingestion Layer for Orkio OS 2.
+## Purpose
+Official engineering specification area for Orkio.
 
-It does **not** modify production routes.
+## Non-Destructive Rule
+All engineering artifacts must remain under `specification/`.
+No package may create repository-root files unless explicitly approved.
 
-## Included
+## Current Package
+`OES-RC-0001-R3` preserves the Engineering Foundation and corrects package preflight safety:
+- OES-001 Engineering Constitution
+- OES-002 Engineering Glossary
+- OES-003 Engineering Governance
+- OES-004 Engineering Delivery Standard
+- Pre-extraction ZIP entry validation for Zip Slip prevention
 
-- `app/cognitive`: microkernel, contracts, plugin registry, event bus, envelope builder
-- `app/cognitive/plugins`: core starter plugins for intent, policy, risk, runtime
-- `app/knowledge`: ingestion, classifier, schema, source registry, summarizer, store, graph
-- `tests`: unit tests for cognitive and knowledge modules
-- `docs`: operational ADR
-- `patches`: validation checklist
+## Repository Authority
+The backend repository is the initial source of truth for `specification/`.
 
-## Safety posture
-
-Default mode is `shadow`.
-
-The kernel:
-- does not call OpenAI
-- does not touch database
-- does not alter `/api/chat`
-- does not alter `/api/chat/stream`
-- does not alter auth
-- does not alter frontend
-- does not execute production actions
-
-## Suggested validation
-
-```bash
-python -m compileall app tests
-python -m pytest -q
-```
-
-## Recommended branch
-
-```bash
-git checkout -b feature/orkio-os-2-phase-2a-microkernel
-```
-
-## AO-01 Verdict
-
-GO for branch integration.
-NO-GO for direct production enforcement.
+## Release Candidate R1 Notes
+This revision supersedes `OES-RC-0001` by correcting the preflight order, clarifying approval authority, declaring atomic baseline promotion, and adding auditable validation evidence fields.
