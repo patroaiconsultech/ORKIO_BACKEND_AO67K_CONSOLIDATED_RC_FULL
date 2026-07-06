@@ -1,0 +1,13 @@
+[
+  "OrganizationReference",
+  "WorkspaceReference",
+  "KnowledgeAssetReference",
+  "AgentReference",
+  "CapabilityReference",
+  "ConversationReference",
+  "DecisionReference",
+  "ExecutionReference",
+  "PolicyReference",
+  "AuditRecordReference",
+  "EvidenceReference"
+]

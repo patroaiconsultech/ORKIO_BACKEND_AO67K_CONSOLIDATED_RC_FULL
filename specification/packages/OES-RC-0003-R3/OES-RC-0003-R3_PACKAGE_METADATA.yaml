@@ -1,0 +1,31 @@
+package_id: OES-RC-0003-R3
+package_title: OES-006 Capability Catalog R3
+status: release_candidate
+owner: Chief Architecture & Engineering Officer (AO-01)
+approver: Vision Owner + Independent Engineering Auditor
+source_baseline_package: OES-RC-0002-R4
+source_baseline_sha256: 4273278F9786F1E9F0EE86CB4F5D8577B47BA76C44866C16676C85738A66A20A
+patch_base_package: OES-RC-0003-R2
+patch_base_package_sha256: 8DEBA4E0C48E5DA758FFB382213705CA0234BF2125C37B81DB6220A8054E3366
+patch_base_oes006_preimage_sha256: B3267359FE6BF3B07C28F390EF963814AA2EE40A860361048368E68CD972ABE6
+prior_rejected_oes006_preimage_sha256: 3391510CF4F03C95B4793ACD063FAC430CE6B367480473AAC92DEA7D97091684
+target_repository: https://github.com/patroaiconsultech/ORKIO_BACKEND_AO67K_CONSOLIDATED_RC_FULL
+scope:
+- specification/OES-006_CAPABILITY_CATALOG.md
+- specification/packages/OES-RC-0003-R3/
+non_destructive: true
+intentional_replacements:
+  specification/OES-006_CAPABILITY_CATALOG.md:
+    allowed_only_if_target_sha256:
+    - 3391510CF4F03C95B4793ACD063FAC430CE6B367480473AAC92DEA7D97091684
+    - B3267359FE6BF3B07C28F390EF963814AA2EE40A860361048368E68CD972ABE6
+runtime_code_included: false
+validation_tooling_included: true
+capabilities_expected: 56
+capabilities_reconstructed: 56
+oes006_output_sha256: C17580C10C773B5D7917D35DE6A90C62919CA14A2670E4222AE971492CC3FC64
+r3_patch_focus:
+- Vocabulary Closure for Produced References
+- Produced References validator against canonical reference inventory
+- Replacement and preimage policy alignment
+- Editorial cleanup and R3 package identity consistency

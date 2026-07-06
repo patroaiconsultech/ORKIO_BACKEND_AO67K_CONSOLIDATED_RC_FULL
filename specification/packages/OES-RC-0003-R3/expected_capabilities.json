@@ -1,0 +1,928 @@
+[
+  {
+    "capability_id": "CAP-IDN-001",
+    "capability_name": "CreateOrganization",
+    "aggregate_root": "DOM-001 Organization",
+    "authority": "Governance Authority",
+    "lifecycle": "Organization has `Draft → Active → Suspended → Archived`",
+    "related_invariants": [
+      "INV-IDN-001",
+      "INV-IDN-002",
+      "INV-IDN-003",
+      "INV-IDN-004",
+      "INV-IDN-005",
+      "INV-IDN-006"
+    ],
+    "canonical_references": "none"
+  },
+  {
+    "capability_id": "CAP-IDN-002",
+    "capability_name": "ActivateOrganization",
+    "aggregate_root": "DOM-001 Organization",
+    "authority": "Governance Authority",
+    "lifecycle": "Organization has `Draft → Active → Suspended → Archived`",
+    "related_invariants": [
+      "INV-IDN-001",
+      "INV-IDN-002",
+      "INV-IDN-003",
+      "INV-IDN-004",
+      "INV-IDN-005",
+      "INV-IDN-006"
+    ],
+    "canonical_references": "none"
+  },
+  {
+    "capability_id": "CAP-IDN-003",
+    "capability_name": "SuspendOrganization",
+    "aggregate_root": "DOM-001 Organization",
+    "authority": "Governance Authority",
+    "lifecycle": "Organization has `Draft → Active → Suspended → Archived`",
+    "related_invariants": [
+      "INV-IDN-001",
+      "INV-IDN-002",
+      "INV-IDN-003",
+      "INV-IDN-004",
+      "INV-IDN-005",
+      "INV-IDN-006"
+    ],
+    "canonical_references": "none"
+  },
+  {
+    "capability_id": "CAP-IDN-004",
+    "capability_name": "ArchiveOrganization",
+    "aggregate_root": "DOM-001 Organization",
+    "authority": "Governance Authority",
+    "lifecycle": "Organization has `Draft → Active → Suspended → Archived`",
+    "related_invariants": [
+      "INV-IDN-001",
+      "INV-IDN-002",
+      "INV-IDN-003",
+      "INV-IDN-004",
+      "INV-IDN-005",
+      "INV-IDN-006"
+    ],
+    "canonical_references": "none"
+  },
+  {
+    "capability_id": "CAP-IDN-005",
+    "capability_name": "CreateWorkspace",
+    "aggregate_root": "DOM-001 Organization",
+    "authority": "Governance Authority",
+    "lifecycle": "Organization has `Draft → Active → Suspended → Archived`",
+    "related_invariants": [
+      "INV-IDN-001",
+      "INV-IDN-002",
+      "INV-IDN-003",
+      "INV-IDN-004",
+      "INV-IDN-005",
+      "INV-IDN-006"
+    ],
+    "canonical_references": "none"
+  },
+  {
+    "capability_id": "CAP-IDN-006",
+    "capability_name": "InviteMember",
+    "aggregate_root": "DOM-001 Organization",
+    "authority": "Governance Authority",
+    "lifecycle": "Organization has `Draft → Active → Suspended → Archived`",
+    "related_invariants": [
+      "INV-IDN-001",
+      "INV-IDN-002",
+      "INV-IDN-003",
+      "INV-IDN-004",
+      "INV-IDN-005",
+      "INV-IDN-006"
+    ],
+    "canonical_references": "none"
+  },
+  {
+    "capability_id": "CAP-IDN-007",
+    "capability_name": "ActivateMembership",
+    "aggregate_root": "DOM-001 Organization",
+    "authority": "Governance Authority",
+    "lifecycle": "Organization has `Draft → Active → Suspended → Archived`",
+    "related_invariants": [
+      "INV-IDN-001",
+      "INV-IDN-002",
+      "INV-IDN-003",
+      "INV-IDN-004",
+      "INV-IDN-005",
+      "INV-IDN-006"
+    ],
+    "canonical_references": "none"
+  },
+  {
+    "capability_id": "CAP-IDN-008",
+    "capability_name": "SuspendMembership",
+    "aggregate_root": "DOM-001 Organization",
+    "authority": "Governance Authority",
+    "lifecycle": "Organization has `Draft → Active → Suspended → Archived`",
+    "related_invariants": [
+      "INV-IDN-001",
+      "INV-IDN-002",
+      "INV-IDN-003",
+      "INV-IDN-004",
+      "INV-IDN-005",
+      "INV-IDN-006"
+    ],
+    "canonical_references": "none"
+  },
+  {
+    "capability_id": "CAP-IDN-009",
+    "capability_name": "RevokeMembership",
+    "aggregate_root": "DOM-001 Organization",
+    "authority": "Governance Authority",
+    "lifecycle": "Organization has `Draft → Active → Suspended → Archived`",
+    "related_invariants": [
+      "INV-IDN-001",
+      "INV-IDN-002",
+      "INV-IDN-003",
+      "INV-IDN-004",
+      "INV-IDN-005",
+      "INV-IDN-006"
+    ],
+    "canonical_references": "none"
+  },
+  {
+    "capability_id": "CAP-KNW-001",
+    "capability_name": "CreateKnowledgeAsset",
+    "aggregate_root": "DOM-010 KnowledgeAsset",
+    "authority": "Knowledge Authority",
+    "lifecycle": "`Draft → Validated → Approved → Operational → Archived`",
+    "related_invariants": [
+      "INV-KNW-001",
+      "INV-KNW-002",
+      "INV-KNW-003",
+      "INV-KNW-004",
+      "INV-KNW-005",
+      "INV-KNW-006"
+    ],
+    "canonical_references": "none"
+  },
+  {
+    "capability_id": "CAP-KNW-002",
+    "capability_name": "ValidateKnowledgeAsset",
+    "aggregate_root": "DOM-010 KnowledgeAsset",
+    "authority": "Knowledge Authority",
+    "lifecycle": "`Draft → Validated → Approved → Operational → Archived`",
+    "related_invariants": [
+      "INV-KNW-001",
+      "INV-KNW-002",
+      "INV-KNW-003",
+      "INV-KNW-004",
+      "INV-KNW-005",
+      "INV-KNW-006"
+    ],
+    "canonical_references": "none"
+  },
+  {
+    "capability_id": "CAP-KNW-003",
+    "capability_name": "ApproveKnowledgeAsset",
+    "aggregate_root": "DOM-010 KnowledgeAsset",
+    "authority": "Knowledge Authority",
+    "lifecycle": "`Draft → Validated → Approved → Operational → Archived`",
+    "related_invariants": [
+      "INV-KNW-001",
+      "INV-KNW-002",
+      "INV-KNW-003",
+      "INV-KNW-004",
+      "INV-KNW-005",
+      "INV-KNW-006"
+    ],
+    "canonical_references": "none"
+  },
+  {
+    "capability_id": "CAP-KNW-004",
+    "capability_name": "OperationalizeKnowledgeAsset",
+    "aggregate_root": "DOM-010 KnowledgeAsset",
+    "authority": "Knowledge Authority",
+    "lifecycle": "`Draft → Validated → Approved → Operational → Archived`",
+    "related_invariants": [
+      "INV-KNW-001",
+      "INV-KNW-002",
+      "INV-KNW-003",
+      "INV-KNW-004",
+      "INV-KNW-005",
+      "INV-KNW-006"
+    ],
+    "canonical_references": "none"
+  },
+  {
+    "capability_id": "CAP-KNW-005",
+    "capability_name": "ArchiveKnowledgeAsset",
+    "aggregate_root": "DOM-010 KnowledgeAsset",
+    "authority": "Knowledge Authority",
+    "lifecycle": "`Draft → Validated → Approved → Operational → Archived`",
+    "related_invariants": [
+      "INV-KNW-001",
+      "INV-KNW-002",
+      "INV-KNW-003",
+      "INV-KNW-004",
+      "INV-KNW-005",
+      "INV-KNW-006"
+    ],
+    "canonical_references": "none"
+  },
+  {
+    "capability_id": "CAP-AGT-001",
+    "capability_name": "CreateAgent",
+    "aggregate_root": "DOM-020 Agent",
+    "authority": "Capability Authority",
+    "lifecycle": "`Draft → Approved → Active → Suspended → Archived`",
+    "related_invariants": [
+      "INV-AGT-001",
+      "INV-AGT-002",
+      "INV-AGT-003",
+      "INV-AGT-004",
+      "INV-AGT-005",
+      "INV-AGT-006"
+    ],
+    "canonical_references": "AuditRecordReference through Observability correlation only"
+  },
+  {
+    "capability_id": "CAP-AGT-002",
+    "capability_name": "ApproveAgent",
+    "aggregate_root": "DOM-020 Agent",
+    "authority": "Capability Authority",
+    "lifecycle": "`Draft → Approved → Active → Suspended → Archived`",
+    "related_invariants": [
+      "INV-AGT-001",
+      "INV-AGT-002",
+      "INV-AGT-003",
+      "INV-AGT-004",
+      "INV-AGT-005",
+      "INV-AGT-006"
+    ],
+    "canonical_references": "AuditRecordReference through Observability correlation only"
+  },
+  {
+    "capability_id": "CAP-AGT-003",
+    "capability_name": "BindCapability",
+    "aggregate_root": "DOM-020 Agent",
+    "authority": "Capability Authority",
+    "lifecycle": "`Draft → Approved → Active → Suspended → Archived`",
+    "related_invariants": [
+      "INV-AGT-001",
+      "INV-AGT-002",
+      "INV-AGT-003",
+      "INV-AGT-004",
+      "INV-AGT-005",
+      "INV-AGT-006"
+    ],
+    "canonical_references": "AuditRecordReference through Observability correlation only"
+  },
+  {
+    "capability_id": "CAP-AGT-004",
+    "capability_name": "ActivateAgent",
+    "aggregate_root": "DOM-020 Agent",
+    "authority": "Capability Authority",
+    "lifecycle": "`Draft → Approved → Active → Suspended → Archived`",
+    "related_invariants": [
+      "INV-AGT-001",
+      "INV-AGT-002",
+      "INV-AGT-003",
+      "INV-AGT-004",
+      "INV-AGT-005",
+      "INV-AGT-006"
+    ],
+    "canonical_references": "AuditRecordReference through Observability correlation only"
+  },
+  {
+    "capability_id": "CAP-AGT-005",
+    "capability_name": "SuspendAgent",
+    "aggregate_root": "DOM-020 Agent",
+    "authority": "Capability Authority",
+    "lifecycle": "`Draft → Approved → Active → Suspended → Archived`",
+    "related_invariants": [
+      "INV-AGT-001",
+      "INV-AGT-002",
+      "INV-AGT-003",
+      "INV-AGT-004",
+      "INV-AGT-005",
+      "INV-AGT-006"
+    ],
+    "canonical_references": "AuditRecordReference through Observability correlation only"
+  },
+  {
+    "capability_id": "CAP-AGT-006",
+    "capability_name": "ArchiveAgent",
+    "aggregate_root": "DOM-020 Agent",
+    "authority": "Capability Authority",
+    "lifecycle": "`Draft → Approved → Active → Suspended → Archived`",
+    "related_invariants": [
+      "INV-AGT-001",
+      "INV-AGT-002",
+      "INV-AGT-003",
+      "INV-AGT-004",
+      "INV-AGT-005",
+      "INV-AGT-006"
+    ],
+    "canonical_references": "AuditRecordReference through Observability correlation only"
+  },
+  {
+    "capability_id": "CAP-CON-001",
+    "capability_name": "OpenConversation",
+    "aggregate_root": "DOM-030 Conversation",
+    "authority": "Runtime Authority",
+    "lifecycle": "`Created → Active → Paused → Active → Closed → Archived`",
+    "related_invariants": [
+      "INV-CON-001",
+      "INV-CON-002",
+      "INV-CON-003",
+      "INV-CON-004",
+      "INV-CON-005"
+    ],
+    "canonical_references": "KnowledgeAssetReference, DecisionReference, ExecutionReference when applicable"
+  },
+  {
+    "capability_id": "CAP-CON-002",
+    "capability_name": "AppendMessage",
+    "aggregate_root": "DOM-030 Conversation",
+    "authority": "Runtime Authority",
+    "lifecycle": "`Created → Active → Paused → Active → Closed → Archived`",
+    "related_invariants": [
+      "INV-CON-001",
+      "INV-CON-002",
+      "INV-CON-003",
+      "INV-CON-004",
+      "INV-CON-005"
+    ],
+    "canonical_references": "KnowledgeAssetReference, DecisionReference, ExecutionReference when applicable"
+  },
+  {
+    "capability_id": "CAP-CON-003",
+    "capability_name": "ResolveContext",
+    "aggregate_root": "DOM-030 Conversation",
+    "authority": "Runtime Authority",
+    "lifecycle": "`Created → Active → Paused → Active → Closed → Archived`",
+    "related_invariants": [
+      "INV-CON-001",
+      "INV-CON-002",
+      "INV-CON-003",
+      "INV-CON-004",
+      "INV-CON-005"
+    ],
+    "canonical_references": "KnowledgeAssetReference, DecisionReference, ExecutionReference when applicable"
+  },
+  {
+    "capability_id": "CAP-CON-004",
+    "capability_name": "PauseConversation",
+    "aggregate_root": "DOM-030 Conversation",
+    "authority": "Runtime Authority",
+    "lifecycle": "`Created → Active → Paused → Active → Closed → Archived`",
+    "related_invariants": [
+      "INV-CON-001",
+      "INV-CON-002",
+      "INV-CON-003",
+      "INV-CON-004",
+      "INV-CON-005"
+    ],
+    "canonical_references": "KnowledgeAssetReference, DecisionReference, ExecutionReference when applicable"
+  },
+  {
+    "capability_id": "CAP-CON-005",
+    "capability_name": "ResumeConversation",
+    "aggregate_root": "DOM-030 Conversation",
+    "authority": "Runtime Authority",
+    "lifecycle": "`Created → Active → Paused → Active → Closed → Archived`",
+    "related_invariants": [
+      "INV-CON-001",
+      "INV-CON-002",
+      "INV-CON-003",
+      "INV-CON-004",
+      "INV-CON-005"
+    ],
+    "canonical_references": "KnowledgeAssetReference, DecisionReference, ExecutionReference when applicable"
+  },
+  {
+    "capability_id": "CAP-CON-006",
+    "capability_name": "CloseConversation",
+    "aggregate_root": "DOM-030 Conversation",
+    "authority": "Runtime Authority",
+    "lifecycle": "`Created → Active → Paused → Active → Closed → Archived`",
+    "related_invariants": [
+      "INV-CON-001",
+      "INV-CON-002",
+      "INV-CON-003",
+      "INV-CON-004",
+      "INV-CON-005"
+    ],
+    "canonical_references": "KnowledgeAssetReference, DecisionReference, ExecutionReference when applicable"
+  },
+  {
+    "capability_id": "CAP-CON-007",
+    "capability_name": "ArchiveConversation",
+    "aggregate_root": "DOM-030 Conversation",
+    "authority": "Runtime Authority",
+    "lifecycle": "`Created → Active → Paused → Active → Closed → Archived`",
+    "related_invariants": [
+      "INV-CON-001",
+      "INV-CON-002",
+      "INV-CON-003",
+      "INV-CON-004",
+      "INV-CON-005"
+    ],
+    "canonical_references": "KnowledgeAssetReference, DecisionReference, ExecutionReference when applicable"
+  },
+  {
+    "capability_id": "CAP-DEC-001",
+    "capability_name": "CreateDecision",
+    "aggregate_root": "DOM-040 Decision",
+    "authority": "Decision Authority",
+    "lifecycle": "`Draft → Under Review → Rejected → Archived` or `Draft → Under Review → Approved → Effective → Superseded → Archived`",
+    "related_invariants": [
+      "INV-DEC-001",
+      "INV-DEC-002",
+      "INV-DEC-003",
+      "INV-DEC-004",
+      "INV-DEC-005",
+      "INV-DEC-006",
+      "INV-DEC-007",
+      "INV-DEC-008"
+    ],
+    "canonical_references": "ConversationReference, KnowledgeAssetReference, ExecutionReference, AuditRecordReference"
+  },
+  {
+    "capability_id": "CAP-DEC-002",
+    "capability_name": "AttachEvidence",
+    "aggregate_root": "DOM-040 Decision",
+    "authority": "Decision Authority",
+    "lifecycle": "`Draft → Under Review → Rejected → Archived` or `Draft → Under Review → Approved → Effective → Superseded → Archived`",
+    "related_invariants": [
+      "INV-DEC-001",
+      "INV-DEC-002",
+      "INV-DEC-003",
+      "INV-DEC-004",
+      "INV-DEC-005",
+      "INV-DEC-006",
+      "INV-DEC-007",
+      "INV-DEC-008"
+    ],
+    "canonical_references": "ConversationReference, KnowledgeAssetReference, ExecutionReference, AuditRecordReference"
+  },
+  {
+    "capability_id": "CAP-DEC-003",
+    "capability_name": "SubmitDecisionReview",
+    "aggregate_root": "DOM-040 Decision",
+    "authority": "Decision Authority",
+    "lifecycle": "`Draft → Under Review → Rejected → Archived` or `Draft → Under Review → Approved → Effective → Superseded → Archived`",
+    "related_invariants": [
+      "INV-DEC-001",
+      "INV-DEC-002",
+      "INV-DEC-003",
+      "INV-DEC-004",
+      "INV-DEC-005",
+      "INV-DEC-006",
+      "INV-DEC-007",
+      "INV-DEC-008"
+    ],
+    "canonical_references": "ConversationReference, KnowledgeAssetReference, ExecutionReference, AuditRecordReference"
+  },
+  {
+    "capability_id": "CAP-DEC-004",
+    "capability_name": "ApproveDecision",
+    "aggregate_root": "DOM-040 Decision",
+    "authority": "Decision Authority",
+    "lifecycle": "`Draft → Under Review → Rejected → Archived` or `Draft → Under Review → Approved → Effective → Superseded → Archived`",
+    "related_invariants": [
+      "INV-DEC-001",
+      "INV-DEC-002",
+      "INV-DEC-003",
+      "INV-DEC-004",
+      "INV-DEC-005",
+      "INV-DEC-006",
+      "INV-DEC-007",
+      "INV-DEC-008"
+    ],
+    "canonical_references": "ConversationReference, KnowledgeAssetReference, ExecutionReference, AuditRecordReference"
+  },
+  {
+    "capability_id": "CAP-DEC-005",
+    "capability_name": "RejectDecision",
+    "aggregate_root": "DOM-040 Decision",
+    "authority": "Decision Authority",
+    "lifecycle": "`Draft → Under Review → Rejected → Archived` or `Draft → Under Review → Approved → Effective → Superseded → Archived`",
+    "related_invariants": [
+      "INV-DEC-001",
+      "INV-DEC-002",
+      "INV-DEC-003",
+      "INV-DEC-004",
+      "INV-DEC-005",
+      "INV-DEC-006",
+      "INV-DEC-007",
+      "INV-DEC-008"
+    ],
+    "canonical_references": "ConversationReference, KnowledgeAssetReference, ExecutionReference, AuditRecordReference"
+  },
+  {
+    "capability_id": "CAP-DEC-006",
+    "capability_name": "PublishDecision",
+    "aggregate_root": "DOM-040 Decision",
+    "authority": "Decision Authority",
+    "lifecycle": "`Draft → Under Review → Rejected → Archived` or `Draft → Under Review → Approved → Effective → Superseded → Archived`",
+    "related_invariants": [
+      "INV-DEC-001",
+      "INV-DEC-002",
+      "INV-DEC-003",
+      "INV-DEC-004",
+      "INV-DEC-005",
+      "INV-DEC-006",
+      "INV-DEC-007",
+      "INV-DEC-008"
+    ],
+    "canonical_references": "ConversationReference, KnowledgeAssetReference, ExecutionReference, AuditRecordReference"
+  },
+  {
+    "capability_id": "CAP-DEC-007",
+    "capability_name": "SupersedeDecision",
+    "aggregate_root": "DOM-040 Decision",
+    "authority": "Decision Authority",
+    "lifecycle": "`Draft → Under Review → Rejected → Archived` or `Draft → Under Review → Approved → Effective → Superseded → Archived`",
+    "related_invariants": [
+      "INV-DEC-001",
+      "INV-DEC-002",
+      "INV-DEC-003",
+      "INV-DEC-004",
+      "INV-DEC-005",
+      "INV-DEC-006",
+      "INV-DEC-007",
+      "INV-DEC-008"
+    ],
+    "canonical_references": "ConversationReference, KnowledgeAssetReference, ExecutionReference, AuditRecordReference"
+  },
+  {
+    "capability_id": "CAP-DEC-008",
+    "capability_name": "ArchiveDecision",
+    "aggregate_root": "DOM-040 Decision",
+    "authority": "Decision Authority",
+    "lifecycle": "`Draft → Under Review → Rejected → Archived` or `Draft → Under Review → Approved → Effective → Superseded → Archived`",
+    "related_invariants": [
+      "INV-DEC-001",
+      "INV-DEC-002",
+      "INV-DEC-003",
+      "INV-DEC-004",
+      "INV-DEC-005",
+      "INV-DEC-006",
+      "INV-DEC-007",
+      "INV-DEC-008"
+    ],
+    "canonical_references": "ConversationReference, KnowledgeAssetReference, ExecutionReference, AuditRecordReference"
+  },
+  {
+    "capability_id": "CAP-EXE-001",
+    "capability_name": "PlanExecution",
+    "aggregate_root": "DOM-050 Execution",
+    "authority": "Runtime Authority",
+    "lifecycle": "`Planned → Authorized → Running → Completed → Verified → Archived`",
+    "related_invariants": [
+      "INV-EXE-001",
+      "INV-EXE-002",
+      "INV-EXE-003",
+      "INV-EXE-004",
+      "INV-EXE-005",
+      "INV-EXE-006",
+      "INV-EXE-007"
+    ],
+    "canonical_references": "DecisionReference, PolicyReference, KnowledgeAssetReference, AuditRecordReference"
+  },
+  {
+    "capability_id": "CAP-EXE-002",
+    "capability_name": "AuthorizeExecution",
+    "aggregate_root": "DOM-050 Execution",
+    "authority": "Runtime Authority",
+    "lifecycle": "`Planned → Authorized → Running → Completed → Verified → Archived`",
+    "related_invariants": [
+      "INV-EXE-001",
+      "INV-EXE-002",
+      "INV-EXE-003",
+      "INV-EXE-004",
+      "INV-EXE-005",
+      "INV-EXE-006",
+      "INV-EXE-007"
+    ],
+    "canonical_references": "DecisionReference, PolicyReference, KnowledgeAssetReference, AuditRecordReference"
+  },
+  {
+    "capability_id": "CAP-EXE-003",
+    "capability_name": "StartExecution",
+    "aggregate_root": "DOM-050 Execution",
+    "authority": "Runtime Authority",
+    "lifecycle": "`Planned → Authorized → Running → Completed → Verified → Archived`",
+    "related_invariants": [
+      "INV-EXE-001",
+      "INV-EXE-002",
+      "INV-EXE-003",
+      "INV-EXE-004",
+      "INV-EXE-005",
+      "INV-EXE-006",
+      "INV-EXE-007"
+    ],
+    "canonical_references": "DecisionReference, PolicyReference, KnowledgeAssetReference, AuditRecordReference"
+  },
+  {
+    "capability_id": "CAP-EXE-004",
+    "capability_name": "CompleteExecution",
+    "aggregate_root": "DOM-050 Execution",
+    "authority": "Runtime Authority",
+    "lifecycle": "`Planned → Authorized → Running → Completed → Verified → Archived`",
+    "related_invariants": [
+      "INV-EXE-001",
+      "INV-EXE-002",
+      "INV-EXE-003",
+      "INV-EXE-004",
+      "INV-EXE-005",
+      "INV-EXE-006",
+      "INV-EXE-007"
+    ],
+    "canonical_references": "DecisionReference, PolicyReference, KnowledgeAssetReference, AuditRecordReference"
+  },
+  {
+    "capability_id": "CAP-EXE-005",
+    "capability_name": "VerifyExecution",
+    "aggregate_root": "DOM-050 Execution",
+    "authority": "Runtime Authority",
+    "lifecycle": "`Planned → Authorized → Running → Completed → Verified → Archived`",
+    "related_invariants": [
+      "INV-EXE-001",
+      "INV-EXE-002",
+      "INV-EXE-003",
+      "INV-EXE-004",
+      "INV-EXE-005",
+      "INV-EXE-006",
+      "INV-EXE-007"
+    ],
+    "canonical_references": "DecisionReference, PolicyReference, KnowledgeAssetReference, AuditRecordReference"
+  },
+  {
+    "capability_id": "CAP-EXE-006",
+    "capability_name": "ArchiveExecution",
+    "aggregate_root": "DOM-050 Execution",
+    "authority": "Runtime Authority",
+    "lifecycle": "`Planned → Authorized → Running → Completed → Verified → Archived`",
+    "related_invariants": [
+      "INV-EXE-001",
+      "INV-EXE-002",
+      "INV-EXE-003",
+      "INV-EXE-004",
+      "INV-EXE-005",
+      "INV-EXE-006",
+      "INV-EXE-007"
+    ],
+    "canonical_references": "DecisionReference, PolicyReference, KnowledgeAssetReference, AuditRecordReference"
+  },
+  {
+    "capability_id": "CAP-EXE-007",
+    "capability_name": "PromoteArtifactToKnowledge",
+    "aggregate_root": "DOM-050 Execution",
+    "authority": "Runtime Authority",
+    "lifecycle": "`Planned → Authorized → Running → Completed → Verified → Archived`",
+    "related_invariants": [
+      "INV-EXE-001",
+      "INV-EXE-002",
+      "INV-EXE-003",
+      "INV-EXE-004",
+      "INV-EXE-005",
+      "INV-EXE-006",
+      "INV-EXE-007"
+    ],
+    "canonical_references": "DecisionReference, PolicyReference, KnowledgeAssetReference, AuditRecordReference"
+  },
+  {
+    "capability_id": "CAP-GOV-001",
+    "capability_name": "CreatePolicy",
+    "aggregate_root": "DOM-060 Policy",
+    "authority": "Governance Authority",
+    "lifecycle": "`Draft → Under Review → Rejected → Archived` or `Draft → Under Review → Approved → Effective → Superseded → Archived`",
+    "related_invariants": [
+      "INV-GOV-001",
+      "INV-GOV-002",
+      "INV-GOV-003",
+      "INV-GOV-004",
+      "INV-GOV-005",
+      "INV-GOV-006",
+      "INV-GOV-007"
+    ],
+    "canonical_references": "OrganizationReference, WorkspaceReference, AgentReference, CapabilityReference, DecisionReference, ExecutionReference"
+  },
+  {
+    "capability_id": "CAP-GOV-002",
+    "capability_name": "SubmitPolicyReview",
+    "aggregate_root": "DOM-060 Policy",
+    "authority": "Governance Authority",
+    "lifecycle": "`Draft → Under Review → Rejected → Archived` or `Draft → Under Review → Approved → Effective → Superseded → Archived`",
+    "related_invariants": [
+      "INV-GOV-001",
+      "INV-GOV-002",
+      "INV-GOV-003",
+      "INV-GOV-004",
+      "INV-GOV-005",
+      "INV-GOV-006",
+      "INV-GOV-007"
+    ],
+    "canonical_references": "OrganizationReference, WorkspaceReference, AgentReference, CapabilityReference, DecisionReference, ExecutionReference"
+  },
+  {
+    "capability_id": "CAP-GOV-003",
+    "capability_name": "ApprovePolicy",
+    "aggregate_root": "DOM-060 Policy",
+    "authority": "Governance Authority",
+    "lifecycle": "`Draft → Under Review → Rejected → Archived` or `Draft → Under Review → Approved → Effective → Superseded → Archived`",
+    "related_invariants": [
+      "INV-GOV-001",
+      "INV-GOV-002",
+      "INV-GOV-003",
+      "INV-GOV-004",
+      "INV-GOV-005",
+      "INV-GOV-006",
+      "INV-GOV-007"
+    ],
+    "canonical_references": "OrganizationReference, WorkspaceReference, AgentReference, CapabilityReference, DecisionReference, ExecutionReference"
+  },
+  {
+    "capability_id": "CAP-GOV-004",
+    "capability_name": "RejectPolicy",
+    "aggregate_root": "DOM-060 Policy",
+    "authority": "Governance Authority",
+    "lifecycle": "`Draft → Under Review → Rejected → Archived` or `Draft → Under Review → Approved → Effective → Superseded → Archived`",
+    "related_invariants": [
+      "INV-GOV-001",
+      "INV-GOV-002",
+      "INV-GOV-003",
+      "INV-GOV-004",
+      "INV-GOV-005",
+      "INV-GOV-006",
+      "INV-GOV-007"
+    ],
+    "canonical_references": "OrganizationReference, WorkspaceReference, AgentReference, CapabilityReference, DecisionReference, ExecutionReference"
+  },
+  {
+    "capability_id": "CAP-GOV-005",
+    "capability_name": "PublishPolicy",
+    "aggregate_root": "DOM-060 Policy",
+    "authority": "Governance Authority",
+    "lifecycle": "`Draft → Under Review → Rejected → Archived` or `Draft → Under Review → Approved → Effective → Superseded → Archived`",
+    "related_invariants": [
+      "INV-GOV-001",
+      "INV-GOV-002",
+      "INV-GOV-003",
+      "INV-GOV-004",
+      "INV-GOV-005",
+      "INV-GOV-006",
+      "INV-GOV-007"
+    ],
+    "canonical_references": "OrganizationReference, WorkspaceReference, AgentReference, CapabilityReference, DecisionReference, ExecutionReference"
+  },
+  {
+    "capability_id": "CAP-GOV-006",
+    "capability_name": "SupersedePolicy",
+    "aggregate_root": "DOM-060 Policy",
+    "authority": "Governance Authority",
+    "lifecycle": "`Draft → Under Review → Rejected → Archived` or `Draft → Under Review → Approved → Effective → Superseded → Archived`",
+    "related_invariants": [
+      "INV-GOV-001",
+      "INV-GOV-002",
+      "INV-GOV-003",
+      "INV-GOV-004",
+      "INV-GOV-005",
+      "INV-GOV-006",
+      "INV-GOV-007"
+    ],
+    "canonical_references": "OrganizationReference, WorkspaceReference, AgentReference, CapabilityReference, DecisionReference, ExecutionReference"
+  },
+  {
+    "capability_id": "CAP-GOV-007",
+    "capability_name": "DelegateAuthority",
+    "aggregate_root": "DOM-060 Policy",
+    "authority": "Governance Authority",
+    "lifecycle": "`Draft → Under Review → Rejected → Archived` or `Draft → Under Review → Approved → Effective → Superseded → Archived`",
+    "related_invariants": [
+      "INV-GOV-001",
+      "INV-GOV-002",
+      "INV-GOV-003",
+      "INV-GOV-004",
+      "INV-GOV-005",
+      "INV-GOV-006",
+      "INV-GOV-007"
+    ],
+    "canonical_references": "OrganizationReference, WorkspaceReference, AgentReference, CapabilityReference, DecisionReference, ExecutionReference"
+  },
+  {
+    "capability_id": "CAP-GOV-008",
+    "capability_name": "RevokeDelegation",
+    "aggregate_root": "DOM-060 Policy",
+    "authority": "Governance Authority",
+    "lifecycle": "`Draft → Under Review → Rejected → Archived` or `Draft → Under Review → Approved → Effective → Superseded → Archived`",
+    "related_invariants": [
+      "INV-GOV-001",
+      "INV-GOV-002",
+      "INV-GOV-003",
+      "INV-GOV-004",
+      "INV-GOV-005",
+      "INV-GOV-006",
+      "INV-GOV-007"
+    ],
+    "canonical_references": "OrganizationReference, WorkspaceReference, AgentReference, CapabilityReference, DecisionReference, ExecutionReference"
+  },
+  {
+    "capability_id": "CAP-GOV-009",
+    "capability_name": "ArchivePolicy",
+    "aggregate_root": "DOM-060 Policy",
+    "authority": "Governance Authority",
+    "lifecycle": "`Draft → Under Review → Rejected → Archived` or `Draft → Under Review → Approved → Effective → Superseded → Archived`",
+    "related_invariants": [
+      "INV-GOV-001",
+      "INV-GOV-002",
+      "INV-GOV-003",
+      "INV-GOV-004",
+      "INV-GOV-005",
+      "INV-GOV-006",
+      "INV-GOV-007"
+    ],
+    "canonical_references": "OrganizationReference, WorkspaceReference, AgentReference, CapabilityReference, DecisionReference, ExecutionReference"
+  },
+  {
+    "capability_id": "CAP-OBS-001",
+    "capability_name": "RegisterAuditRecord",
+    "aggregate_root": "DOM-070 AuditRecord",
+    "authority": "Observability Authority",
+    "lifecycle": "`Registered → Validated → Retained → Archived`",
+    "related_invariants": [
+      "INV-OBS-001",
+      "INV-OBS-002",
+      "INV-OBS-003",
+      "INV-OBS-004",
+      "INV-OBS-005",
+      "INV-OBS-006",
+      "INV-OBS-007"
+    ],
+    "canonical_references": "DecisionReference, ExecutionReference, KnowledgeAssetReference, PolicyReference"
+  },
+  {
+    "capability_id": "CAP-OBS-002",
+    "capability_name": "ValidateEvidence",
+    "aggregate_root": "DOM-070 AuditRecord",
+    "authority": "Observability Authority",
+    "lifecycle": "`Registered → Validated → Retained → Archived`",
+    "related_invariants": [
+      "INV-OBS-001",
+      "INV-OBS-002",
+      "INV-OBS-003",
+      "INV-OBS-004",
+      "INV-OBS-005",
+      "INV-OBS-006",
+      "INV-OBS-007"
+    ],
+    "canonical_references": "DecisionReference, ExecutionReference, KnowledgeAssetReference, PolicyReference"
+  },
+  {
+    "capability_id": "CAP-OBS-003",
+    "capability_name": "CorrelateEvidence",
+    "aggregate_root": "DOM-070 AuditRecord",
+    "authority": "Observability Authority",
+    "lifecycle": "`Registered → Validated → Retained → Archived`",
+    "related_invariants": [
+      "INV-OBS-001",
+      "INV-OBS-002",
+      "INV-OBS-003",
+      "INV-OBS-004",
+      "INV-OBS-005",
+      "INV-OBS-006",
+      "INV-OBS-007"
+    ],
+    "canonical_references": "DecisionReference, ExecutionReference, KnowledgeAssetReference, PolicyReference"
+  },
+  {
+    "capability_id": "CAP-OBS-004",
+    "capability_name": "ApplyRetentionPolicy",
+    "aggregate_root": "DOM-070 AuditRecord",
+    "authority": "Observability Authority",
+    "lifecycle": "`Registered → Validated → Retained → Archived`",
+    "related_invariants": [
+      "INV-OBS-001",
+      "INV-OBS-002",
+      "INV-OBS-003",
+      "INV-OBS-004",
+      "INV-OBS-005",
+      "INV-OBS-006",
+      "INV-OBS-007"
+    ],
+    "canonical_references": "DecisionReference, ExecutionReference, KnowledgeAssetReference, PolicyReference"
+  },
+  {
+    "capability_id": "CAP-OBS-005",
+    "capability_name": "ArchiveEvidence",
+    "aggregate_root": "DOM-070 AuditRecord",
+    "authority": "Observability Authority",
+    "lifecycle": "`Registered → Validated → Retained → Archived`",
+    "related_invariants": [
+      "INV-OBS-001",
+      "INV-OBS-002",
+      "INV-OBS-003",
+      "INV-OBS-004",
+      "INV-OBS-005",
+      "INV-OBS-006",
+      "INV-OBS-007"
+    ],
+    "canonical_references": "DecisionReference, ExecutionReference, KnowledgeAssetReference, PolicyReference"
+  }
+]
