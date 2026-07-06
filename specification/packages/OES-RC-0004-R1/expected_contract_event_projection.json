@@ -1,0 +1,4412 @@
+[
+  {
+    "capability_id": "CAP-IDN-001",
+    "capability_name": "CreateOrganization",
+    "domain": "Identity Domain",
+    "aggregate_root": "DOM-001 Organization",
+    "authority": "Governance Authority",
+    "category": "Operational",
+    "command_contract": {
+      "contract_id": "CON-IDN-001",
+      "name": "CreateOrganizationCommand",
+      "type": "command",
+      "capability_id": "CAP-IDN-001",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "OrganizationReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Organization profile",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-IDN-001",
+      "name": "OrganizationCreated",
+      "type": "domain_event",
+      "capability_id": "CAP-IDN-001",
+      "produced_reference_types": [
+        "OrganizationReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Organization exists with unique ID.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Governance Authority",
+      "preconditions": "Applicable policy/authority `Governance Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-IDN-001",
+        "INV-IDN-002",
+        "INV-IDN-003",
+        "INV-IDN-004",
+        "INV-IDN-005",
+        "INV-IDN-006"
+      ],
+      "traceability": "OES-005::Identity Domain::CAP-IDN-001"
+    }
+  },
+  {
+    "capability_id": "CAP-IDN-002",
+    "capability_name": "ActivateOrganization",
+    "domain": "Identity Domain",
+    "aggregate_root": "DOM-001 Organization",
+    "authority": "Governance Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-IDN-002",
+      "name": "ActivateOrganizationCommand",
+      "type": "command",
+      "capability_id": "CAP-IDN-002",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "OrganizationReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Organization Draft",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-IDN-002",
+      "name": "OrganizationActivated",
+      "type": "domain_event",
+      "capability_id": "CAP-IDN-002",
+      "produced_reference_types": [
+        "OrganizationReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Organization is active and auditable.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Governance Authority",
+      "preconditions": "`Organization` must be available and the applicable policy/authority `Governance Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-IDN-001",
+        "INV-IDN-002",
+        "INV-IDN-003",
+        "INV-IDN-004",
+        "INV-IDN-005",
+        "INV-IDN-006"
+      ],
+      "traceability": "OES-005::Identity Domain::CAP-IDN-002"
+    }
+  },
+  {
+    "capability_id": "CAP-IDN-003",
+    "capability_name": "SuspendOrganization",
+    "domain": "Identity Domain",
+    "aggregate_root": "DOM-001 Organization",
+    "authority": "Governance Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-IDN-003",
+      "name": "SuspendOrganizationCommand",
+      "type": "command",
+      "capability_id": "CAP-IDN-003",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "OrganizationReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Organization Active",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-IDN-003",
+      "name": "OrganizationSuspended",
+      "type": "domain_event",
+      "capability_id": "CAP-IDN-003",
+      "produced_reference_types": [
+        "OrganizationReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Organization is suspended with rationale.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Governance Authority",
+      "preconditions": "`Organization` must be available and the applicable policy/authority `Governance Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-IDN-001",
+        "INV-IDN-002",
+        "INV-IDN-003",
+        "INV-IDN-004",
+        "INV-IDN-005",
+        "INV-IDN-006"
+      ],
+      "traceability": "OES-005::Identity Domain::CAP-IDN-003"
+    }
+  },
+  {
+    "capability_id": "CAP-IDN-004",
+    "capability_name": "ArchiveOrganization",
+    "domain": "Identity Domain",
+    "aggregate_root": "DOM-001 Organization",
+    "authority": "Governance Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-IDN-004",
+      "name": "ArchiveOrganizationCommand",
+      "type": "command",
+      "capability_id": "CAP-IDN-004",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "OrganizationReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Organization terminal",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-IDN-004",
+      "name": "OrganizationArchived",
+      "type": "domain_event",
+      "capability_id": "CAP-IDN-004",
+      "produced_reference_types": [
+        "OrganizationReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Organization remains retrievable by policy.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Governance Authority",
+      "preconditions": "`Organization` must be available and the applicable policy/authority `Retention Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-IDN-001",
+        "INV-IDN-002",
+        "INV-IDN-003",
+        "INV-IDN-004",
+        "INV-IDN-005",
+        "INV-IDN-006"
+      ],
+      "traceability": "OES-005::Identity Domain::CAP-IDN-004"
+    }
+  },
+  {
+    "capability_id": "CAP-IDN-005",
+    "capability_name": "CreateWorkspace",
+    "domain": "Identity Domain",
+    "aggregate_root": "DOM-001 Organization",
+    "authority": "Governance Authority",
+    "category": "Operational",
+    "command_contract": {
+      "contract_id": "CON-IDN-005",
+      "name": "CreateWorkspaceCommand",
+      "type": "command",
+      "capability_id": "CAP-IDN-005",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "PolicyReference",
+        "WorkspaceReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Organization, workspace profile",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-IDN-005",
+      "name": "WorkspaceCreated",
+      "type": "domain_event",
+      "capability_id": "CAP-IDN-005",
+      "produced_reference_types": [
+        "WorkspaceReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Workspace belongs to one Organization.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Governance Authority",
+      "preconditions": "`Organization Active` must be available and the applicable policy/authority `Governance Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-IDN-001",
+        "INV-IDN-002",
+        "INV-IDN-003",
+        "INV-IDN-004",
+        "INV-IDN-005",
+        "INV-IDN-006"
+      ],
+      "traceability": "OES-005::Identity Domain::CAP-IDN-005"
+    }
+  },
+  {
+    "capability_id": "CAP-IDN-006",
+    "capability_name": "InviteMember",
+    "domain": "Identity Domain",
+    "aggregate_root": "DOM-001 Organization",
+    "authority": "Governance Authority",
+    "category": "Operational",
+    "command_contract": {
+      "contract_id": "CON-IDN-006",
+      "name": "InviteMemberCommand",
+      "type": "command",
+      "capability_id": "CAP-IDN-006",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "OrganizationReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Person, Organization/Workspace",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-IDN-006",
+      "name": "MemberInvited",
+      "type": "domain_event",
+      "capability_id": "CAP-IDN-006",
+      "produced_reference_types": [
+        "OrganizationReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Membership is pending and auditable.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Governance Authority",
+      "preconditions": "`Person, Organization` must be available and the applicable policy/authority `Governance Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-IDN-001",
+        "INV-IDN-002",
+        "INV-IDN-003",
+        "INV-IDN-004",
+        "INV-IDN-005",
+        "INV-IDN-006"
+      ],
+      "traceability": "OES-005::Identity Domain::CAP-IDN-006"
+    }
+  },
+  {
+    "capability_id": "CAP-IDN-007",
+    "capability_name": "ActivateMembership",
+    "domain": "Identity Domain",
+    "aggregate_root": "DOM-001 Organization",
+    "authority": "Governance Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-IDN-007",
+      "name": "ActivateMembershipCommand",
+      "type": "command",
+      "capability_id": "CAP-IDN-007",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "OrganizationReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Membership Pending",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-IDN-007",
+      "name": "MembershipActivated",
+      "type": "domain_event",
+      "capability_id": "CAP-IDN-007",
+      "produced_reference_types": [
+        "OrganizationReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Membership is active under valid policy.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Governance Authority",
+      "preconditions": "`Membership` must be available and the applicable policy/authority `Governance Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-IDN-001",
+        "INV-IDN-002",
+        "INV-IDN-003",
+        "INV-IDN-004",
+        "INV-IDN-005",
+        "INV-IDN-006"
+      ],
+      "traceability": "OES-005::Identity Domain::CAP-IDN-007"
+    }
+  },
+  {
+    "capability_id": "CAP-IDN-008",
+    "capability_name": "SuspendMembership",
+    "domain": "Identity Domain",
+    "aggregate_root": "DOM-001 Organization",
+    "authority": "Governance Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-IDN-008",
+      "name": "SuspendMembershipCommand",
+      "type": "command",
+      "capability_id": "CAP-IDN-008",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "OrganizationReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Membership Active",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-IDN-008",
+      "name": "MembershipSuspended",
+      "type": "domain_event",
+      "capability_id": "CAP-IDN-008",
+      "produced_reference_types": [
+        "OrganizationReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Membership is suspended with rationale.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Governance Authority",
+      "preconditions": "`Membership` must be available and the applicable policy/authority `Governance Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-IDN-001",
+        "INV-IDN-002",
+        "INV-IDN-003",
+        "INV-IDN-004",
+        "INV-IDN-005",
+        "INV-IDN-006"
+      ],
+      "traceability": "OES-005::Identity Domain::CAP-IDN-008"
+    }
+  },
+  {
+    "capability_id": "CAP-IDN-009",
+    "capability_name": "RevokeMembership",
+    "domain": "Identity Domain",
+    "aggregate_root": "DOM-001 Organization",
+    "authority": "Governance Authority",
+    "category": "Governance",
+    "command_contract": {
+      "contract_id": "CON-IDN-009",
+      "name": "RevokeMembershipCommand",
+      "type": "command",
+      "capability_id": "CAP-IDN-009",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "OrganizationReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Membership Active/Suspended",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-IDN-009",
+      "name": "MembershipRevoked",
+      "type": "domain_event",
+      "capability_id": "CAP-IDN-009",
+      "produced_reference_types": [
+        "OrganizationReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Membership no longer grants participation.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Governance Authority",
+      "preconditions": "`Membership` must be available and the applicable policy/authority `Governance Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-IDN-001",
+        "INV-IDN-002",
+        "INV-IDN-003",
+        "INV-IDN-004",
+        "INV-IDN-005",
+        "INV-IDN-006"
+      ],
+      "traceability": "OES-005::Identity Domain::CAP-IDN-009"
+    }
+  },
+  {
+    "capability_id": "CAP-KNW-001",
+    "capability_name": "CreateKnowledgeAsset",
+    "domain": "Knowledge Domain",
+    "aggregate_root": "DOM-010 KnowledgeAsset",
+    "authority": "Knowledge Authority",
+    "category": "Operational",
+    "command_contract": {
+      "contract_id": "CON-KNW-001",
+      "name": "CreateKnowledgeAssetCommand",
+      "type": "command",
+      "capability_id": "CAP-KNW-001",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Source, classification, content reference",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-KNW-001",
+      "name": "KnowledgeAssetCreated",
+      "type": "domain_event",
+      "capability_id": "CAP-KNW-001",
+      "produced_reference_types": [
+        "KnowledgeAssetReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Asset has ID, source and classification.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Knowledge Authority",
+      "preconditions": "`Organization` must be available and the applicable policy/authority `Knowledge Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-KNW-001",
+        "INV-KNW-002",
+        "INV-KNW-003",
+        "INV-KNW-004",
+        "INV-KNW-005",
+        "INV-KNW-006"
+      ],
+      "traceability": "OES-005::Knowledge Domain::CAP-KNW-001"
+    }
+  },
+  {
+    "capability_id": "CAP-KNW-002",
+    "capability_name": "ValidateKnowledgeAsset",
+    "domain": "Knowledge Domain",
+    "aggregate_root": "DOM-010 KnowledgeAsset",
+    "authority": "Knowledge Authority",
+    "category": "Validation",
+    "command_contract": {
+      "contract_id": "CON-KNW-002",
+      "name": "ValidateKnowledgeAssetCommand",
+      "type": "command",
+      "capability_id": "CAP-KNW-002",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "KnowledgeAsset Draft",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-KNW-002",
+      "name": "KnowledgeAssetValidated",
+      "type": "domain_event",
+      "capability_id": "CAP-KNW-002",
+      "produced_reference_types": [
+        "KnowledgeAssetReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Validation evidence is recorded.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Knowledge Authority",
+      "preconditions": "`KnowledgeAsset` must be available and the applicable policy/authority `Knowledge Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-KNW-001",
+        "INV-KNW-002",
+        "INV-KNW-003",
+        "INV-KNW-004",
+        "INV-KNW-005",
+        "INV-KNW-006"
+      ],
+      "traceability": "OES-005::Knowledge Domain::CAP-KNW-002"
+    }
+  },
+  {
+    "capability_id": "CAP-KNW-003",
+    "capability_name": "ApproveKnowledgeAsset",
+    "domain": "Knowledge Domain",
+    "aggregate_root": "DOM-010 KnowledgeAsset",
+    "authority": "Knowledge Authority",
+    "category": "Governance",
+    "command_contract": {
+      "contract_id": "CON-KNW-003",
+      "name": "ApproveKnowledgeAssetCommand",
+      "type": "command",
+      "capability_id": "CAP-KNW-003",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "KnowledgeAsset Validated",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-KNW-003",
+      "name": "KnowledgeAssetApproved",
+      "type": "domain_event",
+      "capability_id": "CAP-KNW-003",
+      "produced_reference_types": [
+        "KnowledgeAssetReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Approval is auditable.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Knowledge Authority",
+      "preconditions": "`Validation` must be available and the applicable policy/authority `Knowledge Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-KNW-001",
+        "INV-KNW-002",
+        "INV-KNW-003",
+        "INV-KNW-004",
+        "INV-KNW-005",
+        "INV-KNW-006"
+      ],
+      "traceability": "OES-005::Knowledge Domain::CAP-KNW-003"
+    }
+  },
+  {
+    "capability_id": "CAP-KNW-004",
+    "capability_name": "OperationalizeKnowledgeAsset",
+    "domain": "Knowledge Domain",
+    "aggregate_root": "DOM-010 KnowledgeAsset",
+    "authority": "Knowledge Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-KNW-004",
+      "name": "OperationalizeKnowledgeAssetCommand",
+      "type": "command",
+      "capability_id": "CAP-KNW-004",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "KnowledgeAsset Approved",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-KNW-004",
+      "name": "KnowledgeAssetOperationalized",
+      "type": "domain_event",
+      "capability_id": "CAP-KNW-004",
+      "produced_reference_types": [
+        "KnowledgeAssetReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Asset is available for authorized use.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Knowledge Authority",
+      "preconditions": "`Approved Asset` must be available and the applicable policy/authority `Knowledge Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-KNW-001",
+        "INV-KNW-002",
+        "INV-KNW-003",
+        "INV-KNW-004",
+        "INV-KNW-005",
+        "INV-KNW-006"
+      ],
+      "traceability": "OES-005::Knowledge Domain::CAP-KNW-004"
+    }
+  },
+  {
+    "capability_id": "CAP-KNW-005",
+    "capability_name": "ArchiveKnowledgeAsset",
+    "domain": "Knowledge Domain",
+    "aggregate_root": "DOM-010 KnowledgeAsset",
+    "authority": "Knowledge Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-KNW-005",
+      "name": "ArchiveKnowledgeAssetCommand",
+      "type": "command",
+      "capability_id": "CAP-KNW-005",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "KnowledgeAsset",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-KNW-005",
+      "name": "KnowledgeAssetArchived",
+      "type": "domain_event",
+      "capability_id": "CAP-KNW-005",
+      "produced_reference_types": [
+        "KnowledgeAssetReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Archived asset retains provenance.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Knowledge Authority",
+      "preconditions": "`KnowledgeAsset` must be available and the applicable policy/authority `Retention Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-KNW-001",
+        "INV-KNW-002",
+        "INV-KNW-003",
+        "INV-KNW-004",
+        "INV-KNW-005",
+        "INV-KNW-006"
+      ],
+      "traceability": "OES-005::Knowledge Domain::CAP-KNW-005"
+    }
+  },
+  {
+    "capability_id": "CAP-AGT-001",
+    "capability_name": "CreateAgent",
+    "domain": "Agent Domain",
+    "aggregate_root": "DOM-020 Agent",
+    "authority": "Capability Authority",
+    "category": "Operational",
+    "command_contract": {
+      "contract_id": "CON-AGT-001",
+      "name": "CreateAgentCommand",
+      "type": "command",
+      "capability_id": "CAP-AGT-001",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "AgentProfile",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-AGT-001",
+      "name": "AgentCreated",
+      "type": "domain_event",
+      "capability_id": "CAP-AGT-001",
+      "produced_reference_types": [
+        "AgentReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Agent has identity and profile.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Capability Authority",
+      "preconditions": "`Workspace` must be available and the applicable policy/authority `Capability Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-AGT-001",
+        "INV-AGT-002",
+        "INV-AGT-003",
+        "INV-AGT-004",
+        "INV-AGT-005",
+        "INV-AGT-006"
+      ],
+      "traceability": "OES-005::Agent Domain::CAP-AGT-001"
+    }
+  },
+  {
+    "capability_id": "CAP-AGT-002",
+    "capability_name": "ApproveAgent",
+    "domain": "Agent Domain",
+    "aggregate_root": "DOM-020 Agent",
+    "authority": "Capability Authority",
+    "category": "Governance",
+    "command_contract": {
+      "contract_id": "CON-AGT-002",
+      "name": "ApproveAgentCommand",
+      "type": "command",
+      "capability_id": "CAP-AGT-002",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Agent Draft",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-AGT-002",
+      "name": "AgentApproved",
+      "type": "domain_event",
+      "capability_id": "CAP-AGT-002",
+      "produced_reference_types": [
+        "AgentReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Approval recorded.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Capability Authority",
+      "preconditions": "`Agent` must be available and the applicable policy/authority `Capability Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-AGT-001",
+        "INV-AGT-002",
+        "INV-AGT-003",
+        "INV-AGT-004",
+        "INV-AGT-005",
+        "INV-AGT-006"
+      ],
+      "traceability": "OES-005::Agent Domain::CAP-AGT-002"
+    }
+  },
+  {
+    "capability_id": "CAP-AGT-003",
+    "capability_name": "BindCapability",
+    "domain": "Agent Domain",
+    "aggregate_root": "DOM-020 Agent",
+    "authority": "Capability Authority",
+    "category": "Governance",
+    "command_contract": {
+      "contract_id": "CON-AGT-003",
+      "name": "BindCapabilityCommand",
+      "type": "command",
+      "capability_id": "CAP-AGT-003",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Agent, Capability",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-AGT-003",
+      "name": "CapabilityBound",
+      "type": "domain_event",
+      "capability_id": "CAP-AGT-003",
+      "produced_reference_types": [
+        "AgentReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Agent can execute bound capability only.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Capability Authority",
+      "preconditions": "`Agent, Capability` must be available and the applicable policy/authority `Capability Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-AGT-001",
+        "INV-AGT-002",
+        "INV-AGT-003",
+        "INV-AGT-004",
+        "INV-AGT-005",
+        "INV-AGT-006"
+      ],
+      "traceability": "OES-005::Agent Domain::CAP-AGT-003"
+    }
+  },
+  {
+    "capability_id": "CAP-AGT-004",
+    "capability_name": "ActivateAgent",
+    "domain": "Agent Domain",
+    "aggregate_root": "DOM-020 Agent",
+    "authority": "Capability Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-AGT-004",
+      "name": "ActivateAgentCommand",
+      "type": "command",
+      "capability_id": "CAP-AGT-004",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Agent Approved",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-AGT-004",
+      "name": "AgentActivated",
+      "type": "domain_event",
+      "capability_id": "CAP-AGT-004",
+      "produced_reference_types": [
+        "AgentReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Agent active under policy.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Capability Authority",
+      "preconditions": "`Approved Agent` must be available and the applicable policy/authority `Capability Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-AGT-001",
+        "INV-AGT-002",
+        "INV-AGT-003",
+        "INV-AGT-004",
+        "INV-AGT-005",
+        "INV-AGT-006"
+      ],
+      "traceability": "OES-005::Agent Domain::CAP-AGT-004"
+    }
+  },
+  {
+    "capability_id": "CAP-AGT-005",
+    "capability_name": "SuspendAgent",
+    "domain": "Agent Domain",
+    "aggregate_root": "DOM-020 Agent",
+    "authority": "Capability Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-AGT-005",
+      "name": "SuspendAgentCommand",
+      "type": "command",
+      "capability_id": "CAP-AGT-005",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Agent Active",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-AGT-005",
+      "name": "AgentSuspended",
+      "type": "domain_event",
+      "capability_id": "CAP-AGT-005",
+      "produced_reference_types": [
+        "AgentReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Agent cannot execute capabilities.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Capability Authority",
+      "preconditions": "`Agent` must be available and the applicable policy/authority `Capability Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-AGT-001",
+        "INV-AGT-002",
+        "INV-AGT-003",
+        "INV-AGT-004",
+        "INV-AGT-005",
+        "INV-AGT-006"
+      ],
+      "traceability": "OES-005::Agent Domain::CAP-AGT-005"
+    }
+  },
+  {
+    "capability_id": "CAP-AGT-006",
+    "capability_name": "ArchiveAgent",
+    "domain": "Agent Domain",
+    "aggregate_root": "DOM-020 Agent",
+    "authority": "Capability Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-AGT-006",
+      "name": "ArchiveAgentCommand",
+      "type": "command",
+      "capability_id": "CAP-AGT-006",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Agent Suspended/Approved",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-AGT-006",
+      "name": "AgentArchived",
+      "type": "domain_event",
+      "capability_id": "CAP-AGT-006",
+      "produced_reference_types": [
+        "AgentReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Agent remains auditable and inactive.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Capability Authority",
+      "preconditions": "`Agent` must be available and the applicable policy/authority `Retention Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-AGT-001",
+        "INV-AGT-002",
+        "INV-AGT-003",
+        "INV-AGT-004",
+        "INV-AGT-005",
+        "INV-AGT-006"
+      ],
+      "traceability": "OES-005::Agent Domain::CAP-AGT-006"
+    }
+  },
+  {
+    "capability_id": "CAP-CON-001",
+    "capability_name": "OpenConversation",
+    "domain": "Conversation Domain",
+    "aggregate_root": "DOM-030 Conversation",
+    "authority": "Runtime Authority",
+    "category": "Operational",
+    "command_contract": {
+      "contract_id": "CON-CON-001",
+      "name": "OpenConversationCommand",
+      "type": "command",
+      "capability_id": "CAP-CON-001",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "ConversationReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Workspace, participant",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-CON-001",
+      "name": "ConversationCreated",
+      "type": "domain_event",
+      "capability_id": "CAP-CON-001",
+      "produced_reference_types": [
+        "ConversationReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Conversation has ID and participant.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Runtime Authority",
+      "preconditions": "`Workspace` must be available and the applicable policy/authority `Runtime Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-CON-001",
+        "INV-CON-002",
+        "INV-CON-003",
+        "INV-CON-004",
+        "INV-CON-005"
+      ],
+      "traceability": "OES-005::Conversation Domain::CAP-CON-001"
+    }
+  },
+  {
+    "capability_id": "CAP-CON-002",
+    "capability_name": "AppendMessage",
+    "domain": "Conversation Domain",
+    "aggregate_root": "DOM-030 Conversation",
+    "authority": "Runtime Authority",
+    "category": "Operational",
+    "command_contract": {
+      "contract_id": "CON-CON-002",
+      "name": "AppendMessageCommand",
+      "type": "command",
+      "capability_id": "CAP-CON-002",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "ConversationReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Conversation, message",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-CON-002",
+      "name": "MessageRecorded",
+      "type": "domain_event",
+      "capability_id": "CAP-CON-002",
+      "produced_reference_types": [
+        "ConversationReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Message belongs to one Conversation.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Runtime Authority",
+      "preconditions": "`Conversation` must be available and the applicable policy/authority `Runtime Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-CON-001",
+        "INV-CON-002",
+        "INV-CON-003",
+        "INV-CON-004",
+        "INV-CON-005"
+      ],
+      "traceability": "OES-005::Conversation Domain::CAP-CON-002"
+    }
+  },
+  {
+    "capability_id": "CAP-CON-003",
+    "capability_name": "ResolveContext",
+    "domain": "Conversation Domain",
+    "aggregate_root": "DOM-030 Conversation",
+    "authority": "Runtime Authority",
+    "category": "Coordination",
+    "command_contract": {
+      "contract_id": "CON-CON-003",
+      "name": "ResolveContextCommand",
+      "type": "command",
+      "capability_id": "CAP-CON-003",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "ConversationReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Conversation",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-CON-003",
+      "name": "ContextResolved",
+      "type": "domain_event",
+      "capability_id": "CAP-CON-003",
+      "produced_reference_types": [
+        "ConversationReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Context is consistent and authorized.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Runtime Authority",
+      "preconditions": "`Conversation, Knowledge refs` must be available and the applicable policy/authority `Runtime Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-CON-001",
+        "INV-CON-002",
+        "INV-CON-003",
+        "INV-CON-004",
+        "INV-CON-005"
+      ],
+      "traceability": "OES-005::Conversation Domain::CAP-CON-003"
+    }
+  },
+  {
+    "capability_id": "CAP-CON-004",
+    "capability_name": "PauseConversation",
+    "domain": "Conversation Domain",
+    "aggregate_root": "DOM-030 Conversation",
+    "authority": "Runtime Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-CON-004",
+      "name": "PauseConversationCommand",
+      "type": "command",
+      "capability_id": "CAP-CON-004",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "ConversationReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Conversation Active",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-CON-004",
+      "name": "ConversationPaused",
+      "type": "domain_event",
+      "capability_id": "CAP-CON-004",
+      "produced_reference_types": [
+        "ConversationReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Conversation cannot accept normal messages.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Runtime Authority",
+      "preconditions": "`Conversation` must be available and the applicable policy/authority `Runtime Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-CON-001",
+        "INV-CON-002",
+        "INV-CON-003",
+        "INV-CON-004",
+        "INV-CON-005"
+      ],
+      "traceability": "OES-005::Conversation Domain::CAP-CON-004"
+    }
+  },
+  {
+    "capability_id": "CAP-CON-005",
+    "capability_name": "ResumeConversation",
+    "domain": "Conversation Domain",
+    "aggregate_root": "DOM-030 Conversation",
+    "authority": "Runtime Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-CON-005",
+      "name": "ResumeConversationCommand",
+      "type": "command",
+      "capability_id": "CAP-CON-005",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "ConversationReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Conversation Paused",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-CON-005",
+      "name": "ConversationResumed",
+      "type": "domain_event",
+      "capability_id": "CAP-CON-005",
+      "produced_reference_types": [
+        "ConversationReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Conversation is active again.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Runtime Authority",
+      "preconditions": "`Conversation` must be available and the applicable policy/authority `Runtime Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-CON-001",
+        "INV-CON-002",
+        "INV-CON-003",
+        "INV-CON-004",
+        "INV-CON-005"
+      ],
+      "traceability": "OES-005::Conversation Domain::CAP-CON-005"
+    }
+  },
+  {
+    "capability_id": "CAP-CON-006",
+    "capability_name": "CloseConversation",
+    "domain": "Conversation Domain",
+    "aggregate_root": "DOM-030 Conversation",
+    "authority": "Runtime Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-CON-006",
+      "name": "CloseConversationCommand",
+      "type": "command",
+      "capability_id": "CAP-CON-006",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "ConversationReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Conversation Active/Paused",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-CON-006",
+      "name": "ConversationClosed",
+      "type": "domain_event",
+      "capability_id": "CAP-CON-006",
+      "produced_reference_types": [
+        "ConversationReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Conversation cannot accept normal messages.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Runtime Authority",
+      "preconditions": "`Conversation` must be available and the applicable policy/authority `Runtime Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-CON-001",
+        "INV-CON-002",
+        "INV-CON-003",
+        "INV-CON-004",
+        "INV-CON-005"
+      ],
+      "traceability": "OES-005::Conversation Domain::CAP-CON-006"
+    }
+  },
+  {
+    "capability_id": "CAP-CON-007",
+    "capability_name": "ArchiveConversation",
+    "domain": "Conversation Domain",
+    "aggregate_root": "DOM-030 Conversation",
+    "authority": "Runtime Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-CON-007",
+      "name": "ArchiveConversationCommand",
+      "type": "command",
+      "capability_id": "CAP-CON-007",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "ConversationReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Conversation Closed",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-CON-007",
+      "name": "ConversationArchived",
+      "type": "domain_event",
+      "capability_id": "CAP-CON-007",
+      "produced_reference_types": [
+        "ConversationReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Context remains retrievable by policy.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Runtime Authority",
+      "preconditions": "`Conversation` must be available and the applicable policy/authority `Retention Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-CON-001",
+        "INV-CON-002",
+        "INV-CON-003",
+        "INV-CON-004",
+        "INV-CON-005"
+      ],
+      "traceability": "OES-005::Conversation Domain::CAP-CON-007"
+    }
+  },
+  {
+    "capability_id": "CAP-DEC-001",
+    "capability_name": "CreateDecision",
+    "domain": "Decision Domain",
+    "aggregate_root": "DOM-040 Decision",
+    "authority": "Decision Authority",
+    "category": "Operational",
+    "command_contract": {
+      "contract_id": "CON-DEC-001",
+      "name": "CreateDecisionCommand",
+      "type": "command",
+      "capability_id": "CAP-DEC-001",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "ConversationReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Context, rationale draft",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-DEC-001",
+      "name": "DecisionCreated",
+      "type": "domain_event",
+      "capability_id": "CAP-DEC-001",
+      "produced_reference_types": [
+        "DecisionReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Draft has ID and context.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Decision Authority",
+      "preconditions": "`Conversation/Knowledge` must be available and the applicable policy/authority `Decision Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-DEC-001",
+        "INV-DEC-002",
+        "INV-DEC-003",
+        "INV-DEC-004",
+        "INV-DEC-005",
+        "INV-DEC-006",
+        "INV-DEC-007",
+        "INV-DEC-008"
+      ],
+      "traceability": "OES-005::Decision Domain::CAP-DEC-001"
+    }
+  },
+  {
+    "capability_id": "CAP-DEC-002",
+    "capability_name": "AttachEvidence",
+    "domain": "Decision Domain",
+    "aggregate_root": "DOM-040 Decision",
+    "authority": "Decision Authority",
+    "category": "Operational",
+    "command_contract": {
+      "contract_id": "CON-DEC-002",
+      "name": "AttachEvidenceCommand",
+      "type": "command",
+      "capability_id": "CAP-DEC-002",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "ConversationReference",
+        "EvidenceReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Decision, EvidenceReference",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-DEC-002",
+      "name": "EvidenceAttached",
+      "type": "domain_event",
+      "capability_id": "CAP-DEC-002",
+      "produced_reference_types": [
+        "EvidenceReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "EvidenceReference is valid and owned.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Decision Authority",
+      "preconditions": "`Evidence owner` must be available and the applicable policy/authority `Decision Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-DEC-001",
+        "INV-DEC-002",
+        "INV-DEC-003",
+        "INV-DEC-004",
+        "INV-DEC-005",
+        "INV-DEC-006",
+        "INV-DEC-007",
+        "INV-DEC-008"
+      ],
+      "traceability": "OES-005::Decision Domain::CAP-DEC-002"
+    }
+  },
+  {
+    "capability_id": "CAP-DEC-003",
+    "capability_name": "SubmitDecisionReview",
+    "domain": "Decision Domain",
+    "aggregate_root": "DOM-040 Decision",
+    "authority": "Decision Authority",
+    "category": "Operational",
+    "command_contract": {
+      "contract_id": "CON-DEC-003",
+      "name": "SubmitDecisionReviewCommand",
+      "type": "command",
+      "capability_id": "CAP-DEC-003",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "ConversationReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Decision Draft",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-DEC-003",
+      "name": "DecisionSubmitted",
+      "type": "domain_event",
+      "capability_id": "CAP-DEC-003",
+      "produced_reference_types": [
+        "DecisionReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Decision has minimum evidence and rationale.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Decision Authority",
+      "preconditions": "`Evidence, Rationale` must be available and the applicable policy/authority `Decision Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-DEC-001",
+        "INV-DEC-002",
+        "INV-DEC-003",
+        "INV-DEC-004",
+        "INV-DEC-005",
+        "INV-DEC-006",
+        "INV-DEC-007",
+        "INV-DEC-008"
+      ],
+      "traceability": "OES-005::Decision Domain::CAP-DEC-003"
+    }
+  },
+  {
+    "capability_id": "CAP-DEC-004",
+    "capability_name": "ApproveDecision",
+    "domain": "Decision Domain",
+    "aggregate_root": "DOM-040 Decision",
+    "authority": "Decision Authority",
+    "category": "Governance",
+    "command_contract": {
+      "contract_id": "CON-DEC-004",
+      "name": "ApproveDecisionCommand",
+      "type": "command",
+      "capability_id": "CAP-DEC-004",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "ConversationReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Decision Under Review",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-DEC-004",
+      "name": "DecisionApproved",
+      "type": "domain_event",
+      "capability_id": "CAP-DEC-004",
+      "produced_reference_types": [
+        "DecisionReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Approval is recorded; content immutable.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Decision Authority",
+      "preconditions": "`Review` must be available and the applicable policy/authority `Decision Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-DEC-001",
+        "INV-DEC-002",
+        "INV-DEC-003",
+        "INV-DEC-004",
+        "INV-DEC-005",
+        "INV-DEC-006",
+        "INV-DEC-007",
+        "INV-DEC-008"
+      ],
+      "traceability": "OES-005::Decision Domain::CAP-DEC-004"
+    }
+  },
+  {
+    "capability_id": "CAP-DEC-005",
+    "capability_name": "RejectDecision",
+    "domain": "Decision Domain",
+    "aggregate_root": "DOM-040 Decision",
+    "authority": "Decision Authority",
+    "category": "Governance",
+    "command_contract": {
+      "contract_id": "CON-DEC-005",
+      "name": "RejectDecisionCommand",
+      "type": "command",
+      "capability_id": "CAP-DEC-005",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "ConversationReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Decision Under Review",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-DEC-005",
+      "name": "DecisionRejected",
+      "type": "domain_event",
+      "capability_id": "CAP-DEC-005",
+      "produced_reference_types": [
+        "DecisionReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Rejection rationale is recorded.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Decision Authority",
+      "preconditions": "`Review` must be available and the applicable policy/authority `Decision Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-DEC-001",
+        "INV-DEC-002",
+        "INV-DEC-003",
+        "INV-DEC-004",
+        "INV-DEC-005",
+        "INV-DEC-006",
+        "INV-DEC-007",
+        "INV-DEC-008"
+      ],
+      "traceability": "OES-005::Decision Domain::CAP-DEC-005"
+    }
+  },
+  {
+    "capability_id": "CAP-DEC-006",
+    "capability_name": "PublishDecision",
+    "domain": "Decision Domain",
+    "aggregate_root": "DOM-040 Decision",
+    "authority": "Decision Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-DEC-006",
+      "name": "PublishDecisionCommand",
+      "type": "command",
+      "capability_id": "CAP-DEC-006",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "ConversationReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Decision Approved",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-DEC-006",
+      "name": "DecisionPublished",
+      "type": "domain_event",
+      "capability_id": "CAP-DEC-006",
+      "produced_reference_types": [
+        "DecisionReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "EffectiveDate is recorded.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Decision Authority",
+      "preconditions": "`Approval` must be available and the applicable policy/authority `Decision Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-DEC-001",
+        "INV-DEC-002",
+        "INV-DEC-003",
+        "INV-DEC-004",
+        "INV-DEC-005",
+        "INV-DEC-006",
+        "INV-DEC-007",
+        "INV-DEC-008"
+      ],
+      "traceability": "OES-005::Decision Domain::CAP-DEC-006"
+    }
+  },
+  {
+    "capability_id": "CAP-DEC-007",
+    "capability_name": "SupersedeDecision",
+    "domain": "Decision Domain",
+    "aggregate_root": "DOM-040 Decision",
+    "authority": "Decision Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-DEC-007",
+      "name": "SupersedeDecisionCommand",
+      "type": "command",
+      "capability_id": "CAP-DEC-007",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "ConversationReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Decision Effective, new Decision",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-DEC-007",
+      "name": "DecisionSuperseded",
+      "type": "domain_event",
+      "capability_id": "CAP-DEC-007",
+      "produced_reference_types": [
+        "DecisionReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Supersession reference is recorded.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Decision Authority",
+      "preconditions": "`New Decision` must be available and the applicable policy/authority `Decision Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-DEC-001",
+        "INV-DEC-002",
+        "INV-DEC-003",
+        "INV-DEC-004",
+        "INV-DEC-005",
+        "INV-DEC-006",
+        "INV-DEC-007",
+        "INV-DEC-008"
+      ],
+      "traceability": "OES-005::Decision Domain::CAP-DEC-007"
+    }
+  },
+  {
+    "capability_id": "CAP-DEC-008",
+    "capability_name": "ArchiveDecision",
+    "domain": "Decision Domain",
+    "aggregate_root": "DOM-040 Decision",
+    "authority": "Decision Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-DEC-008",
+      "name": "ArchiveDecisionCommand",
+      "type": "command",
+      "capability_id": "CAP-DEC-008",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "ConversationReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Decision terminal",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-DEC-008",
+      "name": "DecisionArchived",
+      "type": "domain_event",
+      "capability_id": "CAP-DEC-008",
+      "produced_reference_types": [
+        "DecisionReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Decision remains auditable.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Decision Authority",
+      "preconditions": "`Decision` must be available and the applicable policy/authority `Retention Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-DEC-001",
+        "INV-DEC-002",
+        "INV-DEC-003",
+        "INV-DEC-004",
+        "INV-DEC-005",
+        "INV-DEC-006",
+        "INV-DEC-007",
+        "INV-DEC-008"
+      ],
+      "traceability": "OES-005::Decision Domain::CAP-DEC-008"
+    }
+  },
+  {
+    "capability_id": "CAP-EXE-001",
+    "capability_name": "PlanExecution",
+    "domain": "Execution Domain",
+    "aggregate_root": "DOM-050 Execution",
+    "authority": "Runtime Authority",
+    "category": "Operational",
+    "command_contract": {
+      "contract_id": "CON-EXE-001",
+      "name": "PlanExecutionCommand",
+      "type": "command",
+      "capability_id": "CAP-EXE-001",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Decision/Policy",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-EXE-001",
+      "name": "ExecutionPlanned",
+      "type": "domain_event",
+      "capability_id": "CAP-EXE-001",
+      "produced_reference_types": [
+        "ExecutionReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Plan references authorizer.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Runtime Authority",
+      "preconditions": "`Decision/Policy` must be available and the applicable policy/authority `Runtime Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-EXE-001",
+        "INV-EXE-002",
+        "INV-EXE-003",
+        "INV-EXE-004",
+        "INV-EXE-005",
+        "INV-EXE-006",
+        "INV-EXE-007"
+      ],
+      "traceability": "OES-005::Execution Domain::CAP-EXE-001"
+    }
+  },
+  {
+    "capability_id": "CAP-EXE-002",
+    "capability_name": "AuthorizeExecution",
+    "domain": "Execution Domain",
+    "aggregate_root": "DOM-050 Execution",
+    "authority": "Runtime Authority",
+    "category": "Governance",
+    "command_contract": {
+      "contract_id": "CON-EXE-002",
+      "name": "AuthorizeExecutionCommand",
+      "type": "command",
+      "capability_id": "CAP-EXE-002",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Execution Planned",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-EXE-002",
+      "name": "ExecutionAuthorized",
+      "type": "domain_event",
+      "capability_id": "CAP-EXE-002",
+      "produced_reference_types": [
+        "ExecutionReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Authorization recorded.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Runtime Authority",
+      "preconditions": "`Plan` must be available and the applicable policy/authority `Runtime Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-EXE-001",
+        "INV-EXE-002",
+        "INV-EXE-003",
+        "INV-EXE-004",
+        "INV-EXE-005",
+        "INV-EXE-006",
+        "INV-EXE-007"
+      ],
+      "traceability": "OES-005::Execution Domain::CAP-EXE-002"
+    }
+  },
+  {
+    "capability_id": "CAP-EXE-003",
+    "capability_name": "StartExecution",
+    "domain": "Execution Domain",
+    "aggregate_root": "DOM-050 Execution",
+    "authority": "Runtime Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-EXE-003",
+      "name": "StartExecutionCommand",
+      "type": "command",
+      "capability_id": "CAP-EXE-003",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Execution Authorized",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-EXE-003",
+      "name": "ExecutionStarted",
+      "type": "domain_event",
+      "capability_id": "CAP-EXE-003",
+      "produced_reference_types": [
+        "ExecutionReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Running state recorded.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Runtime Authority",
+      "preconditions": "`Authorization` must be available and the applicable policy/authority `Runtime Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-EXE-001",
+        "INV-EXE-002",
+        "INV-EXE-003",
+        "INV-EXE-004",
+        "INV-EXE-005",
+        "INV-EXE-006",
+        "INV-EXE-007"
+      ],
+      "traceability": "OES-005::Execution Domain::CAP-EXE-003"
+    }
+  },
+  {
+    "capability_id": "CAP-EXE-004",
+    "capability_name": "CompleteExecution",
+    "domain": "Execution Domain",
+    "aggregate_root": "DOM-050 Execution",
+    "authority": "Runtime Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-EXE-004",
+      "name": "CompleteExecutionCommand",
+      "type": "command",
+      "capability_id": "CAP-EXE-004",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Execution Running",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-EXE-004",
+      "name": "ExecutionCompleted",
+      "type": "domain_event",
+      "capability_id": "CAP-EXE-004",
+      "produced_reference_types": [
+        "ExecutionReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Result and ExecutionEvidence recorded.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Runtime Authority",
+      "preconditions": "`Tasks` must be available and the applicable policy/authority `Runtime Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-EXE-001",
+        "INV-EXE-002",
+        "INV-EXE-003",
+        "INV-EXE-004",
+        "INV-EXE-005",
+        "INV-EXE-006",
+        "INV-EXE-007"
+      ],
+      "traceability": "OES-005::Execution Domain::CAP-EXE-004"
+    }
+  },
+  {
+    "capability_id": "CAP-EXE-005",
+    "capability_name": "VerifyExecution",
+    "domain": "Execution Domain",
+    "aggregate_root": "DOM-050 Execution",
+    "authority": "Runtime Authority",
+    "category": "Validation",
+    "command_contract": {
+      "contract_id": "CON-EXE-005",
+      "name": "VerifyExecutionCommand",
+      "type": "command",
+      "capability_id": "CAP-EXE-005",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Execution Completed",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-EXE-005",
+      "name": "ExecutionVerified",
+      "type": "domain_event",
+      "capability_id": "CAP-EXE-005",
+      "produced_reference_types": [
+        "ExecutionReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "ExecutionEvidence exists.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Runtime Authority",
+      "preconditions": "`Result, Evidence` must be available and the applicable policy/authority `Runtime Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-EXE-001",
+        "INV-EXE-002",
+        "INV-EXE-003",
+        "INV-EXE-004",
+        "INV-EXE-005",
+        "INV-EXE-006",
+        "INV-EXE-007"
+      ],
+      "traceability": "OES-005::Execution Domain::CAP-EXE-005"
+    }
+  },
+  {
+    "capability_id": "CAP-EXE-006",
+    "capability_name": "ArchiveExecution",
+    "domain": "Execution Domain",
+    "aggregate_root": "DOM-050 Execution",
+    "authority": "Runtime Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-EXE-006",
+      "name": "ArchiveExecutionCommand",
+      "type": "command",
+      "capability_id": "CAP-EXE-006",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Execution Verified",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-EXE-006",
+      "name": "ExecutionArchived",
+      "type": "domain_event",
+      "capability_id": "CAP-EXE-006",
+      "produced_reference_types": [
+        "ExecutionReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Audit trail preserved.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Runtime Authority",
+      "preconditions": "`Execution` must be available and the applicable policy/authority `Retention Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-EXE-001",
+        "INV-EXE-002",
+        "INV-EXE-003",
+        "INV-EXE-004",
+        "INV-EXE-005",
+        "INV-EXE-006",
+        "INV-EXE-007"
+      ],
+      "traceability": "OES-005::Execution Domain::CAP-EXE-006"
+    }
+  },
+  {
+    "capability_id": "CAP-EXE-007",
+    "capability_name": "PromoteArtifactToKnowledge",
+    "domain": "Execution Domain",
+    "aggregate_root": "DOM-050 Execution",
+    "authority": "Runtime Authority",
+    "category": "Operational",
+    "command_contract": {
+      "contract_id": "CON-EXE-007",
+      "name": "PromoteArtifactToKnowledgeCommand",
+      "type": "command",
+      "capability_id": "CAP-EXE-007",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "DecisionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Artifact, provenance",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-EXE-007",
+      "name": "ExecutionArtifactProduced",
+      "type": "domain_event",
+      "capability_id": "CAP-EXE-007",
+      "produced_reference_types": [
+        "KnowledgeAssetReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Promotion creates KnowledgeAsset via Knowledge capability.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Runtime Authority",
+      "preconditions": "`Execution Artifact` must be available and the applicable policy/authority `Knowledge Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-EXE-001",
+        "INV-EXE-002",
+        "INV-EXE-003",
+        "INV-EXE-004",
+        "INV-EXE-005",
+        "INV-EXE-006",
+        "INV-EXE-007"
+      ],
+      "traceability": "OES-005::Execution Domain::CAP-EXE-007"
+    }
+  },
+  {
+    "capability_id": "CAP-GOV-001",
+    "capability_name": "CreatePolicy",
+    "domain": "Governance Domain",
+    "aggregate_root": "DOM-060 Policy",
+    "authority": "Governance Authority",
+    "category": "Operational",
+    "command_contract": {
+      "contract_id": "CON-GOV-001",
+      "name": "CreatePolicyCommand",
+      "type": "command",
+      "capability_id": "CAP-GOV-001",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "CapabilityReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "OrganizationReference",
+        "PolicyReference",
+        "WorkspaceReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Scope, rules draft",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-GOV-001",
+      "name": "PolicyCreated",
+      "type": "domain_event",
+      "capability_id": "CAP-GOV-001",
+      "produced_reference_types": [
+        "PolicyReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Policy has ID and scope.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Governance Authority",
+      "preconditions": "`Organization` must be available and the applicable policy/authority `Governance Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-GOV-001",
+        "INV-GOV-002",
+        "INV-GOV-003",
+        "INV-GOV-004",
+        "INV-GOV-005",
+        "INV-GOV-006",
+        "INV-GOV-007"
+      ],
+      "traceability": "OES-005::Governance Domain::CAP-GOV-001"
+    }
+  },
+  {
+    "capability_id": "CAP-GOV-002",
+    "capability_name": "SubmitPolicyReview",
+    "domain": "Governance Domain",
+    "aggregate_root": "DOM-060 Policy",
+    "authority": "Governance Authority",
+    "category": "Operational",
+    "command_contract": {
+      "contract_id": "CON-GOV-002",
+      "name": "SubmitPolicyReviewCommand",
+      "type": "command",
+      "capability_id": "CAP-GOV-002",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "CapabilityReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "OrganizationReference",
+        "PolicyReference",
+        "WorkspaceReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Policy Draft",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-GOV-002",
+      "name": "PolicySubmitted",
+      "type": "domain_event",
+      "capability_id": "CAP-GOV-002",
+      "produced_reference_types": [
+        "PolicyReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Review state recorded.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Governance Authority",
+      "preconditions": "`Policy` must be available and the applicable policy/authority `Governance Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-GOV-001",
+        "INV-GOV-002",
+        "INV-GOV-003",
+        "INV-GOV-004",
+        "INV-GOV-005",
+        "INV-GOV-006",
+        "INV-GOV-007"
+      ],
+      "traceability": "OES-005::Governance Domain::CAP-GOV-002"
+    }
+  },
+  {
+    "capability_id": "CAP-GOV-003",
+    "capability_name": "ApprovePolicy",
+    "domain": "Governance Domain",
+    "aggregate_root": "DOM-060 Policy",
+    "authority": "Governance Authority",
+    "category": "Governance",
+    "command_contract": {
+      "contract_id": "CON-GOV-003",
+      "name": "ApprovePolicyCommand",
+      "type": "command",
+      "capability_id": "CAP-GOV-003",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "CapabilityReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "OrganizationReference",
+        "PolicyReference",
+        "WorkspaceReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Policy Under Review",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-GOV-003",
+      "name": "PolicyApproved",
+      "type": "domain_event",
+      "capability_id": "CAP-GOV-003",
+      "produced_reference_types": [
+        "PolicyReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Approval recorded.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Governance Authority",
+      "preconditions": "`Review` must be available and the applicable policy/authority `Governance Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-GOV-001",
+        "INV-GOV-002",
+        "INV-GOV-003",
+        "INV-GOV-004",
+        "INV-GOV-005",
+        "INV-GOV-006",
+        "INV-GOV-007"
+      ],
+      "traceability": "OES-005::Governance Domain::CAP-GOV-003"
+    }
+  },
+  {
+    "capability_id": "CAP-GOV-004",
+    "capability_name": "RejectPolicy",
+    "domain": "Governance Domain",
+    "aggregate_root": "DOM-060 Policy",
+    "authority": "Governance Authority",
+    "category": "Governance",
+    "command_contract": {
+      "contract_id": "CON-GOV-004",
+      "name": "RejectPolicyCommand",
+      "type": "command",
+      "capability_id": "CAP-GOV-004",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "CapabilityReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "OrganizationReference",
+        "PolicyReference",
+        "WorkspaceReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Policy Under Review",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-GOV-004",
+      "name": "PolicyRejected",
+      "type": "domain_event",
+      "capability_id": "CAP-GOV-004",
+      "produced_reference_types": [
+        "PolicyReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Rejection rationale recorded.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Governance Authority",
+      "preconditions": "`Review` must be available and the applicable policy/authority `Governance Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-GOV-001",
+        "INV-GOV-002",
+        "INV-GOV-003",
+        "INV-GOV-004",
+        "INV-GOV-005",
+        "INV-GOV-006",
+        "INV-GOV-007"
+      ],
+      "traceability": "OES-005::Governance Domain::CAP-GOV-004"
+    }
+  },
+  {
+    "capability_id": "CAP-GOV-005",
+    "capability_name": "PublishPolicy",
+    "domain": "Governance Domain",
+    "aggregate_root": "DOM-060 Policy",
+    "authority": "Governance Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-GOV-005",
+      "name": "PublishPolicyCommand",
+      "type": "command",
+      "capability_id": "CAP-GOV-005",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "CapabilityReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "OrganizationReference",
+        "PolicyReference",
+        "WorkspaceReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Policy Approved",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-GOV-005",
+      "name": "PolicyPublished",
+      "type": "domain_event",
+      "capability_id": "CAP-GOV-005",
+      "produced_reference_types": [
+        "PolicyReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Effective period recorded.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Governance Authority",
+      "preconditions": "`Approval` must be available and the applicable policy/authority `Governance Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-GOV-001",
+        "INV-GOV-002",
+        "INV-GOV-003",
+        "INV-GOV-004",
+        "INV-GOV-005",
+        "INV-GOV-006",
+        "INV-GOV-007"
+      ],
+      "traceability": "OES-005::Governance Domain::CAP-GOV-005"
+    }
+  },
+  {
+    "capability_id": "CAP-GOV-006",
+    "capability_name": "SupersedePolicy",
+    "domain": "Governance Domain",
+    "aggregate_root": "DOM-060 Policy",
+    "authority": "Governance Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-GOV-006",
+      "name": "SupersedePolicyCommand",
+      "type": "command",
+      "capability_id": "CAP-GOV-006",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "CapabilityReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "OrganizationReference",
+        "PolicyReference",
+        "WorkspaceReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Policy Effective, new Policy",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-GOV-006",
+      "name": "PolicySuperseded",
+      "type": "domain_event",
+      "capability_id": "CAP-GOV-006",
+      "produced_reference_types": [
+        "PolicyReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Supersession reference recorded.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Governance Authority",
+      "preconditions": "`New Policy` must be available and the applicable policy/authority `Governance Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-GOV-001",
+        "INV-GOV-002",
+        "INV-GOV-003",
+        "INV-GOV-004",
+        "INV-GOV-005",
+        "INV-GOV-006",
+        "INV-GOV-007"
+      ],
+      "traceability": "OES-005::Governance Domain::CAP-GOV-006"
+    }
+  },
+  {
+    "capability_id": "CAP-GOV-007",
+    "capability_name": "DelegateAuthority",
+    "domain": "Governance Domain",
+    "aggregate_root": "DOM-060 Policy",
+    "authority": "Governance Authority",
+    "category": "Governance",
+    "command_contract": {
+      "contract_id": "CON-GOV-007",
+      "name": "DelegateAuthorityCommand",
+      "type": "command",
+      "capability_id": "CAP-GOV-007",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "CapabilityReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "OrganizationReference",
+        "PolicyReference",
+        "WorkspaceReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Authority, delegate, scope",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-GOV-007",
+      "name": "DelegationGranted",
+      "type": "domain_event",
+      "capability_id": "CAP-GOV-007",
+      "produced_reference_types": [
+        "PolicyReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Delegation has explicit validity.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Governance Authority",
+      "preconditions": "`Policy` must be available and the applicable policy/authority `Governance Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-GOV-001",
+        "INV-GOV-002",
+        "INV-GOV-003",
+        "INV-GOV-004",
+        "INV-GOV-005",
+        "INV-GOV-006",
+        "INV-GOV-007"
+      ],
+      "traceability": "OES-005::Governance Domain::CAP-GOV-007"
+    }
+  },
+  {
+    "capability_id": "CAP-GOV-008",
+    "capability_name": "RevokeDelegation",
+    "domain": "Governance Domain",
+    "aggregate_root": "DOM-060 Policy",
+    "authority": "Governance Authority",
+    "category": "Governance",
+    "command_contract": {
+      "contract_id": "CON-GOV-008",
+      "name": "RevokeDelegationCommand",
+      "type": "command",
+      "capability_id": "CAP-GOV-008",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "CapabilityReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "OrganizationReference",
+        "PolicyReference",
+        "WorkspaceReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Delegation",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-GOV-008",
+      "name": "DelegationRevoked",
+      "type": "domain_event",
+      "capability_id": "CAP-GOV-008",
+      "produced_reference_types": [
+        "PolicyReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Revocation recorded.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Governance Authority",
+      "preconditions": "`Delegation` must be available and the applicable policy/authority `Governance Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-GOV-001",
+        "INV-GOV-002",
+        "INV-GOV-003",
+        "INV-GOV-004",
+        "INV-GOV-005",
+        "INV-GOV-006",
+        "INV-GOV-007"
+      ],
+      "traceability": "OES-005::Governance Domain::CAP-GOV-008"
+    }
+  },
+  {
+    "capability_id": "CAP-GOV-009",
+    "capability_name": "ArchivePolicy",
+    "domain": "Governance Domain",
+    "aggregate_root": "DOM-060 Policy",
+    "authority": "Governance Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-GOV-009",
+      "name": "ArchivePolicyCommand",
+      "type": "command",
+      "capability_id": "CAP-GOV-009",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "CapabilityReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "OrganizationReference",
+        "PolicyReference",
+        "WorkspaceReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Policy terminal",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-GOV-009",
+      "name": "PolicyArchived",
+      "type": "domain_event",
+      "capability_id": "CAP-GOV-009",
+      "produced_reference_types": [
+        "PolicyReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Policy remains auditable.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Governance Authority",
+      "preconditions": "`Policy` must be available and the applicable policy/authority `Retention Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-GOV-001",
+        "INV-GOV-002",
+        "INV-GOV-003",
+        "INV-GOV-004",
+        "INV-GOV-005",
+        "INV-GOV-006",
+        "INV-GOV-007"
+      ],
+      "traceability": "OES-005::Governance Domain::CAP-GOV-009"
+    }
+  },
+  {
+    "capability_id": "CAP-OBS-001",
+    "capability_name": "RegisterAuditRecord",
+    "domain": "Observability Domain",
+    "aggregate_root": "DOM-070 AuditRecord",
+    "authority": "Observability Authority",
+    "category": "Operational",
+    "command_contract": {
+      "contract_id": "CON-OBS-001",
+      "name": "RegisterAuditRecordCommand",
+      "type": "command",
+      "capability_id": "CAP-OBS-001",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "Context, evidence",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-OBS-001",
+      "name": "AuditRecordRegistered",
+      "type": "domain_event",
+      "capability_id": "CAP-OBS-001",
+      "produced_reference_types": [
+        "AuditRecordReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Record payload is immutable and correlated.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Observability Authority",
+      "preconditions": "`Origin aggregate` must be available and the applicable policy/authority `Observability Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-OBS-001",
+        "INV-OBS-002",
+        "INV-OBS-003",
+        "INV-OBS-004",
+        "INV-OBS-005",
+        "INV-OBS-006",
+        "INV-OBS-007"
+      ],
+      "traceability": "OES-005::Observability Domain::CAP-OBS-001"
+    }
+  },
+  {
+    "capability_id": "CAP-OBS-002",
+    "capability_name": "ValidateEvidence",
+    "domain": "Observability Domain",
+    "aggregate_root": "DOM-070 AuditRecord",
+    "authority": "Observability Authority",
+    "category": "Validation",
+    "command_contract": {
+      "contract_id": "CON-OBS-002",
+      "name": "ValidateEvidenceCommand",
+      "type": "command",
+      "capability_id": "CAP-OBS-002",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "AuditRecord",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-OBS-002",
+      "name": "EvidenceValidated",
+      "type": "domain_event",
+      "capability_id": "CAP-OBS-002",
+      "produced_reference_types": [
+        "AuditRecordReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Validation metadata recorded.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Observability Authority",
+      "preconditions": "`AuditRecord` must be available and the applicable policy/authority `Observability Authority` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-OBS-001",
+        "INV-OBS-002",
+        "INV-OBS-003",
+        "INV-OBS-004",
+        "INV-OBS-005",
+        "INV-OBS-006",
+        "INV-OBS-007"
+      ],
+      "traceability": "OES-005::Observability Domain::CAP-OBS-002"
+    }
+  },
+  {
+    "capability_id": "CAP-OBS-003",
+    "capability_name": "CorrelateEvidence",
+    "domain": "Observability Domain",
+    "aggregate_root": "DOM-070 AuditRecord",
+    "authority": "Observability Authority",
+    "category": "Coordination",
+    "command_contract": {
+      "contract_id": "CON-OBS-003",
+      "name": "CorrelateEvidenceCommand",
+      "type": "command",
+      "capability_id": "CAP-OBS-003",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "AuditRecords",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-OBS-003",
+      "name": "EvidenceCorrelated",
+      "type": "domain_event",
+      "capability_id": "CAP-OBS-003",
+      "produced_reference_types": [
+        "AuditRecordReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Correlation references origins.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Observability Authority",
+      "preconditions": "`Records` must be available and the applicable policy/authority `Observability Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-OBS-001",
+        "INV-OBS-002",
+        "INV-OBS-003",
+        "INV-OBS-004",
+        "INV-OBS-005",
+        "INV-OBS-006",
+        "INV-OBS-007"
+      ],
+      "traceability": "OES-005::Observability Domain::CAP-OBS-003"
+    }
+  },
+  {
+    "capability_id": "CAP-OBS-004",
+    "capability_name": "ApplyRetentionPolicy",
+    "domain": "Observability Domain",
+    "aggregate_root": "DOM-070 AuditRecord",
+    "authority": "Observability Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-OBS-004",
+      "name": "ApplyRetentionPolicyCommand",
+      "type": "command",
+      "capability_id": "CAP-OBS-004",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "AuditRecord",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-OBS-004",
+      "name": "RetentionApplied",
+      "type": "domain_event",
+      "capability_id": "CAP-OBS-004",
+      "produced_reference_types": [
+        "AuditRecordReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Retention class applied.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Observability Authority",
+      "preconditions": "`Policy` must be available and the applicable policy/authority `Retention Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-OBS-001",
+        "INV-OBS-002",
+        "INV-OBS-003",
+        "INV-OBS-004",
+        "INV-OBS-005",
+        "INV-OBS-006",
+        "INV-OBS-007"
+      ],
+      "traceability": "OES-005::Observability Domain::CAP-OBS-004"
+    }
+  },
+  {
+    "capability_id": "CAP-OBS-005",
+    "capability_name": "ArchiveEvidence",
+    "domain": "Observability Domain",
+    "aggregate_root": "DOM-070 AuditRecord",
+    "authority": "Observability Authority",
+    "category": "Lifecycle",
+    "command_contract": {
+      "contract_id": "CON-OBS-005",
+      "name": "ArchiveEvidenceCommand",
+      "type": "command",
+      "capability_id": "CAP-OBS-005",
+      "idempotency": {
+        "required": true,
+        "idempotency_key_scope": "capability_id + aggregate_reference + actor_agent_reference + request_intent",
+        "duplicate_handling": "return previously accepted command outcome when the semantic request is identical; reject conflicting duplicate keys"
+      },
+      "required_envelope_fields": [
+        "message_id",
+        "schema_version",
+        "capability_id",
+        "command_contract_id",
+        "idempotency_key",
+        "issued_at",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id"
+      ],
+      "reference_fields_allowed": [
+        "AgentReference",
+        "AuditRecordReference",
+        "DecisionReference",
+        "ExecutionReference",
+        "KnowledgeAssetReference",
+        "PolicyReference"
+      ],
+      "payload_source": {
+        "required_inputs": "AuditRecord Retained",
+        "optional_inputs": "none unless allowed by the governing policy."
+      }
+    },
+    "event_projection": {
+      "event_id": "EVT-OBS-005",
+      "name": "AuditRecordArchived",
+      "type": "domain_event",
+      "capability_id": "CAP-OBS-005",
+      "produced_reference_types": [
+        "AuditRecordReference"
+      ],
+      "required_envelope_fields": [
+        "event_message_id",
+        "schema_version",
+        "capability_id",
+        "event_id",
+        "occurred_at",
+        "aggregate_root",
+        "actor_agent_reference",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "postcondition_source": "Evidence remains retrievable by policy.",
+      "failure_model": "Failure outcomes are not domain-success events; failures must be audit-recorded with reason code and rejected command trace."
+    },
+    "governance_projection": {
+      "authority": "Observability Authority",
+      "preconditions": "`AuditRecord` must be available and the applicable policy/authority `Retention Policy` must be resolved.",
+      "failure_conditions": "Reject when required inputs are missing, policy/authority cannot be resolved, referenced concepts are unavailable, or related invariants would be violated.",
+      "related_invariants": [
+        "INV-OBS-001",
+        "INV-OBS-002",
+        "INV-OBS-003",
+        "INV-OBS-004",
+        "INV-OBS-005",
+        "INV-OBS-006",
+        "INV-OBS-007"
+      ],
+      "traceability": "OES-005::Observability Domain::CAP-OBS-005"
+    }
+  }
+]

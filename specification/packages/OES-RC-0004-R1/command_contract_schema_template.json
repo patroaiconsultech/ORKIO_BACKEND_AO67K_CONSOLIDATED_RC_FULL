@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "OES-007.CommandContractEnvelope",
+  "title": "OES-007 Command Contract Envelope",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "message_id",
+    "schema_version",
+    "capability_id",
+    "command_contract_id",
+    "idempotency_key",
+    "issued_at",
+    "actor_agent_reference",
+    "correlation_id",
+    "causation_id",
+    "payload"
+  ],
+  "properties": {
+    "message_id": {
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "0.1-rc-r1"
+    },
+    "capability_id": {
+      "type": "string",
+      "pattern": "^CAP-[A-Z]{3}-[0-9]{3}$"
+    },
+    "command_contract_id": {
+      "type": "string",
+      "pattern": "^CON-[A-Z]{3}-[0-9]{3}$"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 8
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "actor_agent_reference": {
+      "type": "string",
+      "description": "AgentReference"
+    },
+    "correlation_id": {
+      "type": "string"
+    },
+    "causation_id": {
+      "type": "string"
+    },
+    "payload": {
+      "type": "object"
+    }
+  }
+}

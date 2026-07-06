@@ -1,0 +1,25 @@
+release_candidate: OES-RC-0004-R1
+specification: OES-007_CONTRACT_EVENT_PROJECTION
+version: 0.1-rc-r1
+status: Release Candidate
+generated_from:
+  source_document: OES-006_CAPABILITY_CATALOG.md
+  source_version: 0.1-rc-r3
+  source_sha256: C17580C10C773B5D7917D35DE6A90C62919CA14A2670E4222AE971492CC3FC64
+counts:
+  capabilities_expected: 56
+  capabilities_projected: 56
+  command_contracts: 56
+  primary_events: 56
+scope:
+  runtime_changes: false
+  api_changes: false
+  database_changes: false
+  infrastructure_changes: false
+  specification_only: true
+vocabulary:
+  size: 11
+  closure_required: true
+audit:
+  required: true
+  mode: READONLY_AUDIT

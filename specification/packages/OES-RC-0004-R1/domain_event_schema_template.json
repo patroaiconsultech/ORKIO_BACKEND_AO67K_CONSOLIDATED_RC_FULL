@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "OES-007.DomainEventEnvelope",
+  "title": "OES-007 Domain Event Envelope",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "event_message_id",
+    "schema_version",
+    "capability_id",
+    "event_id",
+    "occurred_at",
+    "aggregate_root",
+    "actor_agent_reference",
+    "correlation_id",
+    "causation_id",
+    "audit_record_reference",
+    "produced_references"
+  ],
+  "properties": {
+    "event_message_id": {
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "0.1-rc-r1"
+    },
+    "capability_id": {
+      "type": "string",
+      "pattern": "^CAP-[A-Z]{3}-[0-9]{3}$"
+    },
+    "event_id": {
+      "type": "string",
+      "pattern": "^EVT-[A-Z]{3}-[0-9]{3}$"
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "aggregate_root": {
+      "type": "string"
+    },
+    "actor_agent_reference": {
+      "type": "string",
+      "description": "AgentReference"
+    },
+    "correlation_id": {
+      "type": "string"
+    },
+    "causation_id": {
+      "type": "string"
+    },
+    "audit_record_reference": {
+      "type": "string",
+      "description": "AuditRecordReference"
+    },
+    "produced_references": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
