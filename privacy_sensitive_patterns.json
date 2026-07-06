@@ -1,0 +1,38 @@
+{
+  "allowed_control_field_names": [
+    "raw_content_included",
+    "raw_content_allowed"
+  ],
+  "forbidden_field_names": [
+    "raw_content",
+    "source_content",
+    "conversation_text",
+    "message_text",
+    "export_payload",
+    "private_link",
+    "credential",
+    "token",
+    "secret",
+    "password"
+  ],
+  "forbidden_path_parts": [
+    "private_raw",
+    "raw_export",
+    "account_export",
+    "chatgpt_export",
+    "gdrive_raw",
+    "drive_raw",
+    "memory_dump",
+    "conversation_dump",
+    "credential_dump"
+  ],
+  "sensitive_patterns": {
+    "api_key_like": "(?i)(api[_-]?key|secret|token|password)\\s*[:=]\\s*['\\\"]?[A-Za-z0-9_\\-]{16,}",
+    "aws_access_key": "AKIA[0-9A-Z]{16}",
+    "cpf_like": "\\b\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2}\\b",
+    "email": "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}",
+    "openai_export_file": "conversations\\.json|message\\.json|user\\.json",
+    "openai_key": "sk-[A-Za-z0-9]{20,}",
+    "private_drive_url": "https?://(?:docs|drive)\\.google\\.com/[^\\s)]+"
+  }
+}

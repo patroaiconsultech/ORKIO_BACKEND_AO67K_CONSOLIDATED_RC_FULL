@@ -1,0 +1,28 @@
+{
+  "decision_log_id": "TRIAGE_DECISION_LOG_TEMPLATE_OES008_R3",
+  "records": [
+    {
+      "allowed_destinations": [
+        "destination"
+      ],
+      "approved_use": "Describe exact allowed use without private content.",
+      "approver": "Founder",
+      "auditor": "Independent Engineering Auditor",
+      "classification": "PUBLIC|INTERNAL|FOUNDER_PRIVATE|SENSITIVE|STRATEGIC_CONFIDENTIAL|DO_NOT_USE",
+      "content_pointer": "redacted_pointer_or_section_id_only",
+      "decided_at": "RFC3339 timestamp",
+      "decision_id": "TRIAGE-YYYYMMDD-0001",
+      "decision_status": "PENDING|APPROVED|REJECTED|QUARANTINED",
+      "disallowed_destinations": [
+        "public_repository_if_not_public"
+      ],
+      "learning_signal_allowed": false,
+      "learning_signal_id": "optional_safe_lesson_id",
+      "raw_content_stored_in_public_repo": false,
+      "sanitization_required": true,
+      "sanitization_summary": "Describe what was removed or generalized without exposing private content.",
+      "sensitive_content_included": false,
+      "source_id": "SOURCE-ID"
+    }
+  ]
+}

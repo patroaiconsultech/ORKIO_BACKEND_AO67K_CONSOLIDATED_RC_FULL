@@ -1,0 +1,51 @@
+release_candidate: OES-RC-0005-R4
+specification: OES-008_FOUNDER_CONTEXT_TRIAGE_USAGE_GOVERNANCE
+version: 0.1-rc-r4
+status: Release Candidate
+generated_from:
+  source_document: OES-007_CONTRACT_EVENT_PROJECTION.md
+  source_document_version: 0.1-rc-r1
+  source_document_sha256: C67F471AAA59D0EAF57F791ED43679D0714D990903CC927A4FAE18DCD8A88B26
+  source_backend_zip: ORKIO_BACKEND_AO67K_CONSOLIDATED_RC_FULL-main__OES007_RC0004_R1_APPLIED.zip
+  source_backend_zip_sha256: 06F36CCA65130F685FF47821C1B5ABE484F60996EEEEAB1A0B7E1A82C22A39C1
+  source_repo_ready_zip: OES-RC-0004-R1_CONTRACT_EVENT_PROJECTION_REPO_READY.zip
+  source_repo_ready_zip_sha256: 68BB3092CF54758597E5A90A8C6016397CCB6BC5CAD23321CBF728537E0E9A28
+dependencies:
+  oes006_document_sha256: C17580C10C773B5D7917D35DE6A90C62919CA14A2670E4222AE971492CC3FC64
+  oes007_document_sha256: C67F471AAA59D0EAF57F791ED43679D0714D990903CC927A4FAE18DCD8A88B26
+  oes007_backend_zip_sha256: 06F36CCA65130F685FF47821C1B5ABE484F60996EEEEAB1A0B7E1A82C22A39C1
+scope:
+  runtime_changes: false
+  api_changes: false
+  database_changes: false
+  infrastructure_changes: false
+  specification_only: true
+privacy:
+  raw_private_content_included: false
+  google_drive_raw_content_included: false
+  chatgpt_export_raw_content_included: false
+  public_repository_safe: true
+  founder_approval_required_for_use: true
+  default_usage_state: DENY_BY_DEFAULT
+  source_candidate_content_access_allowed: false
+learning:
+  safe_learning_signals_defined: true
+  raw_private_content_allowed_for_learning: false
+  learn_from_operational_metadata_only: true
+counts:
+  classification_classes: 6
+  private_source_candidates_registered: 2
+  usage_policy_transitions: 6
+  safe_learning_signal_policy_files: 2
+audit:
+  required: true
+  mode: READONLY_AUDIT
+
+r4_patch_minimum:
+  windows_posix_path_normalization: true
+  manifest_check_as_posix: true
+  scope_check_as_posix: true
+  collision_check_as_posix: true
+  backend_applied_zip_nested_handoff_included: false
+  central_privacy_policy_changed: false
+  central_learning_policy_changed: false

@@ -1,0 +1,124 @@
+{
+  "added_paths": [
+    {
+      "path": "specification/OES-008_FOUNDER_CONTEXT_TRIAGE_USAGE_GOVERNANCE.md",
+      "sha256": "7C316C9D218E111CD486A9E40BFD48A3E0C61B859B3D0E9F6D6C2AFBDB9552CD"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/AUDIT_READINESS_REPORT.md",
+      "sha256": "BC583A64A229610C77214F7F568B053C225F8083D36A696276BBB8A887798B72"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/BASELINE_DIFF_REPORT.md",
+      "sha256": "101213FB5CFA2740C1A4B236300B13A1B916052F33B72F190F64513842E698BC"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/CONTEXT_CLASSIFICATION_MATRIX.md",
+      "sha256": "54D60F2B4F223A6A315BBEA298B53FB9D11F15E0DA1946B065A66B085EFFCB19"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/FOUNDER_CONTEXT_USAGE_POLICY.md",
+      "sha256": "E62530BEDFF7284E6C747668D74A76417D45B67A21D7494D05AFF7880FC81A47"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/LEARNING_SIGNALS_POLICY.md",
+      "sha256": "2E9DFBB68C50F923353121515CB80D4F006F472E3ABDD52624B811565243B9F2"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/OES-RC-0005-R4_AUDIT_REQUEST.md",
+      "sha256": "3D6DE9263586707F8EBC1A7F24D4D524C0DE9951E47E247A8396C32EECACBEFB"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/OES-RC-0005-R4_CHANGELOG.md",
+      "sha256": "8502533A3DAEB308AEC4ED49B92403592D0ED9F4F7368C627B065B6A99F91548"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/OES-RC-0005-R4_PACKAGE_METADATA.md",
+      "sha256": "F603767A88712823FE1E9567FA3A4CCF3A172615D7F38E8B026A0966FD521E41"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/OES-RC-0005-R4_PACKAGE_METADATA.yaml",
+      "sha256": "DA1C7A369CADCDB8FA08F66C5869F28AFA948866D53610FFB1AC8EE4072F3300"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/OES-RC-0005-R4_PREFLIGHT.md",
+      "sha256": "CE9AB4FFD4C946956AE08407EED193EB5B8DCDE14F99432B43CCAD2627A1B28A"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/OES-RC-0005-R4_RELEASE_NOTES.md",
+      "sha256": "DDBD971EC995F6724B6BA374C9CE300B2EA2A040D734A92FBEF092F7D1671F01"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/OES-RC-0005-R4_VALIDATION_CHECKLIST.md",
+      "sha256": "32AF5318C92BF3B199A5B13628D847776F9816AF7FD95012E99B51BFB4938157"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/PRIVATE_CONTEXT_TRIAGE_LAYER.md",
+      "sha256": "B4D6AB69135499225F0AE0EED64F460216B6C87AC2C477B6AEDE0232127FF3DC"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/PRIVATE_SOURCE_REGISTER.md",
+      "sha256": "197944B1951470903A6A9FFD98C1E9CB5396574CB10B94E2D5D161D07B57C44B"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/PUBLIC_PRIVATE_BOUNDARY.md",
+      "sha256": "C07BC54BA8F24E78B7A379E4600CB3D745647C93D81F7021DF0F4C8B7AD94B9B"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/SANITIZATION_AND_MINIMIZATION_RULES.md",
+      "sha256": "A3A21D4FCDF4B05889AEADE2AE25E837A20FF2CDDE9E3D9E0579E7C4C0E7F3C3"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/USAGE_AUTHORIZATION_WORKFLOW.md",
+      "sha256": "D3AFCD90F00F520185B4921C86937593E2B4D18F206AC7B624DC67EB2593FCF8"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/classification_check.py",
+      "sha256": "87FA1783536546A07CC287E23ABC910F1617BF24D9DDF60827AA7BBF20EE4223"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/classification_schema_template.json",
+      "sha256": "65ACD86AA3772A30577A080AC1BFD5903B5C83399824AE9282224FBE43C41DB0"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/collision_check.py",
+      "sha256": "C7A71D5141BA1BEE1F5E3F90A3709A3EE8A2B251E1A38A164348B2AE2499A4A8"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/context_classification_matrix.json",
+      "sha256": "4CC5EE13C6DCF1269B8B94032C516BEB05E2B787096B43E8D08262271EDC292C"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/context_usage_policy.json",
+      "sha256": "1B1B117E3D4B1B185881E9B17F21F8E6EC1326E5CB46DB07F8BB493FD3459427"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/learning_signals_policy.json",
+      "sha256": "7C07B2D3B21B427CD0014C2262CC60C9C7A32C25F9350777356CD075C39EDB95"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/manifest_check.py",
+      "sha256": "80CD7EF5ACFB6B183193B636058AA38BF486245ED6EB8C421550F9695452B65F"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/privacy_boundary_check.py",
+      "sha256": "90C006F89703C3322021B7DAFCE28A283364E98EFB921D097EADCD1A6CCFDF51"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/privacy_sensitive_patterns.json",
+      "sha256": "F91B909D07DE4D3E2ACBE084CD64112D2DA86B0C6ABD4CDDAA6DC1344C9301A6"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/private_source_register_seed.json",
+      "sha256": "DD33C7E4E40B513AAF8D3FD99A2D50654EAEA2C2AED588AB9030EC20C3ACF401"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/scope_check.py",
+      "sha256": "4F2901F9CDDFC5A8D3F0F558B77E157DFE84DA19746E42703D392C8BDA9C58B5"
+    },
+    {
+      "path": "specification/packages/OES-RC-0005-R4/triage_decision_log_template.json",
+      "sha256": "5AF5293DA7F965334248025CDEBB6B157E929B14613135231E36E6B50911C67F"
+    }
+  ]
+}

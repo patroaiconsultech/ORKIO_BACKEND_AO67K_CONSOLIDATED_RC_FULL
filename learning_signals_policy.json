@@ -1,0 +1,45 @@
+{
+  "allowed_signal_fields": [
+    "lesson_id",
+    "source_event_type",
+    "audit_state",
+    "decision",
+    "finding_severity",
+    "control_gap_type",
+    "remediation_class",
+    "validation_result",
+    "allowed_reuse",
+    "sensitive_content_included"
+  ],
+  "default_rule": "learn_from_sanitized_operational_signals_only",
+  "example_safe_lesson": {
+    "allowed_reuse": [
+      "engineering_methodology",
+      "future_gate_design"
+    ],
+    "audit_state": "YELLOW",
+    "control_gap_type": "nominal_check",
+    "decision": "NO-GO",
+    "finding_severity": "P1",
+    "lesson_id": "LESSON-OES008-R3-001",
+    "remediation_class": "checker_hardening",
+    "sensitive_content_included": false,
+    "source_event_type": "readonly_audit",
+    "validation_result": "PASS_AFTER_PATCH"
+  },
+  "policy_id": "SAFE_LEARNING_SIGNALS_OES008_R3",
+  "prohibited_signal_inputs": [
+    "raw_conversation_body",
+    "raw_private_drive_text",
+    "private_links",
+    "credentials",
+    "email_addresses",
+    "account_identifiers",
+    "financial_details",
+    "health_details",
+    "family_details",
+    "emotional_details",
+    "private_strategy_text"
+  ],
+  "raw_private_content_allowed": false
+}

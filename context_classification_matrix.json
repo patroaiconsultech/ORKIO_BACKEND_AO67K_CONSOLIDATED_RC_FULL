@@ -1,0 +1,77 @@
+{
+  "classes": [
+    {
+      "allowed_destinations": [
+        "public_repository",
+        "website",
+        "pitch_deck",
+        "public_docs"
+      ],
+      "class_id": "PUBLIC",
+      "description": "Information approved for public repository, public documentation, website, pitch material or investor-safe narrative.",
+      "founder_approval_required": true,
+      "public_repository_allowed_after_approval": true,
+      "raw_content_allowed": false,
+      "requires_sanitization": true
+    },
+    {
+      "allowed_destinations": [
+        "private_repository",
+        "internal_docs",
+        "agent_system_context"
+      ],
+      "class_id": "INTERNAL",
+      "description": "Operational context usable inside ORKIO/Patroai workflows but not published publicly.",
+      "founder_approval_required": true,
+      "public_repository_allowed_after_approval": false,
+      "raw_content_allowed": false,
+      "requires_sanitization": true
+    },
+    {
+      "allowed_destinations": [
+        "founder_private_archive"
+      ],
+      "class_id": "FOUNDER_PRIVATE",
+      "description": "Personal context that may inform human decisions but must not become agent memory, public documentation or runtime data.",
+      "founder_approval_required": true,
+      "public_repository_allowed_after_approval": false,
+      "raw_content_allowed": false,
+      "requires_sanitization": false
+    },
+    {
+      "allowed_destinations": [
+        "excluded_from_publication",
+        "private_redacted_summary_only"
+      ],
+      "class_id": "SENSITIVE",
+      "description": "Sensitive personal, family, health, financial, credential, legal or emotional content requiring exclusion, minimization or strict private handling.",
+      "founder_approval_required": true,
+      "public_repository_allowed_after_approval": false,
+      "raw_content_allowed": false,
+      "requires_sanitization": true
+    },
+    {
+      "allowed_destinations": [
+        "private_repository",
+        "internal_strategy_docs"
+      ],
+      "class_id": "STRATEGIC_CONFIDENTIAL",
+      "description": "Strategic business context, fundraising plans, cap table, negotiations, IP strategy or competitive intelligence.",
+      "founder_approval_required": true,
+      "public_repository_allowed_after_approval": false,
+      "raw_content_allowed": false,
+      "requires_sanitization": true
+    },
+    {
+      "allowed_destinations": [
+        "quarantine_index_only"
+      ],
+      "class_id": "DO_NOT_USE",
+      "description": "Content explicitly excluded from agents, prompts, docs, code, public repositories and model/runtime memory.",
+      "founder_approval_required": true,
+      "public_repository_allowed_after_approval": false,
+      "raw_content_allowed": false,
+      "requires_sanitization": false
+    }
+  ]
+}
