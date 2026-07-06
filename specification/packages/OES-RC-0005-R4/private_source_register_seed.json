@@ -1,0 +1,41 @@
+{
+  "register_id": "PRIVATE_SOURCE_REGISTER_OES008_R3",
+  "rules": [
+    "No raw private source content is included in this public specification package.",
+    "Every source candidate must be classified before use.",
+    "Every use must have a usage authorization record.",
+    "Founder approval is required before promotion to any usage.",
+    "Source candidate metadata registration does not authorize content access."
+  ],
+  "sources": [
+    {
+      "allowed_current_use": "metadata_only_without_content_access",
+      "classification": "PRIVATE_SOURCE_CANDIDATE",
+      "content_access_allowed": false,
+      "direct_publication_allowed": false,
+      "public_repository_allowed": false,
+      "raw_content_included": false,
+      "requires_founder_approval_before_use": true,
+      "requires_sanitization": true,
+      "requires_triage": true,
+      "source_id": "FOUNDER_CONTEXT_PARTIAL_GDRIVE_001",
+      "source_type": "private_drive_document",
+      "status": "PARTIAL_NOT_INGESTED"
+    },
+    {
+      "allowed_current_use": "none",
+      "classification": "PRIVATE_SOURCE_CANDIDATE",
+      "content_access_allowed": false,
+      "direct_publication_allowed": false,
+      "public_repository_allowed": false,
+      "raw_content_included": false,
+      "requires_founder_approval_before_use": true,
+      "requires_sanitization": true,
+      "requires_triage": true,
+      "source_id": "FOUNDER_GPT_ACCOUNT_EXPORT_001",
+      "source_type": "potential_account_export",
+      "status": "NOT_RECEIVED"
+    }
+  ],
+  "status": "template_seed_no_raw_content"
+}

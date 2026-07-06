@@ -1,0 +1,78 @@
+{
+  "$id": "https://orkio.local/specification/oes008/private_source_candidate.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "allowed_current_use": {
+      "enum": [
+        "none",
+        "metadata_only_without_content_access"
+      ],
+      "type": "string"
+    },
+    "classification": {
+      "const": "PRIVATE_SOURCE_CANDIDATE"
+    },
+    "content_access_allowed": {
+      "const": false
+    },
+    "direct_publication_allowed": {
+      "const": false
+    },
+    "public_repository_allowed": {
+      "const": false
+    },
+    "raw_content_included": {
+      "const": false
+    },
+    "requires_founder_approval_before_use": {
+      "const": true
+    },
+    "requires_sanitization": {
+      "const": true
+    },
+    "requires_triage": {
+      "const": true
+    },
+    "source_id": {
+      "pattern": "^[A-Z0-9_]+$",
+      "type": "string"
+    },
+    "source_type": {
+      "enum": [
+        "private_drive_document",
+        "potential_account_export",
+        "private_biography_draft",
+        "private_strategy_note",
+        "private_memory_material"
+      ],
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "PARTIAL_NOT_INGESTED",
+        "NOT_RECEIVED",
+        "REGISTERED_METADATA_ONLY",
+        "QUARANTINED",
+        "DO_NOT_USE"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "source_id",
+    "source_type",
+    "status",
+    "classification",
+    "raw_content_included",
+    "direct_publication_allowed",
+    "public_repository_allowed",
+    "content_access_allowed",
+    "requires_triage",
+    "requires_sanitization",
+    "requires_founder_approval_before_use",
+    "allowed_current_use"
+  ],
+  "title": "Private Source Candidate Record",
+  "type": "object"
+}

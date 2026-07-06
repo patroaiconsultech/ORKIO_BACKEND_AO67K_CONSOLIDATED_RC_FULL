@@ -1,0 +1,73 @@
+{
+  "agent_memory_rule": "Agent memory can only receive sanitized, approved, purpose-bound summaries.",
+  "allowed_transitions": [
+    {
+      "from": "PRIVATE_SOURCE_CANDIDATE",
+      "requires": [
+        "classification",
+        "sanitization",
+        "founder_approval",
+        "audit_record"
+      ],
+      "to": "PUBLIC"
+    },
+    {
+      "from": "PRIVATE_SOURCE_CANDIDATE",
+      "requires": [
+        "classification",
+        "sanitization",
+        "founder_approval",
+        "audit_record"
+      ],
+      "to": "INTERNAL"
+    },
+    {
+      "from": "PRIVATE_SOURCE_CANDIDATE",
+      "requires": [
+        "classification",
+        "minimization",
+        "founder_approval",
+        "audit_record"
+      ],
+      "to": "STRATEGIC_CONFIDENTIAL"
+    },
+    {
+      "from": "PRIVATE_SOURCE_CANDIDATE",
+      "requires": [
+        "classification",
+        "founder_approval",
+        "private_boundary_record"
+      ],
+      "to": "FOUNDER_PRIVATE"
+    },
+    {
+      "from": "PRIVATE_SOURCE_CANDIDATE",
+      "requires": [
+        "classification",
+        "exclusion_or_redaction_plan",
+        "founder_approval"
+      ],
+      "to": "SENSITIVE"
+    },
+    {
+      "from": "PRIVATE_SOURCE_CANDIDATE",
+      "requires": [
+        "classification",
+        "quarantine_index",
+        "founder_approval"
+      ],
+      "to": "DO_NOT_USE"
+    }
+  ],
+  "approval_rule": "Founder approval is mandatory for any transition from source candidate to usable context.",
+  "audit_rule": "Every usage decision must be recorded with source_id, class_id, purpose, allowed_destination, approver and timestamp.",
+  "default_state": "DENY_BY_DEFAULT",
+  "learning_rule": "Learning is allowed only from sanitized operational signals and never from raw private source content.",
+  "policy_id": "FOUNDER_CONTEXT_USAGE_POLICY_OES008_R3",
+  "publication_rule": "No private, sensitive or raw founder context may be published in a public repository.",
+  "runtime_rule": "No private source content may be used by runtime, agents or prompts before triage, sanitization and usage authorization.",
+  "source_candidate_allowed_current_use": [
+    "none",
+    "metadata_only_without_content_access"
+  ]
+}
