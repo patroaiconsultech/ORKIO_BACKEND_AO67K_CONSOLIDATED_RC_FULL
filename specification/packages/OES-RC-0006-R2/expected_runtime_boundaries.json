@@ -1,0 +1,245 @@
+{
+  "runtime_boundary_count": 8,
+  "runtime_boundaries": [
+    {
+      "domain_slug": "agent",
+      "domain": "Agent Domain",
+      "runtime_boundary_id": "RB-AGT",
+      "candidate_module": "orkio.runtime.agent",
+      "handler_count": 6,
+      "ports_required": [
+        "AggregateRepositoryPort",
+        "AuditRecordPort",
+        "ClockPort",
+        "CommandDispatchPort",
+        "EventOutboxPort",
+        "IdempotencyStorePort",
+        "PolicyDecisionPort",
+        "ReferenceResolutionPort",
+        "TraceContextPort"
+      ],
+      "adapters_allowed": [
+        "AggregateRepositoryAdapter",
+        "AuditRecordAdapter",
+        "ClockAdapter",
+        "EventOutboxAdapter",
+        "IdempotencyStoreAdapter",
+        "InboundCommandAdapter",
+        "PolicyDecisionAdapter",
+        "ReferenceResolverAdapter",
+        "TraceContextAdapter"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "domain_slug": "conversation",
+      "domain": "Conversation Domain",
+      "runtime_boundary_id": "RB-CON",
+      "candidate_module": "orkio.runtime.conversation",
+      "handler_count": 7,
+      "ports_required": [
+        "AggregateRepositoryPort",
+        "AuditRecordPort",
+        "ClockPort",
+        "CommandDispatchPort",
+        "EventOutboxPort",
+        "IdempotencyStorePort",
+        "PolicyDecisionPort",
+        "ReferenceResolutionPort",
+        "TraceContextPort"
+      ],
+      "adapters_allowed": [
+        "AggregateRepositoryAdapter",
+        "AuditRecordAdapter",
+        "ClockAdapter",
+        "EventOutboxAdapter",
+        "IdempotencyStoreAdapter",
+        "InboundCommandAdapter",
+        "PolicyDecisionAdapter",
+        "ReferenceResolverAdapter",
+        "TraceContextAdapter"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "domain_slug": "decision",
+      "domain": "Decision Domain",
+      "runtime_boundary_id": "RB-DEC",
+      "candidate_module": "orkio.runtime.decision",
+      "handler_count": 8,
+      "ports_required": [
+        "AggregateRepositoryPort",
+        "AuditRecordPort",
+        "ClockPort",
+        "CommandDispatchPort",
+        "EventOutboxPort",
+        "IdempotencyStorePort",
+        "PolicyDecisionPort",
+        "ReferenceResolutionPort",
+        "TraceContextPort"
+      ],
+      "adapters_allowed": [
+        "AggregateRepositoryAdapter",
+        "AuditRecordAdapter",
+        "ClockAdapter",
+        "EventOutboxAdapter",
+        "IdempotencyStoreAdapter",
+        "InboundCommandAdapter",
+        "PolicyDecisionAdapter",
+        "ReferenceResolverAdapter",
+        "TraceContextAdapter"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "domain_slug": "execution",
+      "domain": "Execution Domain",
+      "runtime_boundary_id": "RB-EXE",
+      "candidate_module": "orkio.runtime.execution",
+      "handler_count": 7,
+      "ports_required": [
+        "AggregateRepositoryPort",
+        "AuditRecordPort",
+        "ClockPort",
+        "CommandDispatchPort",
+        "EventOutboxPort",
+        "IdempotencyStorePort",
+        "PolicyDecisionPort",
+        "ReferenceResolutionPort",
+        "TraceContextPort"
+      ],
+      "adapters_allowed": [
+        "AggregateRepositoryAdapter",
+        "AuditRecordAdapter",
+        "ClockAdapter",
+        "EventOutboxAdapter",
+        "IdempotencyStoreAdapter",
+        "InboundCommandAdapter",
+        "PolicyDecisionAdapter",
+        "ReferenceResolverAdapter",
+        "TraceContextAdapter"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "domain_slug": "governance",
+      "domain": "Governance Domain",
+      "runtime_boundary_id": "RB-GOV",
+      "candidate_module": "orkio.runtime.governance",
+      "handler_count": 9,
+      "ports_required": [
+        "AggregateRepositoryPort",
+        "AuditRecordPort",
+        "ClockPort",
+        "CommandDispatchPort",
+        "EventOutboxPort",
+        "IdempotencyStorePort",
+        "PolicyDecisionPort",
+        "ReferenceResolutionPort",
+        "TraceContextPort"
+      ],
+      "adapters_allowed": [
+        "AggregateRepositoryAdapter",
+        "AuditRecordAdapter",
+        "ClockAdapter",
+        "EventOutboxAdapter",
+        "IdempotencyStoreAdapter",
+        "InboundCommandAdapter",
+        "PolicyDecisionAdapter",
+        "ReferenceResolverAdapter",
+        "TraceContextAdapter"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "domain_slug": "identity",
+      "domain": "Identity Domain",
+      "runtime_boundary_id": "RB-IDN",
+      "candidate_module": "orkio.runtime.identity",
+      "handler_count": 9,
+      "ports_required": [
+        "AggregateRepositoryPort",
+        "AuditRecordPort",
+        "ClockPort",
+        "CommandDispatchPort",
+        "EventOutboxPort",
+        "IdempotencyStorePort",
+        "PolicyDecisionPort",
+        "ReferenceResolutionPort",
+        "TraceContextPort"
+      ],
+      "adapters_allowed": [
+        "AggregateRepositoryAdapter",
+        "AuditRecordAdapter",
+        "ClockAdapter",
+        "EventOutboxAdapter",
+        "IdempotencyStoreAdapter",
+        "InboundCommandAdapter",
+        "PolicyDecisionAdapter",
+        "ReferenceResolverAdapter",
+        "TraceContextAdapter"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "domain_slug": "knowledge",
+      "domain": "Knowledge Domain",
+      "runtime_boundary_id": "RB-KNW",
+      "candidate_module": "orkio.runtime.knowledge",
+      "handler_count": 5,
+      "ports_required": [
+        "AggregateRepositoryPort",
+        "AuditRecordPort",
+        "ClockPort",
+        "CommandDispatchPort",
+        "EventOutboxPort",
+        "IdempotencyStorePort",
+        "PolicyDecisionPort",
+        "ReferenceResolutionPort",
+        "TraceContextPort"
+      ],
+      "adapters_allowed": [
+        "AggregateRepositoryAdapter",
+        "AuditRecordAdapter",
+        "ClockAdapter",
+        "EventOutboxAdapter",
+        "IdempotencyStoreAdapter",
+        "InboundCommandAdapter",
+        "PolicyDecisionAdapter",
+        "ReferenceResolverAdapter",
+        "TraceContextAdapter"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "domain_slug": "observability",
+      "domain": "Observability Domain",
+      "runtime_boundary_id": "RB-OBS",
+      "candidate_module": "orkio.runtime.observability",
+      "handler_count": 5,
+      "ports_required": [
+        "AggregateRepositoryPort",
+        "AuditRecordPort",
+        "ClockPort",
+        "CommandDispatchPort",
+        "EventOutboxPort",
+        "IdempotencyStorePort",
+        "PolicyDecisionPort",
+        "ReferenceResolutionPort",
+        "TraceContextPort"
+      ],
+      "adapters_allowed": [
+        "AggregateRepositoryAdapter",
+        "AuditRecordAdapter",
+        "ClockAdapter",
+        "EventOutboxAdapter",
+        "IdempotencyStoreAdapter",
+        "InboundCommandAdapter",
+        "PolicyDecisionAdapter",
+        "ReferenceResolverAdapter",
+        "TraceContextAdapter"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    }
+  ]
+}

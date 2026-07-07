@@ -1,0 +1,38 @@
+release_candidate: OES-RC-0006-R2
+specification: OES-009_HANDLER_BOUNDARY_RUNTIME_MAPPING
+title: Handler Boundary and Runtime Mapping
+version: 0.1-rc-r2
+status: Release Candidate
+generated_at: "2026-07-06T22:42:17.660684+00:00"
+baseline:
+  oes007_document_sha256: "C67F471AAA59D0EAF57F791ED43679D0714D990903CC927A4FAE18DCD8A88B26"
+  oes008_document_sha256: "7C316C9D218E111CD486A9E40BFD48A3E0C61B859B3D0E9F6D6C2AFBDB9552CD"
+coverage:
+  command_contracts_expected: 56
+  command_contracts_mapped: 56
+  primary_events_expected: 56
+  primary_events_mapped: 56
+  handler_boundaries: 56
+  runtime_boundary_groups: 8
+scope:
+  specification_only: true
+  runtime_changes: false
+  api_changes: false
+  database_changes: false
+  infrastructure_changes: false
+privacy:
+  raw_private_content_included: false
+  founder_context_access: false
+  learning_from_private_content: false
+  learning_signals_only: true
+tooling:
+  path_normalization: as_posix
+  baseline_authenticated: true
+
+r2_patch:
+  reason: collision_check_must_authenticate_oes007_and_oes008_baselines
+  normative_mapping_changed: false
+  oes007_baseline_sha256: "C67F471AAA59D0EAF57F791ED43679D0714D990903CC927A4FAE18DCD8A88B26"
+  oes008_baseline_sha256: "7C316C9D218E111CD486A9E40BFD48A3E0C61B859B3D0E9F6D6C2AFBDB9552CD"
+  requires_oes007_package: true
+  requires_oes008_package: true

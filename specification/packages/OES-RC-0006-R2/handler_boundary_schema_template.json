@@ -1,0 +1,27 @@
+{
+  "handler_id": "HND-XXX-000",
+  "handler_name": "ExampleHandler",
+  "boundary_type": "application_command_handler",
+  "input_contract": {
+    "command_contract_id": "CON-XXX-000",
+    "command_name": "ExampleCommand"
+  },
+  "output_event": {
+    "event_id": "EVT-XXX-000",
+    "event_name": "ExampleCompleted"
+  },
+  "required_ports": [
+    "CommandDispatchPort",
+    "PolicyDecisionPort",
+    "IdempotencyStorePort",
+    "ReferenceResolutionPort",
+    "AggregateRepositoryPort",
+    "EventOutboxPort",
+    "AuditRecordPort",
+    "ClockPort",
+    "TraceContextPort"
+  ],
+  "preconditions": [],
+  "postconditions": [],
+  "implementation_status": "not_implemented_specification_only"
+}
