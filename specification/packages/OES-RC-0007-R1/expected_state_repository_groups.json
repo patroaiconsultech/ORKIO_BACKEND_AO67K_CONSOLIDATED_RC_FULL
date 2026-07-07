@@ -1,0 +1,125 @@
+{
+  "state_repository_group_count": 8,
+  "state_repository_groups": [
+    {
+      "runtime_boundary_id": "RB-AGT",
+      "domain": "Agent Domain",
+      "domain_slug": "agent",
+      "state_repository_group_id": "SRG-AGT",
+      "candidate_module": "orkio.persistence.agent",
+      "state_model_count": 6,
+      "aggregate_roots": [
+        "DOM-020 Agent"
+      ],
+      "repository_ports": [
+        "DOM-020 AgentRepositoryPort"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "runtime_boundary_id": "RB-CON",
+      "domain": "Conversation Domain",
+      "domain_slug": "conversation",
+      "state_repository_group_id": "SRG-CON",
+      "candidate_module": "orkio.persistence.conversation",
+      "state_model_count": 7,
+      "aggregate_roots": [
+        "DOM-030 Conversation"
+      ],
+      "repository_ports": [
+        "DOM-030 ConversationRepositoryPort"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "runtime_boundary_id": "RB-DEC",
+      "domain": "Decision Domain",
+      "domain_slug": "decision",
+      "state_repository_group_id": "SRG-DEC",
+      "candidate_module": "orkio.persistence.decision",
+      "state_model_count": 8,
+      "aggregate_roots": [
+        "DOM-040 Decision"
+      ],
+      "repository_ports": [
+        "DOM-040 DecisionRepositoryPort"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "runtime_boundary_id": "RB-EXE",
+      "domain": "Execution Domain",
+      "domain_slug": "execution",
+      "state_repository_group_id": "SRG-EXE",
+      "candidate_module": "orkio.persistence.execution",
+      "state_model_count": 7,
+      "aggregate_roots": [
+        "DOM-050 Execution"
+      ],
+      "repository_ports": [
+        "DOM-050 ExecutionRepositoryPort"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "runtime_boundary_id": "RB-GOV",
+      "domain": "Governance Domain",
+      "domain_slug": "governance",
+      "state_repository_group_id": "SRG-GOV",
+      "candidate_module": "orkio.persistence.governance",
+      "state_model_count": 9,
+      "aggregate_roots": [
+        "DOM-060 Policy"
+      ],
+      "repository_ports": [
+        "DOM-060 PolicyRepositoryPort"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "runtime_boundary_id": "RB-IDN",
+      "domain": "Identity Domain",
+      "domain_slug": "identity",
+      "state_repository_group_id": "SRG-IDN",
+      "candidate_module": "orkio.persistence.identity",
+      "state_model_count": 9,
+      "aggregate_roots": [
+        "DOM-001 Organization"
+      ],
+      "repository_ports": [
+        "DOM-001 OrganizationRepositoryPort"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "runtime_boundary_id": "RB-KNW",
+      "domain": "Knowledge Domain",
+      "domain_slug": "knowledge",
+      "state_repository_group_id": "SRG-KNW",
+      "candidate_module": "orkio.persistence.knowledge",
+      "state_model_count": 5,
+      "aggregate_roots": [
+        "DOM-010 KnowledgeAsset"
+      ],
+      "repository_ports": [
+        "DOM-010 KnowledgeAssetRepositoryPort"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "runtime_boundary_id": "RB-OBS",
+      "domain": "Observability Domain",
+      "domain_slug": "observability",
+      "state_repository_group_id": "SRG-OBS",
+      "candidate_module": "orkio.persistence.observability",
+      "state_model_count": 5,
+      "aggregate_roots": [
+        "DOM-070 AuditRecord"
+      ],
+      "repository_ports": [
+        "DOM-070 AuditRecordRepositoryPort"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    }
+  ]
+}

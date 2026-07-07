@@ -1,0 +1,33 @@
+release_candidate: OES-RC-0007-R1
+specification: OES-010_PERSISTENCE_AND_STATE_MODEL
+title: Persistence and State Model
+version: 0.1-rc-r1
+status: Release Candidate
+generated_at: "2026-07-07T12:00:40.418318+00:00"
+baseline:
+  oes007_document_sha256: "C67F471AAA59D0EAF57F791ED43679D0714D990903CC927A4FAE18DCD8A88B26"
+  oes008_document_sha256: "7C316C9D218E111CD486A9E40BFD48A3E0C61B859B3D0E9F6D6C2AFBDB9552CD"
+  oes009_handler_boundary_mapping_sha256: "DD8FCDA6426516E6AE014B97CC127A07F86B4D37CD025A4F97E4752D8AFF60BD"
+  oes009_package_metadata_sha256: "245914CF4068BC5F8757AB6EACEE7403B4BBA9F4F373FF0CD9AEBD0EDDE4B5F2"
+coverage:
+  handler_boundaries_expected: 56
+  handler_boundaries_mapped: 56
+  state_models: 56
+  state_repository_groups: 8
+scope:
+  specification_only: true
+  runtime_changes: false
+  api_changes: false
+  database_changes: false
+  infrastructure_changes: false
+  migrations_included: false
+privacy:
+  raw_private_content_included: false
+  founder_context_access: false
+  founder_private_context_storage_allowed: false
+  learning_from_private_content: false
+  learning_signals_only: true
+tooling:
+  path_normalization: as_posix
+  baseline_authenticated: true
+  baseline_auth_source: oes009_handler_boundary_mapping_json

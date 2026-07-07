@@ -1,0 +1,2895 @@
+{
+  "document": "OES-010_PERSISTENCE_AND_STATE_MODEL",
+  "version": "0.1-rc-r1",
+  "status": "Release Candidate",
+  "rc": "OES-RC-0007-R1",
+  "generated_at": "2026-07-07T12:00:40.418318+00:00",
+  "generated_from": {
+    "oes009_handler_boundary_mapping_sha256": "DD8FCDA6426516E6AE014B97CC127A07F86B4D37CD025A4F97E4752D8AFF60BD",
+    "oes009_package_metadata_sha256": "245914CF4068BC5F8757AB6EACEE7403B4BBA9F4F373FF0CD9AEBD0EDDE4B5F2",
+    "oes009_root_doc_sha256_from_build_input": "9E2D0508934A62B77C8F11B10704C01381E817FB5F3F4D1A2E3D836A12921837",
+    "handler_boundaries": 56,
+    "runtime_boundary_groups": 8
+  },
+  "reference_vocabulary": [
+    "OrganizationReference",
+    "WorkspaceReference",
+    "KnowledgeAssetReference",
+    "AgentReference",
+    "CapabilityReference",
+    "ConversationReference",
+    "DecisionReference",
+    "ExecutionReference",
+    "PolicyReference",
+    "AuditRecordReference",
+    "EvidenceReference"
+  ],
+  "state_repository_groups": [
+    {
+      "runtime_boundary_id": "RB-AGT",
+      "domain": "Agent Domain",
+      "domain_slug": "agent",
+      "state_repository_group_id": "SRG-AGT",
+      "candidate_module": "orkio.persistence.agent",
+      "state_model_count": 6,
+      "aggregate_roots": [
+        "DOM-020 Agent"
+      ],
+      "repository_ports": [
+        "DOM-020 AgentRepositoryPort"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "runtime_boundary_id": "RB-CON",
+      "domain": "Conversation Domain",
+      "domain_slug": "conversation",
+      "state_repository_group_id": "SRG-CON",
+      "candidate_module": "orkio.persistence.conversation",
+      "state_model_count": 7,
+      "aggregate_roots": [
+        "DOM-030 Conversation"
+      ],
+      "repository_ports": [
+        "DOM-030 ConversationRepositoryPort"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "runtime_boundary_id": "RB-DEC",
+      "domain": "Decision Domain",
+      "domain_slug": "decision",
+      "state_repository_group_id": "SRG-DEC",
+      "candidate_module": "orkio.persistence.decision",
+      "state_model_count": 8,
+      "aggregate_roots": [
+        "DOM-040 Decision"
+      ],
+      "repository_ports": [
+        "DOM-040 DecisionRepositoryPort"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "runtime_boundary_id": "RB-EXE",
+      "domain": "Execution Domain",
+      "domain_slug": "execution",
+      "state_repository_group_id": "SRG-EXE",
+      "candidate_module": "orkio.persistence.execution",
+      "state_model_count": 7,
+      "aggregate_roots": [
+        "DOM-050 Execution"
+      ],
+      "repository_ports": [
+        "DOM-050 ExecutionRepositoryPort"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "runtime_boundary_id": "RB-GOV",
+      "domain": "Governance Domain",
+      "domain_slug": "governance",
+      "state_repository_group_id": "SRG-GOV",
+      "candidate_module": "orkio.persistence.governance",
+      "state_model_count": 9,
+      "aggregate_roots": [
+        "DOM-060 Policy"
+      ],
+      "repository_ports": [
+        "DOM-060 PolicyRepositoryPort"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "runtime_boundary_id": "RB-IDN",
+      "domain": "Identity Domain",
+      "domain_slug": "identity",
+      "state_repository_group_id": "SRG-IDN",
+      "candidate_module": "orkio.persistence.identity",
+      "state_model_count": 9,
+      "aggregate_roots": [
+        "DOM-001 Organization"
+      ],
+      "repository_ports": [
+        "DOM-001 OrganizationRepositoryPort"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "runtime_boundary_id": "RB-KNW",
+      "domain": "Knowledge Domain",
+      "domain_slug": "knowledge",
+      "state_repository_group_id": "SRG-KNW",
+      "candidate_module": "orkio.persistence.knowledge",
+      "state_model_count": 5,
+      "aggregate_roots": [
+        "DOM-010 KnowledgeAsset"
+      ],
+      "repository_ports": [
+        "DOM-010 KnowledgeAssetRepositoryPort"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    },
+    {
+      "runtime_boundary_id": "RB-OBS",
+      "domain": "Observability Domain",
+      "domain_slug": "observability",
+      "state_repository_group_id": "SRG-OBS",
+      "candidate_module": "orkio.persistence.observability",
+      "state_model_count": 5,
+      "aggregate_roots": [
+        "DOM-070 AuditRecord"
+      ],
+      "repository_ports": [
+        "DOM-070 AuditRecordRepositoryPort"
+      ],
+      "implementation_status": "not_implemented_specification_only"
+    }
+  ],
+  "state_models": [
+    {
+      "state_model_id": "STM-IDN-001",
+      "capability_id": "CAP-IDN-001",
+      "capability_name": "CreateOrganization",
+      "domain": "Identity Domain",
+      "domain_slug": "identity",
+      "aggregate_root": "DOM-001 Organization",
+      "aggregate_state_name": "DOM-001 OrganizationState",
+      "primary_reference_type": "OrganizationReference",
+      "handler_id": "HND-IDN-001",
+      "handler_name": "CreateOrganizationHandler",
+      "command_contract_id": "CON-IDN-001",
+      "event_id": "EVT-IDN-001",
+      "event_name": "OrganizationCreated",
+      "runtime_boundary_id": "RB-IDN",
+      "repository_port": "DOM-001 OrganizationRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-IDN-002",
+      "capability_id": "CAP-IDN-002",
+      "capability_name": "ActivateOrganization",
+      "domain": "Identity Domain",
+      "domain_slug": "identity",
+      "aggregate_root": "DOM-001 Organization",
+      "aggregate_state_name": "DOM-001 OrganizationState",
+      "primary_reference_type": "OrganizationReference",
+      "handler_id": "HND-IDN-002",
+      "handler_name": "ActivateOrganizationHandler",
+      "command_contract_id": "CON-IDN-002",
+      "event_id": "EVT-IDN-002",
+      "event_name": "OrganizationActivated",
+      "runtime_boundary_id": "RB-IDN",
+      "repository_port": "DOM-001 OrganizationRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-IDN-003",
+      "capability_id": "CAP-IDN-003",
+      "capability_name": "SuspendOrganization",
+      "domain": "Identity Domain",
+      "domain_slug": "identity",
+      "aggregate_root": "DOM-001 Organization",
+      "aggregate_state_name": "DOM-001 OrganizationState",
+      "primary_reference_type": "OrganizationReference",
+      "handler_id": "HND-IDN-003",
+      "handler_name": "SuspendOrganizationHandler",
+      "command_contract_id": "CON-IDN-003",
+      "event_id": "EVT-IDN-003",
+      "event_name": "OrganizationSuspended",
+      "runtime_boundary_id": "RB-IDN",
+      "repository_port": "DOM-001 OrganizationRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-IDN-004",
+      "capability_id": "CAP-IDN-004",
+      "capability_name": "ArchiveOrganization",
+      "domain": "Identity Domain",
+      "domain_slug": "identity",
+      "aggregate_root": "DOM-001 Organization",
+      "aggregate_state_name": "DOM-001 OrganizationState",
+      "primary_reference_type": "OrganizationReference",
+      "handler_id": "HND-IDN-004",
+      "handler_name": "ArchiveOrganizationHandler",
+      "command_contract_id": "CON-IDN-004",
+      "event_id": "EVT-IDN-004",
+      "event_name": "OrganizationArchived",
+      "runtime_boundary_id": "RB-IDN",
+      "repository_port": "DOM-001 OrganizationRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-IDN-005",
+      "capability_id": "CAP-IDN-005",
+      "capability_name": "CreateWorkspace",
+      "domain": "Identity Domain",
+      "domain_slug": "identity",
+      "aggregate_root": "DOM-001 Organization",
+      "aggregate_state_name": "DOM-001 OrganizationState",
+      "primary_reference_type": "WorkspaceReference",
+      "handler_id": "HND-IDN-005",
+      "handler_name": "CreateWorkspaceHandler",
+      "command_contract_id": "CON-IDN-005",
+      "event_id": "EVT-IDN-005",
+      "event_name": "WorkspaceCreated",
+      "runtime_boundary_id": "RB-IDN",
+      "repository_port": "DOM-001 OrganizationRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-IDN-006",
+      "capability_id": "CAP-IDN-006",
+      "capability_name": "InviteMember",
+      "domain": "Identity Domain",
+      "domain_slug": "identity",
+      "aggregate_root": "DOM-001 Organization",
+      "aggregate_state_name": "DOM-001 OrganizationState",
+      "primary_reference_type": "OrganizationReference",
+      "handler_id": "HND-IDN-006",
+      "handler_name": "InviteMemberHandler",
+      "command_contract_id": "CON-IDN-006",
+      "event_id": "EVT-IDN-006",
+      "event_name": "MemberInvited",
+      "runtime_boundary_id": "RB-IDN",
+      "repository_port": "DOM-001 OrganizationRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-IDN-007",
+      "capability_id": "CAP-IDN-007",
+      "capability_name": "ActivateMembership",
+      "domain": "Identity Domain",
+      "domain_slug": "identity",
+      "aggregate_root": "DOM-001 Organization",
+      "aggregate_state_name": "DOM-001 OrganizationState",
+      "primary_reference_type": "OrganizationReference",
+      "handler_id": "HND-IDN-007",
+      "handler_name": "ActivateMembershipHandler",
+      "command_contract_id": "CON-IDN-007",
+      "event_id": "EVT-IDN-007",
+      "event_name": "MembershipActivated",
+      "runtime_boundary_id": "RB-IDN",
+      "repository_port": "DOM-001 OrganizationRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-IDN-008",
+      "capability_id": "CAP-IDN-008",
+      "capability_name": "SuspendMembership",
+      "domain": "Identity Domain",
+      "domain_slug": "identity",
+      "aggregate_root": "DOM-001 Organization",
+      "aggregate_state_name": "DOM-001 OrganizationState",
+      "primary_reference_type": "OrganizationReference",
+      "handler_id": "HND-IDN-008",
+      "handler_name": "SuspendMembershipHandler",
+      "command_contract_id": "CON-IDN-008",
+      "event_id": "EVT-IDN-008",
+      "event_name": "MembershipSuspended",
+      "runtime_boundary_id": "RB-IDN",
+      "repository_port": "DOM-001 OrganizationRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-IDN-009",
+      "capability_id": "CAP-IDN-009",
+      "capability_name": "RevokeMembership",
+      "domain": "Identity Domain",
+      "domain_slug": "identity",
+      "aggregate_root": "DOM-001 Organization",
+      "aggregate_state_name": "DOM-001 OrganizationState",
+      "primary_reference_type": "OrganizationReference",
+      "handler_id": "HND-IDN-009",
+      "handler_name": "RevokeMembershipHandler",
+      "command_contract_id": "CON-IDN-009",
+      "event_id": "EVT-IDN-009",
+      "event_name": "MembershipRevoked",
+      "runtime_boundary_id": "RB-IDN",
+      "repository_port": "DOM-001 OrganizationRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-KNW-001",
+      "capability_id": "CAP-KNW-001",
+      "capability_name": "CreateKnowledgeAsset",
+      "domain": "Knowledge Domain",
+      "domain_slug": "knowledge",
+      "aggregate_root": "DOM-010 KnowledgeAsset",
+      "aggregate_state_name": "DOM-010 KnowledgeAssetState",
+      "primary_reference_type": "KnowledgeAssetReference",
+      "handler_id": "HND-KNW-001",
+      "handler_name": "CreateKnowledgeAssetHandler",
+      "command_contract_id": "CON-KNW-001",
+      "event_id": "EVT-KNW-001",
+      "event_name": "KnowledgeAssetCreated",
+      "runtime_boundary_id": "RB-KNW",
+      "repository_port": "DOM-010 KnowledgeAssetRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-KNW-002",
+      "capability_id": "CAP-KNW-002",
+      "capability_name": "ValidateKnowledgeAsset",
+      "domain": "Knowledge Domain",
+      "domain_slug": "knowledge",
+      "aggregate_root": "DOM-010 KnowledgeAsset",
+      "aggregate_state_name": "DOM-010 KnowledgeAssetState",
+      "primary_reference_type": "KnowledgeAssetReference",
+      "handler_id": "HND-KNW-002",
+      "handler_name": "ValidateKnowledgeAssetHandler",
+      "command_contract_id": "CON-KNW-002",
+      "event_id": "EVT-KNW-002",
+      "event_name": "KnowledgeAssetValidated",
+      "runtime_boundary_id": "RB-KNW",
+      "repository_port": "DOM-010 KnowledgeAssetRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-KNW-003",
+      "capability_id": "CAP-KNW-003",
+      "capability_name": "ApproveKnowledgeAsset",
+      "domain": "Knowledge Domain",
+      "domain_slug": "knowledge",
+      "aggregate_root": "DOM-010 KnowledgeAsset",
+      "aggregate_state_name": "DOM-010 KnowledgeAssetState",
+      "primary_reference_type": "KnowledgeAssetReference",
+      "handler_id": "HND-KNW-003",
+      "handler_name": "ApproveKnowledgeAssetHandler",
+      "command_contract_id": "CON-KNW-003",
+      "event_id": "EVT-KNW-003",
+      "event_name": "KnowledgeAssetApproved",
+      "runtime_boundary_id": "RB-KNW",
+      "repository_port": "DOM-010 KnowledgeAssetRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-KNW-004",
+      "capability_id": "CAP-KNW-004",
+      "capability_name": "OperationalizeKnowledgeAsset",
+      "domain": "Knowledge Domain",
+      "domain_slug": "knowledge",
+      "aggregate_root": "DOM-010 KnowledgeAsset",
+      "aggregate_state_name": "DOM-010 KnowledgeAssetState",
+      "primary_reference_type": "KnowledgeAssetReference",
+      "handler_id": "HND-KNW-004",
+      "handler_name": "OperationalizeKnowledgeAssetHandler",
+      "command_contract_id": "CON-KNW-004",
+      "event_id": "EVT-KNW-004",
+      "event_name": "KnowledgeAssetOperationalized",
+      "runtime_boundary_id": "RB-KNW",
+      "repository_port": "DOM-010 KnowledgeAssetRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-KNW-005",
+      "capability_id": "CAP-KNW-005",
+      "capability_name": "ArchiveKnowledgeAsset",
+      "domain": "Knowledge Domain",
+      "domain_slug": "knowledge",
+      "aggregate_root": "DOM-010 KnowledgeAsset",
+      "aggregate_state_name": "DOM-010 KnowledgeAssetState",
+      "primary_reference_type": "KnowledgeAssetReference",
+      "handler_id": "HND-KNW-005",
+      "handler_name": "ArchiveKnowledgeAssetHandler",
+      "command_contract_id": "CON-KNW-005",
+      "event_id": "EVT-KNW-005",
+      "event_name": "KnowledgeAssetArchived",
+      "runtime_boundary_id": "RB-KNW",
+      "repository_port": "DOM-010 KnowledgeAssetRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-AGT-001",
+      "capability_id": "CAP-AGT-001",
+      "capability_name": "CreateAgent",
+      "domain": "Agent Domain",
+      "domain_slug": "agent",
+      "aggregate_root": "DOM-020 Agent",
+      "aggregate_state_name": "DOM-020 AgentState",
+      "primary_reference_type": "AgentReference",
+      "handler_id": "HND-AGT-001",
+      "handler_name": "CreateAgentHandler",
+      "command_contract_id": "CON-AGT-001",
+      "event_id": "EVT-AGT-001",
+      "event_name": "AgentCreated",
+      "runtime_boundary_id": "RB-AGT",
+      "repository_port": "DOM-020 AgentRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-AGT-002",
+      "capability_id": "CAP-AGT-002",
+      "capability_name": "ApproveAgent",
+      "domain": "Agent Domain",
+      "domain_slug": "agent",
+      "aggregate_root": "DOM-020 Agent",
+      "aggregate_state_name": "DOM-020 AgentState",
+      "primary_reference_type": "AgentReference",
+      "handler_id": "HND-AGT-002",
+      "handler_name": "ApproveAgentHandler",
+      "command_contract_id": "CON-AGT-002",
+      "event_id": "EVT-AGT-002",
+      "event_name": "AgentApproved",
+      "runtime_boundary_id": "RB-AGT",
+      "repository_port": "DOM-020 AgentRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-AGT-003",
+      "capability_id": "CAP-AGT-003",
+      "capability_name": "BindCapability",
+      "domain": "Agent Domain",
+      "domain_slug": "agent",
+      "aggregate_root": "DOM-020 Agent",
+      "aggregate_state_name": "DOM-020 AgentState",
+      "primary_reference_type": "AgentReference",
+      "handler_id": "HND-AGT-003",
+      "handler_name": "BindCapabilityHandler",
+      "command_contract_id": "CON-AGT-003",
+      "event_id": "EVT-AGT-003",
+      "event_name": "CapabilityBound",
+      "runtime_boundary_id": "RB-AGT",
+      "repository_port": "DOM-020 AgentRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-AGT-004",
+      "capability_id": "CAP-AGT-004",
+      "capability_name": "ActivateAgent",
+      "domain": "Agent Domain",
+      "domain_slug": "agent",
+      "aggregate_root": "DOM-020 Agent",
+      "aggregate_state_name": "DOM-020 AgentState",
+      "primary_reference_type": "AgentReference",
+      "handler_id": "HND-AGT-004",
+      "handler_name": "ActivateAgentHandler",
+      "command_contract_id": "CON-AGT-004",
+      "event_id": "EVT-AGT-004",
+      "event_name": "AgentActivated",
+      "runtime_boundary_id": "RB-AGT",
+      "repository_port": "DOM-020 AgentRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-AGT-005",
+      "capability_id": "CAP-AGT-005",
+      "capability_name": "SuspendAgent",
+      "domain": "Agent Domain",
+      "domain_slug": "agent",
+      "aggregate_root": "DOM-020 Agent",
+      "aggregate_state_name": "DOM-020 AgentState",
+      "primary_reference_type": "AgentReference",
+      "handler_id": "HND-AGT-005",
+      "handler_name": "SuspendAgentHandler",
+      "command_contract_id": "CON-AGT-005",
+      "event_id": "EVT-AGT-005",
+      "event_name": "AgentSuspended",
+      "runtime_boundary_id": "RB-AGT",
+      "repository_port": "DOM-020 AgentRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-AGT-006",
+      "capability_id": "CAP-AGT-006",
+      "capability_name": "ArchiveAgent",
+      "domain": "Agent Domain",
+      "domain_slug": "agent",
+      "aggregate_root": "DOM-020 Agent",
+      "aggregate_state_name": "DOM-020 AgentState",
+      "primary_reference_type": "AgentReference",
+      "handler_id": "HND-AGT-006",
+      "handler_name": "ArchiveAgentHandler",
+      "command_contract_id": "CON-AGT-006",
+      "event_id": "EVT-AGT-006",
+      "event_name": "AgentArchived",
+      "runtime_boundary_id": "RB-AGT",
+      "repository_port": "DOM-020 AgentRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-CON-001",
+      "capability_id": "CAP-CON-001",
+      "capability_name": "OpenConversation",
+      "domain": "Conversation Domain",
+      "domain_slug": "conversation",
+      "aggregate_root": "DOM-030 Conversation",
+      "aggregate_state_name": "DOM-030 ConversationState",
+      "primary_reference_type": "ConversationReference",
+      "handler_id": "HND-CON-001",
+      "handler_name": "OpenConversationHandler",
+      "command_contract_id": "CON-CON-001",
+      "event_id": "EVT-CON-001",
+      "event_name": "ConversationCreated",
+      "runtime_boundary_id": "RB-CON",
+      "repository_port": "DOM-030 ConversationRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-CON-002",
+      "capability_id": "CAP-CON-002",
+      "capability_name": "AppendMessage",
+      "domain": "Conversation Domain",
+      "domain_slug": "conversation",
+      "aggregate_root": "DOM-030 Conversation",
+      "aggregate_state_name": "DOM-030 ConversationState",
+      "primary_reference_type": "ConversationReference",
+      "handler_id": "HND-CON-002",
+      "handler_name": "AppendMessageHandler",
+      "command_contract_id": "CON-CON-002",
+      "event_id": "EVT-CON-002",
+      "event_name": "MessageRecorded",
+      "runtime_boundary_id": "RB-CON",
+      "repository_port": "DOM-030 ConversationRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-CON-003",
+      "capability_id": "CAP-CON-003",
+      "capability_name": "ResolveContext",
+      "domain": "Conversation Domain",
+      "domain_slug": "conversation",
+      "aggregate_root": "DOM-030 Conversation",
+      "aggregate_state_name": "DOM-030 ConversationState",
+      "primary_reference_type": "ConversationReference",
+      "handler_id": "HND-CON-003",
+      "handler_name": "ResolveContextHandler",
+      "command_contract_id": "CON-CON-003",
+      "event_id": "EVT-CON-003",
+      "event_name": "ContextResolved",
+      "runtime_boundary_id": "RB-CON",
+      "repository_port": "DOM-030 ConversationRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-CON-004",
+      "capability_id": "CAP-CON-004",
+      "capability_name": "PauseConversation",
+      "domain": "Conversation Domain",
+      "domain_slug": "conversation",
+      "aggregate_root": "DOM-030 Conversation",
+      "aggregate_state_name": "DOM-030 ConversationState",
+      "primary_reference_type": "ConversationReference",
+      "handler_id": "HND-CON-004",
+      "handler_name": "PauseConversationHandler",
+      "command_contract_id": "CON-CON-004",
+      "event_id": "EVT-CON-004",
+      "event_name": "ConversationPaused",
+      "runtime_boundary_id": "RB-CON",
+      "repository_port": "DOM-030 ConversationRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-CON-005",
+      "capability_id": "CAP-CON-005",
+      "capability_name": "ResumeConversation",
+      "domain": "Conversation Domain",
+      "domain_slug": "conversation",
+      "aggregate_root": "DOM-030 Conversation",
+      "aggregate_state_name": "DOM-030 ConversationState",
+      "primary_reference_type": "ConversationReference",
+      "handler_id": "HND-CON-005",
+      "handler_name": "ResumeConversationHandler",
+      "command_contract_id": "CON-CON-005",
+      "event_id": "EVT-CON-005",
+      "event_name": "ConversationResumed",
+      "runtime_boundary_id": "RB-CON",
+      "repository_port": "DOM-030 ConversationRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-CON-006",
+      "capability_id": "CAP-CON-006",
+      "capability_name": "CloseConversation",
+      "domain": "Conversation Domain",
+      "domain_slug": "conversation",
+      "aggregate_root": "DOM-030 Conversation",
+      "aggregate_state_name": "DOM-030 ConversationState",
+      "primary_reference_type": "ConversationReference",
+      "handler_id": "HND-CON-006",
+      "handler_name": "CloseConversationHandler",
+      "command_contract_id": "CON-CON-006",
+      "event_id": "EVT-CON-006",
+      "event_name": "ConversationClosed",
+      "runtime_boundary_id": "RB-CON",
+      "repository_port": "DOM-030 ConversationRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-CON-007",
+      "capability_id": "CAP-CON-007",
+      "capability_name": "ArchiveConversation",
+      "domain": "Conversation Domain",
+      "domain_slug": "conversation",
+      "aggregate_root": "DOM-030 Conversation",
+      "aggregate_state_name": "DOM-030 ConversationState",
+      "primary_reference_type": "ConversationReference",
+      "handler_id": "HND-CON-007",
+      "handler_name": "ArchiveConversationHandler",
+      "command_contract_id": "CON-CON-007",
+      "event_id": "EVT-CON-007",
+      "event_name": "ConversationArchived",
+      "runtime_boundary_id": "RB-CON",
+      "repository_port": "DOM-030 ConversationRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-DEC-001",
+      "capability_id": "CAP-DEC-001",
+      "capability_name": "CreateDecision",
+      "domain": "Decision Domain",
+      "domain_slug": "decision",
+      "aggregate_root": "DOM-040 Decision",
+      "aggregate_state_name": "DOM-040 DecisionState",
+      "primary_reference_type": "DecisionReference",
+      "handler_id": "HND-DEC-001",
+      "handler_name": "CreateDecisionHandler",
+      "command_contract_id": "CON-DEC-001",
+      "event_id": "EVT-DEC-001",
+      "event_name": "DecisionCreated",
+      "runtime_boundary_id": "RB-DEC",
+      "repository_port": "DOM-040 DecisionRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-DEC-002",
+      "capability_id": "CAP-DEC-002",
+      "capability_name": "AttachEvidence",
+      "domain": "Decision Domain",
+      "domain_slug": "decision",
+      "aggregate_root": "DOM-040 Decision",
+      "aggregate_state_name": "DOM-040 DecisionState",
+      "primary_reference_type": "EvidenceReference",
+      "handler_id": "HND-DEC-002",
+      "handler_name": "AttachEvidenceHandler",
+      "command_contract_id": "CON-DEC-002",
+      "event_id": "EVT-DEC-002",
+      "event_name": "EvidenceAttached",
+      "runtime_boundary_id": "RB-DEC",
+      "repository_port": "DOM-040 DecisionRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-DEC-003",
+      "capability_id": "CAP-DEC-003",
+      "capability_name": "SubmitDecisionReview",
+      "domain": "Decision Domain",
+      "domain_slug": "decision",
+      "aggregate_root": "DOM-040 Decision",
+      "aggregate_state_name": "DOM-040 DecisionState",
+      "primary_reference_type": "DecisionReference",
+      "handler_id": "HND-DEC-003",
+      "handler_name": "SubmitDecisionReviewHandler",
+      "command_contract_id": "CON-DEC-003",
+      "event_id": "EVT-DEC-003",
+      "event_name": "DecisionSubmitted",
+      "runtime_boundary_id": "RB-DEC",
+      "repository_port": "DOM-040 DecisionRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-DEC-004",
+      "capability_id": "CAP-DEC-004",
+      "capability_name": "ApproveDecision",
+      "domain": "Decision Domain",
+      "domain_slug": "decision",
+      "aggregate_root": "DOM-040 Decision",
+      "aggregate_state_name": "DOM-040 DecisionState",
+      "primary_reference_type": "DecisionReference",
+      "handler_id": "HND-DEC-004",
+      "handler_name": "ApproveDecisionHandler",
+      "command_contract_id": "CON-DEC-004",
+      "event_id": "EVT-DEC-004",
+      "event_name": "DecisionApproved",
+      "runtime_boundary_id": "RB-DEC",
+      "repository_port": "DOM-040 DecisionRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-DEC-005",
+      "capability_id": "CAP-DEC-005",
+      "capability_name": "RejectDecision",
+      "domain": "Decision Domain",
+      "domain_slug": "decision",
+      "aggregate_root": "DOM-040 Decision",
+      "aggregate_state_name": "DOM-040 DecisionState",
+      "primary_reference_type": "DecisionReference",
+      "handler_id": "HND-DEC-005",
+      "handler_name": "RejectDecisionHandler",
+      "command_contract_id": "CON-DEC-005",
+      "event_id": "EVT-DEC-005",
+      "event_name": "DecisionRejected",
+      "runtime_boundary_id": "RB-DEC",
+      "repository_port": "DOM-040 DecisionRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-DEC-006",
+      "capability_id": "CAP-DEC-006",
+      "capability_name": "PublishDecision",
+      "domain": "Decision Domain",
+      "domain_slug": "decision",
+      "aggregate_root": "DOM-040 Decision",
+      "aggregate_state_name": "DOM-040 DecisionState",
+      "primary_reference_type": "DecisionReference",
+      "handler_id": "HND-DEC-006",
+      "handler_name": "PublishDecisionHandler",
+      "command_contract_id": "CON-DEC-006",
+      "event_id": "EVT-DEC-006",
+      "event_name": "DecisionPublished",
+      "runtime_boundary_id": "RB-DEC",
+      "repository_port": "DOM-040 DecisionRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-DEC-007",
+      "capability_id": "CAP-DEC-007",
+      "capability_name": "SupersedeDecision",
+      "domain": "Decision Domain",
+      "domain_slug": "decision",
+      "aggregate_root": "DOM-040 Decision",
+      "aggregate_state_name": "DOM-040 DecisionState",
+      "primary_reference_type": "DecisionReference",
+      "handler_id": "HND-DEC-007",
+      "handler_name": "SupersedeDecisionHandler",
+      "command_contract_id": "CON-DEC-007",
+      "event_id": "EVT-DEC-007",
+      "event_name": "DecisionSuperseded",
+      "runtime_boundary_id": "RB-DEC",
+      "repository_port": "DOM-040 DecisionRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-DEC-008",
+      "capability_id": "CAP-DEC-008",
+      "capability_name": "ArchiveDecision",
+      "domain": "Decision Domain",
+      "domain_slug": "decision",
+      "aggregate_root": "DOM-040 Decision",
+      "aggregate_state_name": "DOM-040 DecisionState",
+      "primary_reference_type": "DecisionReference",
+      "handler_id": "HND-DEC-008",
+      "handler_name": "ArchiveDecisionHandler",
+      "command_contract_id": "CON-DEC-008",
+      "event_id": "EVT-DEC-008",
+      "event_name": "DecisionArchived",
+      "runtime_boundary_id": "RB-DEC",
+      "repository_port": "DOM-040 DecisionRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-EXE-001",
+      "capability_id": "CAP-EXE-001",
+      "capability_name": "PlanExecution",
+      "domain": "Execution Domain",
+      "domain_slug": "execution",
+      "aggregate_root": "DOM-050 Execution",
+      "aggregate_state_name": "DOM-050 ExecutionState",
+      "primary_reference_type": "ExecutionReference",
+      "handler_id": "HND-EXE-001",
+      "handler_name": "PlanExecutionHandler",
+      "command_contract_id": "CON-EXE-001",
+      "event_id": "EVT-EXE-001",
+      "event_name": "ExecutionPlanned",
+      "runtime_boundary_id": "RB-EXE",
+      "repository_port": "DOM-050 ExecutionRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-EXE-002",
+      "capability_id": "CAP-EXE-002",
+      "capability_name": "AuthorizeExecution",
+      "domain": "Execution Domain",
+      "domain_slug": "execution",
+      "aggregate_root": "DOM-050 Execution",
+      "aggregate_state_name": "DOM-050 ExecutionState",
+      "primary_reference_type": "ExecutionReference",
+      "handler_id": "HND-EXE-002",
+      "handler_name": "AuthorizeExecutionHandler",
+      "command_contract_id": "CON-EXE-002",
+      "event_id": "EVT-EXE-002",
+      "event_name": "ExecutionAuthorized",
+      "runtime_boundary_id": "RB-EXE",
+      "repository_port": "DOM-050 ExecutionRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-EXE-003",
+      "capability_id": "CAP-EXE-003",
+      "capability_name": "StartExecution",
+      "domain": "Execution Domain",
+      "domain_slug": "execution",
+      "aggregate_root": "DOM-050 Execution",
+      "aggregate_state_name": "DOM-050 ExecutionState",
+      "primary_reference_type": "ExecutionReference",
+      "handler_id": "HND-EXE-003",
+      "handler_name": "StartExecutionHandler",
+      "command_contract_id": "CON-EXE-003",
+      "event_id": "EVT-EXE-003",
+      "event_name": "ExecutionStarted",
+      "runtime_boundary_id": "RB-EXE",
+      "repository_port": "DOM-050 ExecutionRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-EXE-004",
+      "capability_id": "CAP-EXE-004",
+      "capability_name": "CompleteExecution",
+      "domain": "Execution Domain",
+      "domain_slug": "execution",
+      "aggregate_root": "DOM-050 Execution",
+      "aggregate_state_name": "DOM-050 ExecutionState",
+      "primary_reference_type": "ExecutionReference",
+      "handler_id": "HND-EXE-004",
+      "handler_name": "CompleteExecutionHandler",
+      "command_contract_id": "CON-EXE-004",
+      "event_id": "EVT-EXE-004",
+      "event_name": "ExecutionCompleted",
+      "runtime_boundary_id": "RB-EXE",
+      "repository_port": "DOM-050 ExecutionRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-EXE-005",
+      "capability_id": "CAP-EXE-005",
+      "capability_name": "VerifyExecution",
+      "domain": "Execution Domain",
+      "domain_slug": "execution",
+      "aggregate_root": "DOM-050 Execution",
+      "aggregate_state_name": "DOM-050 ExecutionState",
+      "primary_reference_type": "ExecutionReference",
+      "handler_id": "HND-EXE-005",
+      "handler_name": "VerifyExecutionHandler",
+      "command_contract_id": "CON-EXE-005",
+      "event_id": "EVT-EXE-005",
+      "event_name": "ExecutionVerified",
+      "runtime_boundary_id": "RB-EXE",
+      "repository_port": "DOM-050 ExecutionRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-EXE-006",
+      "capability_id": "CAP-EXE-006",
+      "capability_name": "ArchiveExecution",
+      "domain": "Execution Domain",
+      "domain_slug": "execution",
+      "aggregate_root": "DOM-050 Execution",
+      "aggregate_state_name": "DOM-050 ExecutionState",
+      "primary_reference_type": "ExecutionReference",
+      "handler_id": "HND-EXE-006",
+      "handler_name": "ArchiveExecutionHandler",
+      "command_contract_id": "CON-EXE-006",
+      "event_id": "EVT-EXE-006",
+      "event_name": "ExecutionArchived",
+      "runtime_boundary_id": "RB-EXE",
+      "repository_port": "DOM-050 ExecutionRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-EXE-007",
+      "capability_id": "CAP-EXE-007",
+      "capability_name": "PromoteArtifactToKnowledge",
+      "domain": "Execution Domain",
+      "domain_slug": "execution",
+      "aggregate_root": "DOM-050 Execution",
+      "aggregate_state_name": "DOM-050 ExecutionState",
+      "primary_reference_type": "KnowledgeAssetReference",
+      "handler_id": "HND-EXE-007",
+      "handler_name": "PromoteArtifactToKnowledgeHandler",
+      "command_contract_id": "CON-EXE-007",
+      "event_id": "EVT-EXE-007",
+      "event_name": "ExecutionArtifactProduced",
+      "runtime_boundary_id": "RB-EXE",
+      "repository_port": "DOM-050 ExecutionRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-GOV-001",
+      "capability_id": "CAP-GOV-001",
+      "capability_name": "CreatePolicy",
+      "domain": "Governance Domain",
+      "domain_slug": "governance",
+      "aggregate_root": "DOM-060 Policy",
+      "aggregate_state_name": "DOM-060 PolicyState",
+      "primary_reference_type": "PolicyReference",
+      "handler_id": "HND-GOV-001",
+      "handler_name": "CreatePolicyHandler",
+      "command_contract_id": "CON-GOV-001",
+      "event_id": "EVT-GOV-001",
+      "event_name": "PolicyCreated",
+      "runtime_boundary_id": "RB-GOV",
+      "repository_port": "DOM-060 PolicyRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-GOV-002",
+      "capability_id": "CAP-GOV-002",
+      "capability_name": "SubmitPolicyReview",
+      "domain": "Governance Domain",
+      "domain_slug": "governance",
+      "aggregate_root": "DOM-060 Policy",
+      "aggregate_state_name": "DOM-060 PolicyState",
+      "primary_reference_type": "PolicyReference",
+      "handler_id": "HND-GOV-002",
+      "handler_name": "SubmitPolicyReviewHandler",
+      "command_contract_id": "CON-GOV-002",
+      "event_id": "EVT-GOV-002",
+      "event_name": "PolicySubmitted",
+      "runtime_boundary_id": "RB-GOV",
+      "repository_port": "DOM-060 PolicyRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-GOV-003",
+      "capability_id": "CAP-GOV-003",
+      "capability_name": "ApprovePolicy",
+      "domain": "Governance Domain",
+      "domain_slug": "governance",
+      "aggregate_root": "DOM-060 Policy",
+      "aggregate_state_name": "DOM-060 PolicyState",
+      "primary_reference_type": "PolicyReference",
+      "handler_id": "HND-GOV-003",
+      "handler_name": "ApprovePolicyHandler",
+      "command_contract_id": "CON-GOV-003",
+      "event_id": "EVT-GOV-003",
+      "event_name": "PolicyApproved",
+      "runtime_boundary_id": "RB-GOV",
+      "repository_port": "DOM-060 PolicyRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-GOV-004",
+      "capability_id": "CAP-GOV-004",
+      "capability_name": "RejectPolicy",
+      "domain": "Governance Domain",
+      "domain_slug": "governance",
+      "aggregate_root": "DOM-060 Policy",
+      "aggregate_state_name": "DOM-060 PolicyState",
+      "primary_reference_type": "PolicyReference",
+      "handler_id": "HND-GOV-004",
+      "handler_name": "RejectPolicyHandler",
+      "command_contract_id": "CON-GOV-004",
+      "event_id": "EVT-GOV-004",
+      "event_name": "PolicyRejected",
+      "runtime_boundary_id": "RB-GOV",
+      "repository_port": "DOM-060 PolicyRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-GOV-005",
+      "capability_id": "CAP-GOV-005",
+      "capability_name": "PublishPolicy",
+      "domain": "Governance Domain",
+      "domain_slug": "governance",
+      "aggregate_root": "DOM-060 Policy",
+      "aggregate_state_name": "DOM-060 PolicyState",
+      "primary_reference_type": "PolicyReference",
+      "handler_id": "HND-GOV-005",
+      "handler_name": "PublishPolicyHandler",
+      "command_contract_id": "CON-GOV-005",
+      "event_id": "EVT-GOV-005",
+      "event_name": "PolicyPublished",
+      "runtime_boundary_id": "RB-GOV",
+      "repository_port": "DOM-060 PolicyRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-GOV-006",
+      "capability_id": "CAP-GOV-006",
+      "capability_name": "SupersedePolicy",
+      "domain": "Governance Domain",
+      "domain_slug": "governance",
+      "aggregate_root": "DOM-060 Policy",
+      "aggregate_state_name": "DOM-060 PolicyState",
+      "primary_reference_type": "PolicyReference",
+      "handler_id": "HND-GOV-006",
+      "handler_name": "SupersedePolicyHandler",
+      "command_contract_id": "CON-GOV-006",
+      "event_id": "EVT-GOV-006",
+      "event_name": "PolicySuperseded",
+      "runtime_boundary_id": "RB-GOV",
+      "repository_port": "DOM-060 PolicyRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-GOV-007",
+      "capability_id": "CAP-GOV-007",
+      "capability_name": "DelegateAuthority",
+      "domain": "Governance Domain",
+      "domain_slug": "governance",
+      "aggregate_root": "DOM-060 Policy",
+      "aggregate_state_name": "DOM-060 PolicyState",
+      "primary_reference_type": "PolicyReference",
+      "handler_id": "HND-GOV-007",
+      "handler_name": "DelegateAuthorityHandler",
+      "command_contract_id": "CON-GOV-007",
+      "event_id": "EVT-GOV-007",
+      "event_name": "DelegationGranted",
+      "runtime_boundary_id": "RB-GOV",
+      "repository_port": "DOM-060 PolicyRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-GOV-008",
+      "capability_id": "CAP-GOV-008",
+      "capability_name": "RevokeDelegation",
+      "domain": "Governance Domain",
+      "domain_slug": "governance",
+      "aggregate_root": "DOM-060 Policy",
+      "aggregate_state_name": "DOM-060 PolicyState",
+      "primary_reference_type": "PolicyReference",
+      "handler_id": "HND-GOV-008",
+      "handler_name": "RevokeDelegationHandler",
+      "command_contract_id": "CON-GOV-008",
+      "event_id": "EVT-GOV-008",
+      "event_name": "DelegationRevoked",
+      "runtime_boundary_id": "RB-GOV",
+      "repository_port": "DOM-060 PolicyRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-GOV-009",
+      "capability_id": "CAP-GOV-009",
+      "capability_name": "ArchivePolicy",
+      "domain": "Governance Domain",
+      "domain_slug": "governance",
+      "aggregate_root": "DOM-060 Policy",
+      "aggregate_state_name": "DOM-060 PolicyState",
+      "primary_reference_type": "PolicyReference",
+      "handler_id": "HND-GOV-009",
+      "handler_name": "ArchivePolicyHandler",
+      "command_contract_id": "CON-GOV-009",
+      "event_id": "EVT-GOV-009",
+      "event_name": "PolicyArchived",
+      "runtime_boundary_id": "RB-GOV",
+      "repository_port": "DOM-060 PolicyRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-OBS-001",
+      "capability_id": "CAP-OBS-001",
+      "capability_name": "RegisterAuditRecord",
+      "domain": "Observability Domain",
+      "domain_slug": "observability",
+      "aggregate_root": "DOM-070 AuditRecord",
+      "aggregate_state_name": "DOM-070 AuditRecordState",
+      "primary_reference_type": "AuditRecordReference",
+      "handler_id": "HND-OBS-001",
+      "handler_name": "RegisterAuditRecordHandler",
+      "command_contract_id": "CON-OBS-001",
+      "event_id": "EVT-OBS-001",
+      "event_name": "AuditRecordRegistered",
+      "runtime_boundary_id": "RB-OBS",
+      "repository_port": "DOM-070 AuditRecordRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-OBS-002",
+      "capability_id": "CAP-OBS-002",
+      "capability_name": "ValidateEvidence",
+      "domain": "Observability Domain",
+      "domain_slug": "observability",
+      "aggregate_root": "DOM-070 AuditRecord",
+      "aggregate_state_name": "DOM-070 AuditRecordState",
+      "primary_reference_type": "AuditRecordReference",
+      "handler_id": "HND-OBS-002",
+      "handler_name": "ValidateEvidenceHandler",
+      "command_contract_id": "CON-OBS-002",
+      "event_id": "EVT-OBS-002",
+      "event_name": "EvidenceValidated",
+      "runtime_boundary_id": "RB-OBS",
+      "repository_port": "DOM-070 AuditRecordRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-OBS-003",
+      "capability_id": "CAP-OBS-003",
+      "capability_name": "CorrelateEvidence",
+      "domain": "Observability Domain",
+      "domain_slug": "observability",
+      "aggregate_root": "DOM-070 AuditRecord",
+      "aggregate_state_name": "DOM-070 AuditRecordState",
+      "primary_reference_type": "AuditRecordReference",
+      "handler_id": "HND-OBS-003",
+      "handler_name": "CorrelateEvidenceHandler",
+      "command_contract_id": "CON-OBS-003",
+      "event_id": "EVT-OBS-003",
+      "event_name": "EvidenceCorrelated",
+      "runtime_boundary_id": "RB-OBS",
+      "repository_port": "DOM-070 AuditRecordRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-OBS-004",
+      "capability_id": "CAP-OBS-004",
+      "capability_name": "ApplyRetentionPolicy",
+      "domain": "Observability Domain",
+      "domain_slug": "observability",
+      "aggregate_root": "DOM-070 AuditRecord",
+      "aggregate_state_name": "DOM-070 AuditRecordState",
+      "primary_reference_type": "AuditRecordReference",
+      "handler_id": "HND-OBS-004",
+      "handler_name": "ApplyRetentionPolicyHandler",
+      "command_contract_id": "CON-OBS-004",
+      "event_id": "EVT-OBS-004",
+      "event_name": "RetentionApplied",
+      "runtime_boundary_id": "RB-OBS",
+      "repository_port": "DOM-070 AuditRecordRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    },
+    {
+      "state_model_id": "STM-OBS-005",
+      "capability_id": "CAP-OBS-005",
+      "capability_name": "ArchiveEvidence",
+      "domain": "Observability Domain",
+      "domain_slug": "observability",
+      "aggregate_root": "DOM-070 AuditRecord",
+      "aggregate_state_name": "DOM-070 AuditRecordState",
+      "primary_reference_type": "AuditRecordReference",
+      "handler_id": "HND-OBS-005",
+      "handler_name": "ArchiveEvidenceHandler",
+      "command_contract_id": "CON-OBS-005",
+      "event_id": "EVT-OBS-005",
+      "event_name": "AuditRecordArchived",
+      "runtime_boundary_id": "RB-OBS",
+      "repository_port": "DOM-070 AuditRecordRepositoryPort",
+      "state_kind": "canonical_aggregate_state",
+      "persistence_status": "not_implemented_specification_only",
+      "required_state_fields": [
+        "state_id",
+        "state_version",
+        "aggregate_reference",
+        "lifecycle_status",
+        "created_at",
+        "updated_at",
+        "last_event_id",
+        "last_command_id",
+        "correlation_id",
+        "causation_id",
+        "audit_record_reference"
+      ],
+      "allowed_lifecycle_statuses": [
+        "initialized",
+        "active",
+        "suspended",
+        "archived"
+      ],
+      "write_policy": {
+        "accepted_command": "append_event_and_project_state",
+        "rejected_command": "audit_only_no_state_mutation",
+        "idempotent_replay": "return_existing_projection_without_duplicate_write"
+      },
+      "privacy_policy": {
+        "raw_private_content_allowed": false,
+        "founder_private_context_storage_allowed": false,
+        "learning_signal_storage_allowed": true,
+        "learning_signal_content": "sanitized_operational_metadata_only"
+      }
+    }
+  ]
+}

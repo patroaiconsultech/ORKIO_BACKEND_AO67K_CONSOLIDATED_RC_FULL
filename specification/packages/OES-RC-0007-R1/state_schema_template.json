@@ -1,0 +1,26 @@
+{
+  "state_model_id": "STM-XXX-000",
+  "aggregate_state_name": "ExampleState",
+  "primary_reference_type": "ExampleReference",
+  "repository_port": "ExampleRepositoryPort",
+  "state_kind": "canonical_aggregate_state",
+  "persistence_status": "not_implemented_specification_only",
+  "required_state_fields": [
+    "state_id",
+    "state_version",
+    "aggregate_reference",
+    "lifecycle_status",
+    "created_at",
+    "updated_at",
+    "last_event_id",
+    "last_command_id",
+    "correlation_id",
+    "causation_id",
+    "audit_record_reference"
+  ],
+  "privacy_policy": {
+    "raw_private_content_allowed": false,
+    "founder_private_context_storage_allowed": false,
+    "learning_signal_storage_allowed": true
+  }
+}
