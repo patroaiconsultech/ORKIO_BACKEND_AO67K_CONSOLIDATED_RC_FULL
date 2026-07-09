@@ -157,6 +157,28 @@ from .runtime.amcham_public_journey_policy import (
     build_amcham_public_journey_decision,
     build_amcham_public_journey_stream_payload,
 )
+# AO70 — Quality Engine fail-open imports.
+# Purpose: add deterministic intent/checklist validation and one safe internal retry
+# for structured executive prompts, without making runtime/quality a startup dependency.
+try:
+    from .runtime.quality import (
+        AO70_QUALITY_ENGINE_VERSION,
+        ao70_build_quality_retry_prompt,
+        ao70_should_apply_quality_engine,
+        ao70_validate_response,
+    )
+except Exception:  # pragma: no cover - partial deploy protection
+    AO70_QUALITY_ENGINE_VERSION = "AO70_QUALITY_ENGINE_IMPORT_FAILED"
+
+    def ao70_should_apply_quality_engine(*args, **kwargs):
+        return False
+
+    def ao70_validate_response(*args, **kwargs):
+        return {"applies": False, "score": 100, "missing_items": [], "passed": True}
+
+    def ao70_build_quality_retry_prompt(*args, **kwargs):
+        return None
+
 from .runtime.direct_chat_persistence import persist_direct_assistant_message
 # P0-RS01 — fail-open stream runtime stabilizer.
 # Keep pure helpers outside the AppConsole/main monolith; if the module is absent,
@@ -8604,6 +8626,169 @@ def _openai_answer(
             "fallback_used": False,
             "fallback_reason": "",
         }
+
+
+
+# AO70 — Quality Engine guarded answer wrapper.
+# This wrapper is intentionally small and reversible. It keeps _openai_answer intact
+# and only adds a deterministic quality gate for structured executive prompts.
+def _ao70_quality_guarded_openai_answer(
+    user_message: str,
+    context_chunks: List[Dict[str, Any]],
+    *,
+    history: Optional[List[Dict[str, str]]] = None,
+    system_prompt: Optional[str] = None,
+    model_override: Optional[str] = None,
+    temperature: Optional[float] = None,
+    fallback_model_override: Optional[str] = None,
+    response_control: Optional[str] = None,
+    trace_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    quality_enabled = str(os.getenv("AO70_QUALITY_ENGINE_ENABLED", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
+    retry_enabled = str(os.getenv("AO70_QUALITY_RETRY_ENABLED", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
+
+    apply_quality = False
+    try:
+        apply_quality = bool(
+            quality_enabled
+            and ao70_should_apply_quality_engine(
+                user_message,
+                response_control=response_control,
+            )
+        )
+    except Exception:
+        apply_quality = False
+
+    effective_temperature = temperature
+    if apply_quality:
+        try:
+            if effective_temperature is None:
+                effective_temperature = float(os.getenv("AO70_EXECUTIVE_TEMPERATURE", "0.25") or "0.25")
+        except Exception:
+            effective_temperature = temperature
+
+    ans_obj = _openai_answer(
+        user_message,
+        context_chunks,
+        history=history,
+        system_prompt=system_prompt,
+        model_override=model_override,
+        temperature=effective_temperature,
+        fallback_model_override=fallback_model_override,
+    )
+
+    if not apply_quality:
+        return ans_obj
+
+    first_text = ""
+    try:
+        if isinstance(ans_obj, dict):
+            first_text = str(ans_obj.get("text") or "").strip()
+    except Exception:
+        first_text = ""
+
+    try:
+        validation = ao70_validate_response(user_message, first_text, response_control=response_control)
+    except Exception as exc:
+        try:
+            logger.warning("AO70_QUALITY_VALIDATE_FAILED trace_id=%s error=%s", trace_id, str(exc)[:300])
+        except Exception:
+            pass
+        return ans_obj
+
+    try:
+        logger.warning(
+            "AO70_QUALITY_SCORE trace_id=%s score=%s passed=%s missing=%s version=%s",
+            trace_id,
+            validation.get("score"),
+            validation.get("passed"),
+            ",".join(list(validation.get("missing_items") or [])[:12]),
+            AO70_QUALITY_ENGINE_VERSION,
+        )
+    except Exception:
+        pass
+
+    if bool(validation.get("passed")) or not retry_enabled:
+        try:
+            if isinstance(ans_obj, dict):
+                ans_obj.setdefault("quality", validation)
+                ans_obj.setdefault("quality_engine_version", AO70_QUALITY_ENGINE_VERSION)
+        except Exception:
+            pass
+        return ans_obj
+
+    retry_prompt = None
+    try:
+        retry_prompt = ao70_build_quality_retry_prompt(
+            original_prompt=user_message,
+            first_answer=first_text,
+            validation=validation,
+        )
+    except Exception:
+        retry_prompt = None
+
+    if not retry_prompt:
+        return ans_obj
+
+    retry_system = (system_prompt or "").strip()
+    retry_overlay = (
+        "AO70 QUALITY ENGINE — responda em modo executivo direto. "
+        "Não faça onboarding. Não peça dados que já foram fornecidos. "
+        "Calcule quando houver números suficientes. Cubra todos os entregáveis obrigatórios."
+    )
+    retry_system = (retry_system + "\n\n" + retry_overlay).strip() if retry_system else retry_overlay
+
+    retry_obj = _openai_answer(
+        retry_prompt,
+        context_chunks,
+        history=history,
+        system_prompt=retry_system,
+        model_override=model_override,
+        temperature=effective_temperature,
+        fallback_model_override=fallback_model_override,
+    )
+
+    retry_text = ""
+    try:
+        if isinstance(retry_obj, dict):
+            retry_text = str(retry_obj.get("text") or "").strip()
+    except Exception:
+        retry_text = ""
+
+    try:
+        retry_validation = ao70_validate_response(user_message, retry_text, response_control=response_control)
+    except Exception:
+        retry_validation = {"passed": bool(retry_text), "score": 0, "missing_items": []}
+
+    try:
+        logger.warning(
+            "AO70_QUALITY_RETRY_RESULT trace_id=%s first_score=%s retry_score=%s retry_passed=%s",
+            trace_id,
+            validation.get("score"),
+            retry_validation.get("score"),
+            retry_validation.get("passed"),
+        )
+    except Exception:
+        pass
+
+    if retry_text:
+        try:
+            retry_obj.setdefault("quality", retry_validation)
+            retry_obj.setdefault("quality_engine_version", AO70_QUALITY_ENGINE_VERSION)
+            retry_obj.setdefault("quality_retry_applied", True)
+            retry_obj.setdefault("quality_first_score", validation.get("score"))
+        except Exception:
+            pass
+        return retry_obj
+
+    try:
+        if isinstance(ans_obj, dict):
+            ans_obj.setdefault("quality", validation)
+            ans_obj.setdefault("quality_engine_version", AO70_QUALITY_ENGINE_VERSION)
+            ans_obj.setdefault("quality_retry_applied", False)
+    except Exception:
+        pass
+    return ans_obj
 
 
 
@@ -25186,13 +25371,15 @@ def chat(
                 "model": "runtime_capability_execution" if str(execution_result.get("provider") or "").strip().lower() == "runtime" else "github_capability",
             }
         else:
-            ans_obj = _openai_answer(
+            ans_obj = _ao70_quality_guarded_openai_answer(
                 user_msg if blocked_reply is None else inp.message,
                 citations,
                 history=history,
                 system_prompt=effective_system_prompt,
                 model_override=(agent.model if agent else None),
                 temperature=temperature,
+                response_control=getattr(inp, "response_control", None),
+                trace_id=ao32_trace_id,
             )
         answer = blocked_reply or (ans_obj.get("text") if ans_obj else None)
 
@@ -41130,13 +41317,15 @@ async def chat_stream(
                 except Exception:
                     pass
 
-            ans_obj2 = _openai_answer(
+            ans_obj2 = _ao70_quality_guarded_openai_answer(
                 inp.message,
                 citations2,
                 history=history2,
                 system_prompt=system_prompt2,
                 model_override=(getattr(agent2, "model", None) if agent2 is not None else None),
                 temperature=temperature2,
+                response_control=getattr(inp, "response_control", None),
+                trace_id=trace_id,
             )
 
             final_text2 = ""
