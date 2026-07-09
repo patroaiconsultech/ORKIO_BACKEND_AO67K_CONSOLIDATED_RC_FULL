@@ -99,14 +99,19 @@ from .runtime.orkio_context_intent import (
 )
 from .runtime.orkio_executive_guard import classify_orkio_executive_request, eos06_build_router_precedence_payload
 
-# MANUS UX R3.2 — fail-open stream-entry gate wiring.
+# MANUS UX R3.2 — fail-open stream-entry gate wiring with boot diagnostics.
 # This closes the pre-deploy integration gap by making the R3.1 adapter available
 # to /api/chat/stream without risking startup if a partial overlay is deployed.
+# R3.2-DIAG: Added boot-time logging to confirm successful import in production.
+_MANUS_UX_R3_2_STREAM_PRECEDENCE_LOADED = False
 try:
     from .runtime.orkio_stream_precedence import (
         build_chat_stream_precedence_payload as manus_ux_r3_1_build_chat_stream_precedence_payload,
     )
-except Exception:  # pragma: no cover - partial deploy protection
+    _MANUS_UX_R3_2_STREAM_PRECEDENCE_LOADED = True
+    logger.warning("MANUS_UX_R3_2_BOOT_OK: orkio_stream_precedence imported successfully")
+except Exception as _r3_2_import_exc:  # pragma: no cover - partial deploy protection
+    logger.error("MANUS_UX_R3_2_BOOT_FAIL: orkio_stream_precedence import failed: %s", _r3_2_import_exc)
     def manus_ux_r3_1_build_chat_stream_precedence_payload(payload_or_message):
         try:
             if isinstance(payload_or_message, dict):
@@ -127,11 +132,15 @@ except Exception:  # pragma: no cover - partial deploy protection
                 "route_family": "manus_ux_r3_2_fail_open",
             }
 
+_MANUS_UX_R3_2_CTA_GUARD_LOADED = False
 try:
     from .runtime.orkio_backend_cta_guard import (
         enforce_backend_cta_policy as manus_ux_r3_1_enforce_backend_cta_policy,
     )
-except Exception:  # pragma: no cover - partial deploy protection
+    _MANUS_UX_R3_2_CTA_GUARD_LOADED = True
+    logger.warning("MANUS_UX_R3_2_BOOT_OK: orkio_backend_cta_guard imported successfully")
+except Exception as _r3_2_cta_import_exc:  # pragma: no cover - partial deploy protection
+    logger.error("MANUS_UX_R3_2_BOOT_FAIL: orkio_backend_cta_guard import failed: %s", _r3_2_cta_import_exc)
     def manus_ux_r3_1_enforce_backend_cta_policy(payload):
         return payload, False
 from .runtime.executive_intelligence import (
@@ -41711,6 +41720,19 @@ async def chat_stream(
         # policy, governed_evolution_pipeline, identity/capability route or provider
         # path. The adapter owns executive advisory/crisis/dashboard turns and returns
         # handled=False for generic messages so the legacy flow remains intact.
+
+        # R3.2-DIAG: Canary log to confirm the guard is being reached in production.
+        try:
+            logger.warning(
+                "MANUS_UX_R3_2_GUARD_CALLED trace_id=%s stream_precedence_loaded=%s cta_guard_loaded=%s message_preview=%s",
+                trace_id,
+                _MANUS_UX_R3_2_STREAM_PRECEDENCE_LOADED,
+                _MANUS_UX_R3_2_CTA_GUARD_LOADED,
+                str(message or "")[:80],
+            )
+        except Exception:
+            pass
+
         try:
             _eos06_ao85_hf2_payload = manus_ux_r3_1_build_chat_stream_precedence_payload({
                 "message": message,
