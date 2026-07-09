@@ -14,13 +14,17 @@ def classify_message(message: str) -> Classification:
     ]
     executive_strategy_terms = [
         "riscos", "risco", "proximos 12 meses", "próximos 12 meses",
-        "cenario", "cenário", "estrategia", "estratégia", "conselho",
-        "expansao", "expansão", "decisao", "decisão", "prioridades",
+        "cenario", "cenário", "visao estrategica", "visão estratégica",
+        "estrategia", "estratégia", "conselho", "expansao", "expansão",
+        "expandir", "decisao", "decisão", "framework de decisao",
+        "framework de decisão", "internacionalizacao", "internacionalização",
+        "competitivo", "concorrencia", "concorrência", "players",
+        "tendencias", "tendências", "diferenciar", "preparar", "prioridades",
         "trade-offs", "trade offs", "ameaças", "ameacas", "oportunidades",
         "plano de ação", "plano de acao", "internacional", "retencao",
         "retenção",
     ]
-    executive_crisis_terms = ["crise", "saiu hoje", "48 horas", "urgente", "vp de vendas"]
+    executive_crisis_terms = ["crise", "saiu hoje", "demitiu", "demissao", "demissão", "sem aviso previo", "sem aviso prévio", "48 horas", "72 horas", "urgente", "contingencia", "contingência", "vp de vendas"]
     executive_dashboard_terms = ["kpis", "kpi", "indicadores", "acompanhar semanalmente", "cadencia", "cadência"]
     governance_terms = ["observe_only", "proposal_only", "rollback", "aprovação humana", "aprovacao humana", "não execute", "nao execute"]
     capability_terms = ["o que é", "o que e", "capacidades", "oferece hoje", "roadmap", "produção", "producao", "beta", "proposta"]

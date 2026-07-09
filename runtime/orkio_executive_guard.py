@@ -395,14 +395,17 @@ def _looks_like_executive_strategy_request(text: str) -> bool:
         return False
     strategic_markers = (
         "risco", "riscos", "proximos 12 meses", "cenario", "cenarios",
-        "estrategia", "conselho", "expansao", "crise", "decisao",
+        "visao estrategica", "estrategia", "conselho", "expansao", "expandir",
+        "crise", "decisao", "framework de decisao", "internacionalizacao",
         "prioridade", "prioridades", "trade-off", "tradeoffs", "trade offs",
         "ameaca", "ameacas", "oportunidade", "oportunidades", "plano de acao",
-        "retencao", "internacional",
+        "retencao", "internacional", "competitivo", "concorrencia",
+        "players", "tendencias", "diferenciar", "preparar",
     )
     executive_markers = (
         "ceo", "founder", "fundador", "diretor", "lideranca", "saas",
         "b2b", "empresa", "negocio", "faturamento", "funcionarios",
+        "mercado", "setor", "pme", "pmes",
     )
     return bool(any(m in low for m in strategic_markers) and (
         any(m in low for m in executive_markers) or "?" in str(text or "")
@@ -414,8 +417,8 @@ def _looks_like_executive_crisis_request(text: str) -> bool:
     if not low or _looks_like_financial_math_request(low):
         return False
     return bool(
-        any(m in low for m in ("crise", "saiu hoje", "demitiu", "renunciou", "48 horas", "urgente"))
-        and any(m in low for m in ("vp", "diretor", "ceo", "lider", "vendas", "operacao", "equipe"))
+        any(m in low for m in ("crise", "saiu hoje", "demitiu", "demissao", "renunciou", "48 horas", "72 horas", "urgente", "sem aviso previo", "contingencia"))
+        and any(m in low for m in ("vp", "diretor", "ceo", "lider", "vendas", "operacao", "equipe", "clientes", "pipeline"))
     )
 
 
