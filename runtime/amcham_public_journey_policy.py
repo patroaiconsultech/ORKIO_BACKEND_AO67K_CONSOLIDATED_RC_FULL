@@ -17,6 +17,8 @@ from app.services.agent_access_policy import (
 
 AMCHAM_PUBLIC_JOURNEY_POLICY_VERSION = "AO69A_PREMIUM_POLISH_UNIFIED_V1"
 
+STRUCTURED_EXECUTIVE_TASK_POLICY_VERSION = "AO69B_STRUCTURED_EXECUTIVE_TASK_BYPASS_V1"
+
 FUTURE_UNLOCK_NOTICE = (
     "Com a evolução das conversas, o uso correto da ferramenta e a identificação de necessidades específicas, "
     "novas funcionalidades e agentes especializados poderão ser liberados futuramente para apoiar análises mais profundas."
@@ -130,6 +132,73 @@ def _wants_english(normalized: str) -> bool:
 
 def _contains_any(text: str, markers: Iterable[str]) -> bool:
     return any(marker in text for marker in markers)
+
+
+EXECUTIVE_METRIC_MARKERS = (
+    "mrr",
+    "arr",
+    "receita",
+    "faturamento",
+    "margem",
+    "margem bruta",
+    "margem operacional",
+    "despesas",
+    "custos",
+    "cac",
+    "ltv",
+    "churn",
+    "ticket",
+    "runway",
+    "caixa",
+    "ebitda",
+    "lucro",
+    "burn",
+    "payback",
+)
+
+EXECUTIVE_DELIVERABLE_MARKERS = (
+    "calcule",
+    "calculo",
+    "calculos",
+    "entregue",
+    "avalie",
+    "diagnostico",
+    "restricoes",
+    "roadmap",
+    "plano 30-60-90",
+    "30-60-90",
+    "kpis",
+    "riscos",
+    "gatilhos",
+    "dados faltantes",
+    "inferencias",
+)
+
+
+def _is_structured_executive_task(message: Any, normalized: Optional[str] = None) -> bool:
+    """True when the public user already supplied enough data to answer.
+
+    The public journey is useful for vague discovery prompts, but it must not
+    replace a concrete board-level task with onboarding questions.
+    """
+
+    text = normalized if normalized is not None else normalize_text(message)
+    if not text:
+        return False
+
+    metric_hits = sum(1 for marker in EXECUTIVE_METRIC_MARKERS if marker in text)
+    deliverable_hits = sum(1 for marker in EXECUTIVE_DELIVERABLE_MARKERS if marker in text)
+
+    raw = _strip_accents(message).lower()
+    has_financial_numbers = bool(
+        re.search(
+            r"(r\s*\$|\d[\d\.,]*\s*(%|mil|mi|milhao|milhoes|mes|meses|mensal|/mes))",
+            raw,
+            flags=re.I,
+        )
+    )
+
+    return has_financial_numbers and metric_hits >= 3 and deliverable_hits >= 2
 
 
 def _explicit_orkio_or_public_context(
@@ -717,6 +786,13 @@ def build_amcham_public_journey_decision(
 
     if _is_direct_answer_constraint(normalized):
         return {"handled": False, "reason": "direct_answer_constraint"}
+
+    if _is_structured_executive_task(message, normalized):
+        return {
+            "handled": False,
+            "reason": "structured_executive_task_direct_answer",
+            "policy_version": STRUCTURED_EXECUTIVE_TASK_POLICY_VERSION,
+        }
 
     public_intent = classify_amcham_public_journey(normalized)
     if not public_intent:
