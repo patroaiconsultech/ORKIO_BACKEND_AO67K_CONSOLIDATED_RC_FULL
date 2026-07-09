@@ -79,11 +79,13 @@ _EXECUTIVE_STRATEGY_MARKERS = (
     "risco", "riscos", "proximos 12 meses", "cenario", "cenarios",
     "visao estrategica", "estrategia", "conselho", "expansao", "expandir",
     "decisao", "framework de decisao", "internacionalizacao", "mexico",
-    "mercado mexicano", "competitivo", "concorrencia", "players",
+    "mercado mexicano", "competitivo", "competitiva", "concorrencia",
+    "concorrente", "concorrentes", "players",
     "tendencias", "diferenciar", "preparar", "prioridade", "prioridades",
     "trade-off", "tradeoffs", "trade offs", "ameaca", "ameacas",
     "oportunidade", "oportunidades", "plano de acao", "retencao",
     "internacional", "matriz de decisao", "framework", "como devo me preparar",
+    "reposicionar", "posicionamento", "series b", "series a",
 )
 
 _EXECUTIVE_CRISIS_MARKERS = (
@@ -458,7 +460,7 @@ def _build_eos06_governance_answer(message: Any) -> str:
 def _build_executive_strategy_answer(message: Any) -> str:
     low = _normalize(message)
 
-    if _has_any(low, ("competitivo", "concorrencia", "players", "tendencias", "diferenciar")):
+    if _has_any(low, ("competitivo", "competitiva", "concorrencia", "concorrente", "concorrentes", "players", "tendencias", "diferenciar", "reposicionar", "posicionamento", "series b", "series a")):
         return (
             "Diagnóstico breve: esta é uma decisão de posicionamento competitivo, não um cálculo financeiro.\n\n"
             "1. Mapeie o campo competitivo\n"
