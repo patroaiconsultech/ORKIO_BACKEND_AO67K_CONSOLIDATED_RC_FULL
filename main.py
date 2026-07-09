@@ -109,9 +109,9 @@ try:
         build_chat_stream_precedence_payload as manus_ux_r3_1_build_chat_stream_precedence_payload,
     )
     _MANUS_UX_R3_2_STREAM_PRECEDENCE_LOADED = True
-    logger.warning("MANUS_UX_R3_2_BOOT_OK: orkio_stream_precedence imported successfully")
+    print("MANUS_UX_R3_2_BOOT_OK: orkio_stream_precedence imported successfully")
 except Exception as _r3_2_import_exc:  # pragma: no cover - partial deploy protection
-    logger.error("MANUS_UX_R3_2_BOOT_FAIL: orkio_stream_precedence import failed: %s", _r3_2_import_exc)
+    print(f"MANUS_UX_R3_2_BOOT_FAIL: orkio_stream_precedence import failed: {_r3_2_import_exc}")
     def manus_ux_r3_1_build_chat_stream_precedence_payload(payload_or_message):
         try:
             if isinstance(payload_or_message, dict):
@@ -138,9 +138,9 @@ try:
         enforce_backend_cta_policy as manus_ux_r3_1_enforce_backend_cta_policy,
     )
     _MANUS_UX_R3_2_CTA_GUARD_LOADED = True
-    logger.warning("MANUS_UX_R3_2_BOOT_OK: orkio_backend_cta_guard imported successfully")
+    print("MANUS_UX_R3_2_BOOT_OK: orkio_backend_cta_guard imported successfully")
 except Exception as _r3_2_cta_import_exc:  # pragma: no cover - partial deploy protection
-    logger.error("MANUS_UX_R3_2_BOOT_FAIL: orkio_backend_cta_guard import failed: %s", _r3_2_cta_import_exc)
+    print(f"MANUS_UX_R3_2_BOOT_FAIL: orkio_backend_cta_guard import failed: {_r3_2_cta_import_exc}")
     def manus_ux_r3_1_enforce_backend_cta_policy(payload):
         return payload, False
 from .runtime.executive_intelligence import (
