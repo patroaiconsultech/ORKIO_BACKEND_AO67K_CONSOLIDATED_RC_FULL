@@ -44,5 +44,18 @@ def build_response(kernel_input: KernelInput) -> KernelResult:
         truth_labels=truth_labels_for_category(classification.category),
         governance_flags=governance_flags(),
         capability_references=[],
-        metadata={"kernel_version": "orkio_os_1_0_foundation"},
+        metadata={
+            "kernel_version": "orkio_os_1_0_foundation",
+            "manus_ux_r3": True,
+            "commercial_cta_allowed": False,
+            "commercial_cta_suppressed": True,
+            "execution_trace_priority": "secondary_collapsed",
+            "routing": {
+                "routing_source": "MANUS_UX_R3_INTENT_PRECEDENCE_V1",
+                "category": classification.category,
+                "commercial_cta_allowed": False,
+                "commercial_cta_suppressed": True,
+                "execution_trace_priority": "secondary_collapsed",
+            },
+        },
     )

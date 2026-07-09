@@ -98,6 +98,42 @@ from .runtime.orkio_context_intent import (
     requires_document_context as orkio_requires_document_context,
 )
 from .runtime.orkio_executive_guard import classify_orkio_executive_request, eos06_build_router_precedence_payload
+
+# MANUS UX R3.2 — fail-open stream-entry gate wiring.
+# This closes the pre-deploy integration gap by making the R3.1 adapter available
+# to /api/chat/stream without risking startup if a partial overlay is deployed.
+try:
+    from .runtime.orkio_stream_precedence import (
+        build_chat_stream_precedence_payload as manus_ux_r3_1_build_chat_stream_precedence_payload,
+    )
+except Exception:  # pragma: no cover - partial deploy protection
+    def manus_ux_r3_1_build_chat_stream_precedence_payload(payload_or_message):
+        try:
+            if isinstance(payload_or_message, dict):
+                _msg = (
+                    payload_or_message.get("message")
+                    or payload_or_message.get("user_message")
+                    or payload_or_message.get("prompt")
+                    or payload_or_message.get("input")
+                    or ""
+                )
+            else:
+                _msg = str(payload_or_message or "")
+            return eos06_build_router_precedence_payload(_msg)
+        except Exception:
+            return {
+                "handled": False,
+                "reason": "manus_ux_r3_1_stream_precedence_import_failed",
+                "route_family": "manus_ux_r3_2_fail_open",
+            }
+
+try:
+    from .runtime.orkio_backend_cta_guard import (
+        enforce_backend_cta_policy as manus_ux_r3_1_enforce_backend_cta_policy,
+    )
+except Exception:  # pragma: no cover - partial deploy protection
+    def manus_ux_r3_1_enforce_backend_cta_policy(payload):
+        return payload, False
 from .runtime.executive_intelligence import (
     append_executive_intelligence,
     build_executive_context_envelope,
@@ -41529,6 +41565,31 @@ async def chat_stream(
                     thread_id=tid_seed,
                     routing_source=routing_source,
                 )
+
+            # MANUS UX R3.2 — backend CTA suppression at the final SSE emitter.
+            # This is a second safety net for residual hardcoded WhatsApp/guided-project
+            # footers in any fast-path payload. It is fail-open and only strips known CTA
+            # signatures unless routing explicitly allows a commercial CTA.
+            try:
+                _manus_ux_r3_2_payload, _manus_ux_r3_2_cta_changed = manus_ux_r3_1_enforce_backend_cta_policy(payload)
+                if isinstance(_manus_ux_r3_2_payload, dict):
+                    payload = _manus_ux_r3_2_payload
+                    if _manus_ux_r3_2_cta_changed:
+                        try:
+                            logger.warning(
+                                "MANUS_UX_R3_2_BACKEND_CTA_SUPPRESSED trace_id=%s thread_id=%s routing_source=%s",
+                                trace_id,
+                                tid_seed,
+                                routing_source,
+                            )
+                        except Exception:
+                            pass
+            except Exception:
+                try:
+                    logger.exception("MANUS_UX_R3_2_BACKEND_CTA_GUARD_FAILED trace_id=%s", trace_id)
+                except Exception:
+                    pass
+
             route_plan_safe = _ao20k_hf2_json_safe(route_plan if isinstance(route_plan, dict) else {})
 
             final_text = str(
@@ -41644,15 +41705,27 @@ async def chat_stream(
                 pass
 
 
-        # EOS06-AO85-HF2 — Executive Turn Ownership Gate
-        # Must run immediately after _emit_result_payload is available and BEFORE
-        # any deterministic public fast-path (AO27 literal, HF6R1 welcome,
-        # public Orkio policy, governed_evolution_pipeline, identity/capability routes).
-        # Purpose: when EOS-06/AO85 recognizes a substantive executive turn, it owns
-        # the turn and terminally emits the answer. No provider call, no DB schema
-        # mutation, no branch, PR, deploy or external side effect is performed.
+        # MANUS UX R3.2 — Stream Entry Executive Precedence Gate
+        # Runs immediately after the SSE-safe emitter is available and BEFORE every
+        # deterministic public fast-path, legacy financial calculator, public Orkio
+        # policy, governed_evolution_pipeline, identity/capability route or provider
+        # path. The adapter owns executive advisory/crisis/dashboard turns and returns
+        # handled=False for generic messages so the legacy flow remains intact.
         try:
-            _eos06_ao85_hf2_payload = eos06_build_router_precedence_payload(message)
+            _eos06_ao85_hf2_payload = manus_ux_r3_1_build_chat_stream_precedence_payload({
+                "message": message,
+                "thread_id": tid_seed,
+                "trace_id": trace_id,
+                "client_message_id": client_message_id,
+                "visible_agent": getattr(inp, "visible_agent", None),
+                "target_agent_slug": getattr(inp, "target_agent_slug", None),
+                "requested_agent_names": getattr(inp, "requested_agent_names", None),
+                "source": getattr(inp, "source", None),
+                "product": getattr(inp, "product", None),
+                "agent_id": getattr(inp, "agent_id", None),
+                "dest_mode": getattr(inp, "dest_mode", None),
+                "route_plan": route_plan if isinstance(route_plan, dict) else None,
+            })
         except Exception:
             _eos06_ao85_hf2_payload = {}
 
@@ -41677,7 +41750,7 @@ async def chat_stream(
                             _eos06_ao85_hf2_payload.update(_eos06_persisted)
                             try:
                                 logger.warning(
-                                    "EOS06_AO85_HF4_SINGLE_COMMIT_GUARD trace_id=%s thread_id=%s assistant_message_id=%s duplicate_suppressed=%s",
+                                    "MANUS_UX_R3_2_SINGLE_COMMIT_GUARD trace_id=%s thread_id=%s assistant_message_id=%s duplicate_suppressed=%s",
                                     trace_id,
                                     _eos06_persisted.get("thread_id") or tid_seed,
                                     _eos06_persisted.get("assistant_message_id"),
@@ -41688,14 +41761,14 @@ async def chat_stream(
                         _eos06_ao85_hf2_payload["assistant_persisted"] = True
                     except Exception:
                         try:
-                            logger.exception("EOS06_AO85_HF2_PERSIST_FAILED trace_id=%s thread_id=%s", trace_id, tid_seed)
+                            logger.exception("MANUS_UX_R3_2_PERSIST_FAILED trace_id=%s thread_id=%s", trace_id, tid_seed)
                         except Exception:
                             pass
                         _eos06_ao85_hf2_payload["assistant_persisted"] = False
 
                 try:
                     logger.warning(
-                        "EOS06_AO85_HF2_TURN_OWNERSHIP trace_id=%s category=%s route_family=%s blocked_legacy_public_fastpaths=%s",
+                        "MANUS_UX_R3_2_STREAM_ENTRY_TURN_OWNERSHIP trace_id=%s category=%s route_family=%s blocked_legacy_public_fastpaths=%s",
                         trace_id,
                         _eos06_ao85_hf2_payload.get("category"),
                         _eos06_ao85_hf2_payload.get("route_family"),
@@ -41706,13 +41779,13 @@ async def chat_stream(
 
                 async for ev in _emit_result_payload(
                     _eos06_ao85_hf2_payload,
-                    routing_source="stream_eos06_ao85_hf2_executive_turn_ownership",
+                    routing_source="manus_ux_r3_2_stream_entry_executive_turn_ownership",
                 ):
                     yield ev
                 return
             except Exception:
                 try:
-                    logger.exception("EOS06_AO85_HF2_TURN_OWNERSHIP_FAILED trace_id=%s", trace_id)
+                    logger.exception("MANUS_UX_R3_2_STREAM_ENTRY_TURN_OWNERSHIP_FAILED trace_id=%s", trace_id)
                 except Exception:
                     pass
                 # Fail-open to previous protected runtime if the HF2 guard itself fails.
