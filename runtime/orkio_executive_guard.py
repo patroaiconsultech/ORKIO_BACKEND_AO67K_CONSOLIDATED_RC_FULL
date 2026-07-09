@@ -125,6 +125,7 @@ def executive_fastpath_allowed(decision: Any) -> bool:
 # EOS06-AO85-HF1 — Router Precedence Guard
 # Deterministic, readonly, no DB/network/provider/filesystem side effects.
 EOS06_AO85_HF2_VERSION = "EOS06_AO85_HF2_EXECUTIVE_TURN_OWNERSHIP_V1"
+MANUS_UX_R1_VERSION = "MANUS_UX_R1_EXECUTIVE_INTENT_ROUTING_V1"
 
 
 def _parse_pt_number(raw: str) -> float:
@@ -370,12 +371,183 @@ def _build_eos06_governance_answer(message: Any) -> str:
     )
 
 
+def _looks_like_financial_math_request(text: str) -> bool:
+    """MANUS-UX-R1: numbers alone must not trigger financial math."""
+    low = _normalize(text)
+    if not low:
+        return False
+    explicit_math_markers = (
+        "calcule", "calcular", "calculo", "calculos", "formula",
+        "mostre a formula", "quanto da", "qual e o valor", "qual o valor",
+        "porcentagem", "percentual", "roi", "payback", "ebitda", "dre",
+        "resultado financeiro", "matematicamente",
+    )
+    return bool(
+        any(m in low for m in explicit_math_markers)
+        and ("%" in low or "r$" in low or re.search(r"\d", low))
+        and any(m in low for m in ("empresa", "fatura", "faturamento", "receita", "margem", "lucro", "custo"))
+    )
+
+
+def _looks_like_executive_strategy_request(text: str) -> bool:
+    low = _normalize(text)
+    if not low or _looks_like_financial_math_request(low):
+        return False
+    strategic_markers = (
+        "risco", "riscos", "proximos 12 meses", "cenario", "cenarios",
+        "estrategia", "conselho", "expansao", "crise", "decisao",
+        "prioridade", "prioridades", "trade-off", "tradeoffs", "trade offs",
+        "ameaca", "ameacas", "oportunidade", "oportunidades", "plano de acao",
+        "retencao", "internacional",
+    )
+    executive_markers = (
+        "ceo", "founder", "fundador", "diretor", "lideranca", "saas",
+        "b2b", "empresa", "negocio", "faturamento", "funcionarios",
+    )
+    return bool(any(m in low for m in strategic_markers) and (
+        any(m in low for m in executive_markers) or "?" in str(text or "")
+    ))
+
+
+def _looks_like_executive_crisis_request(text: str) -> bool:
+    low = _normalize(text)
+    if not low or _looks_like_financial_math_request(low):
+        return False
+    return bool(
+        any(m in low for m in ("crise", "saiu hoje", "demitiu", "renunciou", "48 horas", "urgente"))
+        and any(m in low for m in ("vp", "diretor", "ceo", "lider", "vendas", "operacao", "equipe"))
+    )
+
+
+def _looks_like_executive_dashboard_request(text: str) -> bool:
+    low = _normalize(text)
+    if not low or _looks_like_financial_math_request(low):
+        return False
+    return bool(
+        any(m in low for m in ("kpi", "kpis", "indicadores", "acompanhar semanalmente", "cadencia"))
+        and any(m in low for m in ("ceo", "saas", "b2b", "empresa", "negocio"))
+    )
+
+
+def _build_executive_strategy_answer(message: Any) -> str:
+    return (
+        "Diagnostico breve: esta e uma pergunta executiva aberta. Vou tratar como decisao estrategica, "
+        "nao como calculo financeiro, porque nao houve pedido explicito de formula ou porcentagem.\n\n"
+        "1. Risco de crescimento com eficiencia\n"
+        "- Sinal de alerta: CAC subindo, churn estavel ou expansao abaixo do esperado.\n"
+        "- Acao recomendada: revisar ICP, payback, canais e eficiencia comercial.\n\n"
+        "2. Risco de concentracao de receita\n"
+        "- Sinal de alerta: dependencia excessiva de poucos clientes, canais ou segmentos.\n"
+        "- Acao recomendada: mapear concentracao e criar plano de diversificacao.\n\n"
+        "3. Risco de execucao organizacional\n"
+        "- Sinal de alerta: lideranca sobrecarregada, gaps de gestao ou lentidao em produto.\n"
+        "- Acao recomendada: definir cadencia executiva, ownership e metricas semanais.\n\n"
+        "Proximo passo sugerido: transformar estes riscos em um plano de acao de 30/60/90 dias."
+    )
+
+
+def _build_executive_decision_answer(message: Any) -> str:
+    return (
+        "Diagnostico breve: ha numeros no contexto, mas a pergunta pede escolha estrategica, nao calculo.\n\n"
+        "Prioridades e trade-offs:\n"
+        "1. Retencao protege receita, margem de manobra e aprendizado do cliente.\n"
+        "2. Expansao internacional aumenta opcionalidade, mas eleva complexidade comercial, juridica e operacional.\n"
+        "3. A decisao deve depender de sinais de repetibilidade: ICP claro, churn sob controle, payback previsivel e time capaz de executar sem dispersao.\n\n"
+        "Sinais de alerta: churn crescendo, suporte saturado, pipeline local inconsistente ou lideranca sem foco.\n\n"
+        "Acao recomendada: priorizar retencao se a base ainda nao e previsivel; testar expansao com uma aposta limitada se a maquina local ja for repetivel.\n\n"
+        "Proximo passo sugerido: montar uma matriz de decisao com impacto, risco, prazo e capacidade interna."
+    )
+
+
+def _build_executive_crisis_answer(message: Any) -> str:
+    return (
+        "Diagnostico breve: isto e uma crise executiva de continuidade comercial e moral do time.\n\n"
+        "Proximas 48 horas:\n"
+        "1. Estabilizar comando: nomeie um responsavel interino por vendas hoje.\n"
+        "2. Proteger pipeline: revise oportunidades criticas, proximas reunioes e contas em risco.\n"
+        "3. Comunicar com clareza: alinhe lideranca, equipe comercial e clientes sensiveis sem dramatizar.\n"
+        "4. Preservar informacao: centralize CRM, forecast, playbooks, metas e acordos pendentes.\n"
+        "5. Definir cadencia: checkpoint diario por 2 semanas com funil, riscos e decisoes.\n\n"
+        "Sinais de alerta: vendedores sem direcao, forecast opaco, clientes-chave ligando para confirmar estabilidade.\n\n"
+        "Proximo passo sugerido: fazer ainda hoje uma reuniao de 30 minutos com lideranca e donos do pipeline."
+    )
+
+
+def _build_executive_dashboard_answer(message: Any) -> str:
+    return (
+        "Diagnostico breve: para CEO de SaaS B2B, os KPIs semanais devem conectar crescimento, eficiencia, retencao e execucao.\n\n"
+        "KPIs recomendados:\n"
+        "1. Receita: MRR/ARR, new MRR, expansion MRR e churn MRR.\n"
+        "2. Comercial: pipeline qualificado, win rate, ciclo de venda, CAC e payback.\n"
+        "3. Cliente: logo churn, NRR, ativacao, uso do produto e tickets criticos.\n"
+        "4. Produto: entregas-chave, bugs criticos, tempo ate valor e adocao de features.\n"
+        "5. Execucao: prioridades da semana, owners, bloqueios e decisoes pendentes.\n\n"
+        "Sinais de alerta: crescimento sem retencao, pipeline inflado, CAC subindo ou time sem owners claros.\n\n"
+        "Proximo passo sugerido: criar uma cadencia semanal de 45 minutos com decisao, responsavel e prazo para cada desvio."
+    )
+
+
+def _executive_payload(category: str, route_family: str, answer: str) -> Dict[str, Any]:
+    return {
+        "handled": True,
+        "category": category,
+        "route_family": "manus_ux_r1_executive_intent_guard",
+        "answer": answer,
+        "message": answer,
+        "final_text": answer,
+        "agent_id": "orkio",
+        "agent_name": "Orkio",
+        "runtime_hints": {
+            "routing": {
+                "routing_source": MANUS_UX_R1_VERSION,
+                "route_applied": True,
+                "route_family": route_family,
+                "turn_owner": "MANUS_UX_R1",
+                "block_public_deterministic_fastpaths": True,
+                "proposal_only": False,
+                "observe_only": True,
+                "write_executed": False,
+                "commercial_cta_suppressed": True,
+                "execution_trace_priority": "secondary_collapsed",
+            }
+        },
+    }
+
+
 def eos06_build_router_precedence_payload(message: Any) -> Dict[str, Any]:
     """Return a deterministic payload for EOS-06/AO85 precedence cases.
 
     This is intentionally narrow. It prevents legacy welcome/evolution routes
     from capturing requests that must be answered as executive work.
     """
+    raw_message = str(message or "")
+
+    if _looks_like_executive_dashboard_request(raw_message):
+        return _executive_payload(
+            "executive_dashboard_mode",
+            "executive_dashboard_answer",
+            _build_executive_dashboard_answer(message),
+        )
+
+    if _looks_like_executive_crisis_request(raw_message):
+        return _executive_payload(
+            "executive_crisis_mode",
+            "executive_crisis_answer",
+            _build_executive_crisis_answer(message),
+        )
+
+    if _looks_like_executive_strategy_request(raw_message):
+        answer = (
+            _build_executive_decision_answer(message)
+            if any(m in _normalize(raw_message) for m in ("internacional", "retencao", "priorizar"))
+            else _build_executive_strategy_answer(message)
+        )
+        return _executive_payload(
+            "executive_strategy_mode",
+            "executive_strategy_answer",
+            answer,
+        )
+
     if _looks_like_financial_math_request(str(message or "")):
         answer = _build_financial_math_answer(message)
         return {

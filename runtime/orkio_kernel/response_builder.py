@@ -4,6 +4,9 @@ from .truth_engine import truth_labels_for_category, enforce_truth_policy
 from .governance import governance_flags
 from .executive_reasoning import (
     build_quantitative_response,
+    build_executive_strategy_response,
+    build_executive_crisis_response,
+    build_executive_dashboard_response,
     build_governance_response,
     build_capability_response,
     build_autoevolution_boundary_response,
@@ -14,6 +17,12 @@ def build_response(kernel_input: KernelInput) -> KernelResult:
 
     if classification.category == "quantitative_business_math":
         text = build_quantitative_response(kernel_input.message)
+    elif classification.category == "executive_strategy_mode":
+        text = build_executive_strategy_response(kernel_input.message)
+    elif classification.category == "executive_crisis_mode":
+        text = build_executive_crisis_response(kernel_input.message)
+    elif classification.category == "executive_dashboard_mode":
+        text = build_executive_dashboard_response(kernel_input.message)
     elif classification.category == "governance_proposal_only":
         text = build_governance_response()
     elif classification.category == "autoevolution_capability_boundary":

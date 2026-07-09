@@ -26,6 +26,57 @@ def build_quantitative_response(message: str) -> str:
         )
     return "Preciso dos valores de faturamento, custos variáveis, custos fixos e margem-alvo para calcular."
 
+def build_executive_strategy_response(message: str) -> str:
+    text = (message or "").lower()
+    if "internacional" in text or "reten" in text:
+        return (
+            "Diagnostico breve: ha numeros no contexto, mas a pergunta pede escolha estrategica, nao calculo.\n\n"
+            "1. Retencao protege receita, aprendizado do cliente e previsibilidade.\n"
+            "2. Expansao internacional aumenta opcionalidade, mas adiciona complexidade comercial, juridica e operacional.\n"
+            "3. A decisao depende de repetibilidade: ICP claro, churn controlado, payback previsivel e lideranca com foco.\n\n"
+            "Sinais de alerta: churn crescendo, pipeline local fraco, suporte saturado ou lideranca dispersa.\n\n"
+            "Acao recomendada: priorizar retencao se a base ainda nao e previsivel; testar expansao com aposta limitada se a maquina local ja for repetivel.\n\n"
+            "Proximo passo sugerido: montar uma matriz de decisao com impacto, risco, prazo e capacidade interna."
+        )
+    return (
+        "Diagnostico breve: esta e uma pergunta executiva aberta. Vou tratar como decisao estrategica, nao como calculo financeiro.\n\n"
+        "1. Risco de crescimento com eficiencia\n"
+        "- Sinal: CAC subindo, churn estavel ou expansao abaixo do esperado.\n"
+        "- Acao: revisar ICP, payback e eficiencia comercial.\n\n"
+        "2. Risco de concentracao de receita\n"
+        "- Sinal: dependencia excessiva de poucos clientes, canais ou segmentos.\n"
+        "- Acao: mapear concentracao e criar plano de diversificacao.\n\n"
+        "3. Risco de execucao organizacional\n"
+        "- Sinal: lideranca sobrecarregada, gaps de gestao ou lentidao em produto.\n"
+        "- Acao: definir cadencia executiva, ownership e metricas semanais.\n\n"
+        "Proximo passo sugerido: transformar estes riscos em um plano de acao de 30/60/90 dias."
+    )
+
+
+def build_executive_crisis_response(message: str) -> str:
+    return (
+        "Diagnostico breve: isto e uma crise executiva de continuidade comercial e moral do time.\n\n"
+        "1. Nomeie um responsavel interino por vendas hoje.\n"
+        "2. Revise oportunidades criticas, proximas reunioes e contas em risco.\n"
+        "3. Comunique lideranca e equipe comercial com clareza, sem dramatizar.\n"
+        "4. Centralize CRM, forecast, playbooks, metas e acordos pendentes.\n"
+        "5. Defina checkpoint diario por 2 semanas.\n\n"
+        "Proximo passo sugerido: fazer ainda hoje uma reuniao de 30 minutos com lideranca e donos do pipeline."
+    )
+
+
+def build_executive_dashboard_response(message: str) -> str:
+    return (
+        "Diagnostico breve: para CEO de SaaS B2B, os KPIs semanais devem conectar crescimento, eficiencia, retencao e execucao.\n\n"
+        "1. Receita: MRR/ARR, new MRR, expansion MRR e churn MRR.\n"
+        "2. Comercial: pipeline qualificado, win rate, ciclo de venda, CAC e payback.\n"
+        "3. Cliente: logo churn, NRR, ativacao, uso do produto e tickets criticos.\n"
+        "4. Produto: entregas-chave, bugs criticos, tempo ate valor e adocao de features.\n"
+        "5. Execucao: prioridades da semana, owners, bloqueios e decisoes pendentes.\n\n"
+        "Proximo passo sugerido: criar uma cadencia semanal de 45 minutos com decisao, responsavel e prazo para cada desvio."
+    )
+
+
 def build_governance_response() -> str:
     return (
         "Proposta em observe_only / proposal_only=true.\n\n"
