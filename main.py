@@ -157,6 +157,7 @@ from .runtime.amcham_public_journey_policy import (
     build_amcham_public_journey_decision,
     build_amcham_public_journey_stream_payload,
 )
+from .runtime.direct_chat_persistence import persist_direct_assistant_message
 # P0-RS01 — fail-open stream runtime stabilizer.
 # Keep pure helpers outside the AppConsole/main monolith; if the module is absent,
 # production must still boot and the legacy route remains active.
@@ -22919,9 +22920,17 @@ def chat(
         final_text = str(_amcham_direct_decision.get("answer") or "").strip()
         assistant_message_id = None
         try:
-            persisted = _persist_assistant_message(
+            persisted = persist_direct_assistant_message(
+                db=db,
+                org=org,
                 text=final_text,
                 thread_id=tid,
+                Message=Message,
+                select=select,
+                new_id=new_id,
+                now_ts=now_ts,
+                logger=logger,
+                trace_id=ao32_trace_id,
                 agent_id=None,
                 agent_name="Orkio",
             )
