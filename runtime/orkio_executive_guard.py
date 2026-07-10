@@ -17,7 +17,7 @@ import unicodedata
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 
-ORKIO_EXECUTIVE_GUARD_VERSION = "AO01_SINGLE_ROUTE_AUTHORITY_PATCH_V1"
+ORKIO_EXECUTIVE_GUARD_VERSION = "AO01_EXECUTIVE_GUARD_COMPOUND_V3"
 EOS06_AO85_HF2_VERSION = "EOS06_AO85_HF2_EXECUTIVE_TURN_OWNERSHIP_V1"
 MANUS_UX_R1_VERSION = "MANUS_UX_R1_EXECUTIVE_INTENT_ROUTING_V1"
 MANUS_UX_R3_VERSION = "MANUS_UX_R3_ROUTER_AND_CTA_GUARD_V1"
@@ -57,23 +57,8 @@ def _requires_full_llm_runtime(message: Any) -> bool:
     if not low:
         return False
 
-    # AO-01 explicit complexity signatures. These are intentionally evaluated
-    # before the generic template classifiers.
-    explicit_complex_markers = (
-        "entregue:",
-        "crie:",
-        "analise de sensibilidade",
-        "matriz de prioridades",
-        "criterios de go/no-go",
-        "plano de acao para 90 dias",
-        "vpl aproximado",
-        "ltv por duas metodologias",
-        "necessidade aproximada de capital de giro",
-        "separe estabilidade de melhorias premium",
-        "diferencie lucro contabil",
-    )
-    explicit_hits = sum(1 for marker in explicit_complex_markers if marker in low)
-    explicit_complex = explicit_hits >= 1
+    if _is_compound_executive_request(raw):
+        return True
 
     # Numbered deliverables such as "1.", "2.", ..., or "1)", "2)".
     numbered_items = len(
@@ -130,11 +115,95 @@ def _requires_full_llm_runtime(message: Any) -> bool:
     )
 
     return bool(
-        explicit_complex
-        or long_structured_prompt
+        long_structured_prompt
         or multi_deliverable
         or scenario_analysis
         or complex_financial_request
+    )
+
+
+_AO01_COMPOUND_REQUEST_VERSION = "AO01_COMPOUND_REQUEST_V3"
+
+
+def _is_compound_executive_request(message: Any) -> bool:
+    """Detect prompts that require the full context-aware LLM runtime.
+
+    This is intentionally independent from the legacy quantitative/strategy
+    classifiers. It provides a fail-open safety gate for requests containing
+    multiple deliverables, scenario comparison, plans, risk analysis or several
+    distinct financial calculations.
+    """
+    raw = str(message or "").strip()
+    low = _normalize(raw)
+    if not low:
+        return False
+
+    numbered_items = len(
+        re.findall(r"(?m)^\s*\d{1,2}\s*[.)]\s*\S+", raw)
+    )
+
+    section_markers = _matches(
+        low,
+        (
+            "entregue:", "crie:", "calcule:", "analise:",
+            "diagnostico executivo", "diagnóstico executivo",
+            "receita liquida", "receita líquida",
+            "margem de contribuicao", "margem de contribuição",
+            "resultado operacional", "ltv", "relacao ltv/cac",
+            "relação ltv/cac", "payback", "runway",
+            "impacto do churn", "riscos prioritarios",
+            "riscos prioritários", "decisao recomendada",
+            "decisão recomendada", "plano de acao",
+            "plano de ação", "roadmap", "matriz de prioridades",
+            "criterios de go/no-go", "critérios de go/no-go",
+            "analise de sensibilidade", "análise de sensibilidade",
+            "explique todas as formulas", "explique todas as fórmulas",
+            "explique premissas", "inconsistencia matematica",
+            "inconsistência matemática",
+        ),
+        limit=64,
+    )
+
+    scenario_count = len(
+        re.findall(r"(?im)^\s*(?:cen[aá]rio|projeto|op[cç][aã]o)\s+[a-z0-9]", raw)
+    )
+
+    compound_financial_markers = _matches(
+        low,
+        (
+            "mrr", "arr", "margem bruta", "despesas fixas",
+            "cac", "ticket medio", "ticket médio", "churn",
+            "expansao de receita", "expansão de receita",
+            "caixa", "divida", "dívida", "custo da divida",
+            "custo da dívida", "ltv", "payback", "runway",
+            "vpl", "custo de capital", "capital de giro",
+        ),
+        limit=32,
+    )
+
+    requests_multiple_outputs = (
+        numbered_items >= 3
+        or len(section_markers) >= 4
+    )
+    scenario_or_comparison = (
+        scenario_count >= 2
+        or _has_any(low, ("compare tres", "compare três", "sensibilidade"))
+    )
+    compound_financial = (
+        len(compound_financial_markers) >= 5
+        and _has_any(
+            low,
+            (
+                "entregue", "calcule", "analise", "compare",
+                "recomende", "plano de acao", "plano de ação",
+            ),
+        )
+    )
+
+    return bool(
+        requests_multiple_outputs
+        or scenario_or_comparison
+        or compound_financial
     )
 
 
@@ -360,6 +429,9 @@ def _looks_like_financial_math_request(text: Any) -> bool:
     """Numbers alone must not trigger financial math."""
     low = _normalize(text)
     if not low:
+        return False
+
+    if _is_compound_executive_request(text):
         return False
 
     if _looks_like_executive_dashboard_request(low):
@@ -693,6 +765,39 @@ def eos06_build_router_precedence_payload(message: Any) -> Dict[str, Any]:
     """
     raw_message = str(message or "")
 
+    # AO-01 V3: binding fail-open gate. This check is intentionally duplicated
+    # from the legacy complexity helper so future changes to older heuristics
+    # cannot recapture compound prompts into deterministic templates.
+    if _is_compound_executive_request(raw_message):
+        return {
+            "handled": False,
+            "category": "full_llm_runtime_required",
+            "route_family": "context_aware_llm_answer",
+            "force_full_llm_runtime": True,
+            "block_executive_templates": True,
+            "commercial_cta_allowed": False,
+            "commercial_cta_suppressed": True,
+            "guard_version": ORKIO_EXECUTIVE_GUARD_VERSION,
+            "compound_request_version": _AO01_COMPOUND_REQUEST_VERSION,
+            "runtime_hints": {
+                "routing": {
+                    **_routing_hints(
+                        "context_aware_llm_answer",
+                        "AO01_COMPOUND_PROMPT_AUTHORITY_V3",
+                    ),
+                    "force_full_llm_runtime": True,
+                    "block_executive_templates": True,
+                    "bypass_reason": "compound_multi_deliverable_request",
+                    "blocked_routes": [
+                        "executive_strategy_answer",
+                        "executive_quantitative_answer",
+                        "executive_dashboard_answer",
+                        "executive_crisis_answer",
+                    ],
+                }
+            },
+        }
+
     # AO-01: complex or multi-deliverable prompts must reach the full LLM
     # runtime. Deterministic executive templates are only suitable for narrow
     # requests and must fail open here.
@@ -703,6 +808,7 @@ def eos06_build_router_precedence_payload(message: Any) -> Dict[str, Any]:
             "route_family": "context_aware_llm_answer",
             "commercial_cta_allowed": False,
             "commercial_cta_suppressed": True,
+            "guard_version": ORKIO_EXECUTIVE_GUARD_VERSION,
             "runtime_hints": {
                 "routing": {
                     **_routing_hints(
