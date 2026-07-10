@@ -179,6 +179,46 @@ except Exception:  # pragma: no cover - partial deploy protection
     def ao70_build_quality_retry_prompt(*args, **kwargs):
         return None
 
+# AO72 — Executive Engine RC1 fail-open imports.
+try:
+    from .runtime.executive import (
+        AO72_EXECUTIVE_ENGINE_VERSION,
+        build_executive_preflight,
+        build_execution_plan,
+        evaluate_response_for_release,
+        build_safe_trace_payload,
+    )
+except Exception:  # pragma: no cover - partial deploy protection
+    AO72_EXECUTIVE_ENGINE_VERSION = "AO72_EXECUTIVE_ENGINE_IMPORT_FAILED"
+
+    def build_executive_preflight(*args, **kwargs):
+        return {
+            "version": AO72_EXECUTIVE_ENGINE_VERSION,
+            "applies": False,
+            "intent": "general",
+            "confidence": 0.0,
+            "required_outputs": [],
+            "block_public_journey_fastpath": False,
+            "quality_mode": "standard",
+            "reason": "import_failed_fail_open",
+        }
+
+    def build_execution_plan(preflight):
+        return {"applies": False, "required_outputs": []}
+
+    def evaluate_response_for_release(**kwargs):
+        return {
+            "release": True,
+            "final_text": str(kwargs.get("candidate_text") or ""),
+            "score": 100,
+            "missing_outputs": [],
+            "retry_performed": False,
+            "reason": "import_failed_fail_open",
+        }
+
+    def build_safe_trace_payload(**kwargs):
+        return {}
+
 from .runtime.direct_chat_persistence import persist_direct_assistant_message
 # P0-RS01 — fail-open stream runtime stabilizer.
 # Keep pure helpers outside the AppConsole/main monolith; if the module is absent,
@@ -8648,12 +8688,24 @@ def _ao70_quality_guarded_openai_answer(
     retry_enabled = str(os.getenv("AO70_QUALITY_RETRY_ENABLED", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
 
     apply_quality = False
+    ao72_preflight = {"applies": False, "intent": "general", "required_outputs": []}
+    try:
+        ao72_preflight = build_executive_preflight(
+            user_message,
+            response_control=response_control,
+        )
+    except Exception:
+        ao72_preflight = {"applies": False, "intent": "general", "required_outputs": []}
+
     try:
         apply_quality = bool(
             quality_enabled
-            and ao70_should_apply_quality_engine(
-                user_message,
-                response_control=response_control,
+            and (
+                bool(ao72_preflight.get("applies"))
+                or ao70_should_apply_quality_engine(
+                    user_message,
+                    response_control=response_control,
+                )
             )
         )
     except Exception:
@@ -8708,11 +8760,26 @@ def _ao70_quality_guarded_openai_answer(
     except Exception:
         pass
 
+    try:
+        logger.warning(
+            "AO72_RELEASE_SCORE trace_id=%s intent=%s score=%s passed=%s missing=%s stream_started=false version=%s",
+            trace_id,
+            ao72_preflight.get("intent"),
+            validation.get("score"),
+            validation.get("passed"),
+            ",".join(list(validation.get("missing_items") or [])[:12]),
+            AO72_EXECUTIVE_ENGINE_VERSION,
+        )
+    except Exception:
+        pass
+
     if bool(validation.get("passed")) or not retry_enabled:
         try:
             if isinstance(ans_obj, dict):
                 ans_obj.setdefault("quality", validation)
                 ans_obj.setdefault("quality_engine_version", AO70_QUALITY_ENGINE_VERSION)
+                ans_obj.setdefault("executive_preflight", ao72_preflight)
+                ans_obj.setdefault("execution_plan", build_execution_plan(ao72_preflight))
         except Exception:
             pass
         return ans_obj
@@ -8775,6 +8842,8 @@ def _ao70_quality_guarded_openai_answer(
         try:
             retry_obj.setdefault("quality", retry_validation)
             retry_obj.setdefault("quality_engine_version", AO70_QUALITY_ENGINE_VERSION)
+            retry_obj.setdefault("executive_preflight", ao72_preflight)
+            retry_obj.setdefault("execution_plan", build_execution_plan(ao72_preflight))
             retry_obj.setdefault("quality_retry_applied", True)
             retry_obj.setdefault("quality_first_score", validation.get("score"))
         except Exception:
@@ -22942,6 +23011,29 @@ def chat(
     ao32_started_at = _time.time()
     ao32_trace_id = str(getattr(inp, "trace_id", "") or "").strip()
     ao32_client_message_id = str(getattr(inp, "client_message_id", "") or "").strip()
+    ao72_preflight_enabled = str(os.getenv("ORKIO_EXECUTIVE_PREFLIGHT_ENABLED", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
+    try:
+        _ao72_direct_preflight = build_executive_preflight(
+            getattr(inp, "message", ""),
+            response_control=getattr(inp, "response_control", None),
+            visible_agent=getattr(inp, "visible_agent", None),
+            target_agent_slug=getattr(inp, "target_agent_slug", None),
+            dest_mode=getattr(inp, "dest_mode", None),
+        ) if ao72_preflight_enabled else {"applies": False, "block_public_journey_fastpath": False, "intent": "general", "required_outputs": []}
+    except Exception:
+        _ao72_direct_preflight = {"applies": False, "block_public_journey_fastpath": False, "intent": "general", "required_outputs": []}
+    try:
+        logger.warning(
+            "AO72_EXECUTIVE_PREFLIGHT trace_id=%s route=/api/chat applies=%s intent=%s block_public_fastpath=%s required=%s version=%s",
+            ao32_trace_id,
+            bool(_ao72_direct_preflight.get("applies")),
+            _ao72_direct_preflight.get("intent"),
+            bool(_ao72_direct_preflight.get("block_public_journey_fastpath")),
+            ",".join(list(_ao72_direct_preflight.get("required_outputs") or [])[:12]),
+            AO72_EXECUTIVE_ENGINE_VERSION,
+        )
+    except Exception:
+        pass
 
     def _ao32_elapsed_ms() -> int:
         try:
@@ -23101,7 +23193,11 @@ def chat(
             "reason": "amcham_public_journey_policy_exception",
         }
 
-    if isinstance(_amcham_direct_decision, dict) and _amcham_direct_decision.get("handled"):
+    if (
+        not bool(_ao72_direct_preflight.get("block_public_journey_fastpath"))
+        and isinstance(_amcham_direct_decision, dict)
+        and _amcham_direct_decision.get("handled")
+    ):
         final_text = str(_amcham_direct_decision.get("answer") or "").strip()
         assistant_message_id = None
         try:
@@ -42109,6 +42205,33 @@ async def chat_stream(
         _ao75_public_fastpath_allowed = orkio_public_fastpath_allowed(
             _ao75_intent_contract
         )
+        ao72_preflight_enabled = str(os.getenv("ORKIO_EXECUTIVE_PREFLIGHT_ENABLED", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
+        try:
+            _ao72_stream_preflight = build_executive_preflight(
+                message,
+                response_control=getattr(inp, "response_control", None),
+                visible_agent=getattr(inp, "visible_agent", None),
+                target_agent_slug=getattr(inp, "target_agent_slug", None),
+                dest_mode=getattr(inp, "dest_mode", None),
+            ) if ao72_preflight_enabled else {"applies": False, "block_public_journey_fastpath": False, "intent": "general", "required_outputs": []}
+        except Exception:
+            _ao72_stream_preflight = {"applies": False, "block_public_journey_fastpath": False, "intent": "general", "required_outputs": []}
+
+        if bool(_ao72_stream_preflight.get("block_public_journey_fastpath")):
+            _ao75_public_fastpath_allowed = False
+
+        try:
+            logger.warning(
+                "AO72_EXECUTIVE_PREFLIGHT trace_id=%s route=/api/chat/stream applies=%s intent=%s block_public_fastpath=%s required=%s version=%s",
+                trace_id,
+                bool(_ao72_stream_preflight.get("applies")),
+                _ao72_stream_preflight.get("intent"),
+                bool(_ao72_stream_preflight.get("block_public_journey_fastpath")),
+                ",".join(list(_ao72_stream_preflight.get("required_outputs") or [])[:12]),
+                AO72_EXECUTIVE_ENGINE_VERSION,
+            )
+        except Exception:
+            pass
         _ao75_intent_name = str(
             _ao75_intent_contract.get("intent") or ""
         ).strip().lower()

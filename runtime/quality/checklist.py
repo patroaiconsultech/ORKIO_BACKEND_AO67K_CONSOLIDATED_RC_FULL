@@ -1,4 +1,3 @@
-\
 from __future__ import annotations
 
 import re
@@ -19,6 +18,22 @@ def ao70_expected_checklist(prompt: Any) -> List[Dict[str, Any]]:
         if key not in {i["key"] for i in items}:
             items.append({"key": key, "label": label, "answer_terms": answer_terms, "weight": weight})
 
+    if "tese" in text:
+        add("thesis", "entregar tese executiva", ["tese", "recomendacao", "recomendação", "decisao", "decisão"], 2)
+    if any(t in text for t in ["fatos", "separe fatos"]):
+        add("facts", "separar fatos", ["fatos", "dados fornecidos", "informacoes fornecidas", "informações fornecidas"], 1)
+    if any(t in text for t in ["inferencias", "inferências"]):
+        add("inferences", "separar inferências", ["inferencia", "inferência", "hipotese", "hipótese"], 1)
+    if any(t in text for t in ["dados faltantes", "informacoes faltantes", "informações faltantes"]):
+        add("missing_data", "declarar dados faltantes", ["dados faltantes", "informacoes faltantes", "informações faltantes", "nao informado", "não informado"], 2)
+    if any(t in text for t in ["metricas de decisao", "métricas de decisão", "metricas", "métricas"]):
+        add("decision_metrics", "entregar métricas de decisão", ["metrica", "métrica", "kpi", "indicador", "limiar"], 2)
+    if any(t in text for t in ["gatilhos de parada", "gatilhos", "stop triggers"]):
+        add("stop_triggers", "entregar gatilhos de parada", ["gatilho", "parada", "interromper", "pausar", "stop"], 2)
+    if any(t in text for t in ["decisao recomendada", "decisão recomendada", "recomendacao", "recomendação", "recomende"]):
+        add("recommendation", "entregar recomendação final", ["recomendo", "recomendacao", "recomendação", "decisao", "decisão"], 2)
+    if any(t in text for t in ["proximos passos", "próximos passos"]):
+        add("next_steps", "entregar próximos passos", ["proximo", "próximo", "passo", "acao", "ação"], 1)
     if any(t in text for t in ["lucro", "operacional", "ebitda", "resultado"]):
         add("operating_profit", "calcular/explicar lucro operacional ou resultado", ["lucro", "operacional", "ebitda", "resultado", "receita", "custo"], 2)
     if "margem" in text:

@@ -1,4 +1,3 @@
-\
 from __future__ import annotations
 
 from typing import Any, Dict
@@ -16,6 +15,13 @@ _LABELS = {
     "recommendations": "recomendações executivas",
     "executive_summary": "síntese executiva",
     "next_steps": "próximos passos",
+    "thesis": "tese executiva",
+    "facts": "fatos",
+    "inferences": "inferências",
+    "missing_data": "dados faltantes",
+    "decision_metrics": "métricas de decisão",
+    "stop_triggers": "gatilhos de parada",
+    "recommendation": "recomendação final",
 }
 
 def ao70_build_quality_retry_prompt(*, original_prompt: Any, first_answer: Any, validation: Dict[str, Any]) -> str:
