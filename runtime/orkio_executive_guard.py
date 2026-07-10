@@ -41,6 +41,84 @@ def _has_any(text: str, markers: Iterable[str]) -> bool:
     return any(marker in text for marker in markers)
 
 
+def _requires_full_llm_runtime(message: Any) -> bool:
+    """Return True when deterministic templates would under-answer the request.
+
+    The executive guard is intentionally useful for short, narrow and predictable
+    requests. It must not take ownership of prompts that require multi-step
+    reasoning, several independent deliverables, scenario comparison, sensitivity
+    analysis or a complete technical/executive plan.
+
+    This function has no side effects. Returning True means only that the guard
+    must fail open so the normal context-aware LLM runtime can answer.
+    """
+    raw = str(message or "").strip()
+    low = _normalize(raw)
+    if not low:
+        return False
+
+    # Numbered deliverables such as "1.", "2.", ..., or "1)", "2)".
+    numbered_items = len(
+        re.findall(r"(?m)^\s*(?:\d{1,2}[.)]|[-*]\s+\d{1,2}[.)])\s+", raw)
+    )
+
+    # Semicolon-separated or explicitly requested output sections.
+    output_markers = _matches(
+        low,
+        (
+            "entregue:", "crie:", "calcule", "compare", "recomende",
+            "analise de sensibilidade", "análise de sensibilidade",
+            "diagnostico tecnico", "diagnóstico técnico",
+            "diagnostico de produto", "diagnóstico de produto",
+            "matriz de prioridades", "roadmap de 30", "criterios objetivos",
+            "critérios objetivos", "indicadores tecnicos", "indicadores técnicos",
+            "indicadores de produto", "riscos e mitigacoes", "riscos e mitigações",
+            "plano de acao para 90 dias", "plano de ação para 90 dias",
+            "explique premissas", "sinalize qualquer inconsistencia",
+            "sinalize qualquer inconsistência",
+        ),
+        limit=32,
+    )
+
+    scenario_count = len(re.findall(r"(?i)\bcen[aá]rio\s+[a-z0-9]", raw))
+    financial_terms = _matches(
+        low,
+        (
+            "ltv", "cac", "payback", "runway", "churn", "margem de contribuicao",
+            "margem de contribuição", "resultado operacional", "custo de capital",
+            "retorno sobre o capital", "ajuste pelo risco", "probabilidade de sucesso",
+        ),
+        limit=24,
+    )
+
+    asks_sensitivity = _has_any(
+        low,
+        (
+            "analise de sensibilidade", "análise de sensibilidade",
+            "mais ou menos 10", "+/- 10", "±10",
+        ),
+    )
+
+    long_structured_prompt = len(raw) >= 500 and (
+        numbered_items >= 3 or len(output_markers) >= 3
+    )
+    multi_deliverable = numbered_items >= 4 or len(output_markers) >= 5
+    scenario_analysis = scenario_count >= 2 and (
+        asks_sensitivity or len(financial_terms) >= 3
+    )
+    complex_financial_request = (
+        len(financial_terms) >= 4
+        and _has_any(low, ("calcule", "calcular", "entregue", "compare"))
+    )
+
+    return bool(
+        long_structured_prompt
+        or multi_deliverable
+        or scenario_analysis
+        or complex_financial_request
+    )
+
+
 _DIRECTIVE_MARKERS = (
     "analise", "avalie", "compare", "recomende", "diagnostico", "calcule",
     "mostre os calculos", "estruture", "elabore", "proponha", "priorize",
@@ -595,6 +673,32 @@ def eos06_build_router_precedence_payload(message: Any) -> Dict[str, Any]:
     fast-paths, smart CTA decorators and governed evolution triggers.
     """
     raw_message = str(message or "")
+
+    # AO-01: complex or multi-deliverable prompts must reach the full LLM
+    # runtime. Deterministic executive templates are only suitable for narrow
+    # requests and must fail open here.
+    if _requires_full_llm_runtime(raw_message):
+        return {
+            "handled": False,
+            "category": "full_llm_runtime_required",
+            "route_family": "context_aware_llm_answer",
+            "commercial_cta_allowed": False,
+            "commercial_cta_suppressed": True,
+            "runtime_hints": {
+                "routing": {
+                    **_routing_hints(
+                        "full_llm_runtime_required",
+                        "AO01_COMPLEX_PROMPT_BYPASS_V1",
+                    ),
+                    "bypass_reason": "complex_multi_deliverable_prompt",
+                    "blocked_routes": [
+                        "executive_strategy_answer",
+                        "executive_quantitative_answer",
+                        "executive_dashboard_answer",
+                    ],
+                }
+            },
+        }
 
     if _human_help_intent(raw_message):
         # This does not create a sales answer by itself. It only allows the UI
