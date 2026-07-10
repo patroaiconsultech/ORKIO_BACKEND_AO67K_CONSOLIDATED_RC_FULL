@@ -1,0 +1,138 @@
+ORKIO — PATCH AO-01 BOOT NAMESPACE FIX
+Data: 2026-07-10
+
+OBJETIVO
+Corrigir a resolução ambígua do pacote Python `app` no container Railway e registrar, antes do Uvicorn, a origem efetiva dos módulos usados no boot.
+
+ARQUIVO 1
+Caminho no repositório:
+Dockerfile
+
+CONTEÚDO COMPLETO
+-----------------
+FROM python:3.11-slim
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# AO-01 BOOT NAMESPACE FIX
+# The consolidated repo is checked out at /app, while the application is imported as app.main.
+# PYTHONPATH=/ and --app-dir / force Python/Uvicorn to resolve:
+# app -> /app
+# app.main -> /app/main.py
+# app.runtime -> /app/runtime
+ENV PYTHONPATH=/
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt ./
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+# AO-01 CACHE BUST
+# Bump this value whenever a clean Railway rebuild is required.
+ARG CACHEBUST=2026-07-10T_NAMESPACE_FIX_02
+
+COPY . .
+
+# Railway injects PORT. Do NOT hardcode.
+# Production boot contract:
+# 1) validate Alembic state
+# 2) apply migrations
+# 3) validate the Python package namespace
+# 4) start Uvicorn with an explicit application directory
+CMD ["sh","-c","python scripts/preflight_alembic_version.py && alembic upgrade head && cd / && python /app/scripts/preflight_python_namespace.py && python -m uvicorn --app-dir / --log-config /app/logging_uvicorn_stdout.json app.main:app --host 0.0.0.0 --port ${PORT:-8080} --timeout-keep-alive ${UVICORN_TIMEOUT_KEEP_ALIVE:-75}"]
+
+
+ARQUIVO 2
+Caminho no repositório:
+scripts/preflight_python_namespace.py
+
+CONTEÚDO COMPLETO
+-----------------
+"""Validate the Python namespace required by the Orkio production bootstrap."""
+
+from __future__ import annotations
+
+import importlib
+import importlib.util
+import sys
+from types import ModuleType
+from typing import Final
+
+
+REQUIRED_MODULE: Final[str] = "app.runtime.direct_chat_persistence"
+REQUIRED_CALLABLE: Final[str] = "persist_direct_assistant_message"
+
+
+def _find_spec(module_name: str):
+    """Return a module spec without masking the underlying import error."""
+    return importlib.util.find_spec(module_name)
+
+
+def _load_module(module_name: str) -> ModuleType:
+    """Import and return a required module."""
+    return importlib.import_module(module_name)
+
+
+def main() -> int:
+    print("PYTHON_NAMESPACE_PREFLIGHT_START", flush=True)
+    print(f"python_executable={sys.executable!r}", flush=True)
+    print(f"working_sys_path={sys.path!r}", flush=True)
+
+    app_spec = _find_spec("app")
+    runtime_spec = _find_spec("app.runtime")
+    persistence_spec = _find_spec(REQUIRED_MODULE)
+
+    print(f"app_spec={app_spec!r}", flush=True)
+    print(f"runtime_spec={runtime_spec!r}", flush=True)
+    print(f"persistence_spec={persistence_spec!r}", flush=True)
+
+    if app_spec is None:
+        raise RuntimeError("app_package_not_found")
+
+    if runtime_spec is None:
+        raise RuntimeError("app_runtime_package_not_found")
+
+    if persistence_spec is None:
+        raise RuntimeError(
+            "app_runtime_direct_chat_persistence_not_found"
+        )
+
+    module = _load_module(REQUIRED_MODULE)
+    persistence_function = getattr(module, REQUIRED_CALLABLE, None)
+
+    if not callable(persistence_function):
+        raise RuntimeError(
+            "persist_direct_assistant_message_not_callable"
+        )
+
+    print(
+        "PYTHON_NAMESPACE_PREFLIGHT_OK "
+        f"app_origin={app_spec.origin!r} "
+        f"runtime_origin={runtime_spec.origin!r} "
+        f"persistence_origin={persistence_spec.origin!r}",
+        flush=True,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
+VALIDAÇÃO ESPERADA NO LOG
+-------------------------
+PYTHON_NAMESPACE_PREFLIGHT_START
+PYTHON_NAMESPACE_PREFLIGHT_OK app_origin='/app/__init__.py' runtime_origin='/app/runtime/__init__.py' persistence_origin='/app/runtime/direct_chat_persistence.py'
+Application startup complete
+
+ROLLBACK
+--------
+1. Restaurar o Dockerfile anterior.
+2. Remover scripts/preflight_python_namespace.py.
+3. Fazer novo deploy.
+4. Nenhuma migration ou alteração de banco precisa ser revertida.
