@@ -13,13 +13,21 @@ databases, or mutate payloads in place.
 """
 
 import copy
+import hashlib
+import inspect
 import json
 from typing import Any, Dict, Iterable, Iterator, List, Optional
 
 try:
-    from .orkio_executive_guard import eos06_build_router_precedence_payload
+    from .orkio_executive_guard import (
+        ORKIO_EXECUTIVE_GUARD_VERSION,
+        eos06_build_router_precedence_payload,
+    )
 except Exception:  # pragma: no cover - standalone test fallback
-    from runtime.orkio_executive_guard import eos06_build_router_precedence_payload
+    from runtime.orkio_executive_guard import (
+        ORKIO_EXECUTIVE_GUARD_VERSION,
+        eos06_build_router_precedence_payload,
+    )
 
 try:
     from .orkio_backend_cta_guard import enforce_backend_cta_policy
@@ -28,6 +36,54 @@ except Exception:  # pragma: no cover - standalone test fallback
 
 
 MANUS_UX_R3_1_STREAM_INTEGRATION_VERSION = "MANUS_UX_R3_2_MAIN_INTEGRATED_STREAM_ENTRY_PRECEDENCE_GATE_V1"
+
+AO01_ROUTE_DIAGNOSTIC_VERSION = "AO01_ROUTE_DECISION_DIAGNOSTIC_V1"
+
+
+def _ao01_guard_runtime_identity() -> Dict[str, Any]:
+    """Return non-sensitive proof of the guard implementation loaded in memory."""
+    try:
+        source_file = inspect.getsourcefile(eos06_build_router_precedence_payload) or ""
+    except Exception:
+        source_file = ""
+
+    try:
+        source_text = inspect.getsource(eos06_build_router_precedence_payload)
+        source_sha256 = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
+    except Exception:
+        source_sha256 = ""
+
+    return {
+        "diagnostic_version": AO01_ROUTE_DIAGNOSTIC_VERSION,
+        "guard_version": str(ORKIO_EXECUTIVE_GUARD_VERSION or ""),
+        "guard_module": str(getattr(eos06_build_router_precedence_payload, "__module__", "") or ""),
+        "guard_function": str(getattr(eos06_build_router_precedence_payload, "__qualname__", "") or ""),
+        "guard_source_file": source_file,
+        "guard_source_sha256": source_sha256,
+        "stream_adapter_file": str(__file__),
+        "stream_integration_version": MANUS_UX_R3_1_STREAM_INTEGRATION_VERSION,
+    }
+
+
+def _ao01_attach_route_diagnostics(
+    payload: Dict[str, Any],
+    *,
+    user_message: str,
+) -> Dict[str, Any]:
+    """Attach decision provenance without changing routing semantics."""
+    diagnostics = _ao01_guard_runtime_identity()
+    diagnostics.update(
+        {
+            "handled": bool(payload.get("handled")),
+            "category": str(payload.get("category") or ""),
+            "route_family": str(payload.get("route_family") or ""),
+            "message_chars": len(str(user_message or "")),
+            "message_lines": len(str(user_message or "").splitlines()),
+        }
+    )
+    payload["_ao01_route_diagnostics"] = diagnostics
+    return payload
+
 
 
 _MESSAGE_KEYS = (
@@ -92,14 +148,18 @@ def build_chat_stream_precedence_payload(payload_or_message: Any) -> Dict[str, A
     guard_payload = eos06_build_router_precedence_payload(user_message)
 
     if not guard_payload.get("handled"):
-        return {
-            "handled": False,
-            "category": guard_payload.get("category", "not_eos06_precedence_case"),
-            "route_family": "manus_ux_r3_1_stream_entry_precedence_gate",
-            "stream_integration_version": MANUS_UX_R3_1_STREAM_INTEGRATION_VERSION,
-            "commercial_cta_allowed": bool(guard_payload.get("commercial_cta_allowed", False)),
-            "commercial_cta_suppressed": bool(guard_payload.get("commercial_cta_suppressed", True)),
-        }
+        return _ao01_attach_route_diagnostics(
+            {
+                "handled": False,
+                "category": guard_payload.get("category", "not_eos06_precedence_case"),
+                "guard_route_family": guard_payload.get("route_family"),
+                "route_family": "manus_ux_r3_1_stream_entry_precedence_gate",
+                "stream_integration_version": MANUS_UX_R3_1_STREAM_INTEGRATION_VERSION,
+                "commercial_cta_allowed": bool(guard_payload.get("commercial_cta_allowed", False)),
+                "commercial_cta_suppressed": bool(guard_payload.get("commercial_cta_suppressed", True)),
+            },
+            user_message=user_message,
+        )
 
     payload = copy.deepcopy(guard_payload)
     answer = str(
@@ -149,7 +209,10 @@ def build_chat_stream_precedence_payload(payload_or_message: Any) -> Dict[str, A
     sanitized, _changed = enforce_backend_cta_policy(payload)
     sanitized["handled"] = True
     sanitized["stream_terminal"] = True
-    return sanitized
+    return _ao01_attach_route_diagnostics(
+        sanitized,
+        user_message=user_message,
+    )
 
 
 def _sse(event: str, data: Dict[str, Any]) -> str:

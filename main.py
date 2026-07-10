@@ -42059,6 +42059,39 @@ async def chat_stream(
         except Exception:
             _eos06_ao85_hf2_payload = {}
 
+        # AO-01 diagnostic only: prove which file/function/version made the
+        # stream-entry routing decision. This does not change route ownership.
+        try:
+            _ao01_route_diag = (
+                _eos06_ao85_hf2_payload.get("_ao01_route_diagnostics", {})
+                if isinstance(_eos06_ao85_hf2_payload, dict)
+                else {}
+            )
+            logger.warning(
+                "AO01_ROUTE_DECISION "
+                "trace_id=%s handled=%s category=%s route_family=%s "
+                "guard_route_family=%s guard_version=%s guard_module=%s "
+                "guard_function=%s guard_source_file=%s guard_source_sha256=%s "
+                "stream_adapter_file=%s stream_integration_version=%s "
+                "message_chars=%s message_lines=%s",
+                trace_id,
+                bool(_eos06_ao85_hf2_payload.get("handled")) if isinstance(_eos06_ao85_hf2_payload, dict) else False,
+                _eos06_ao85_hf2_payload.get("category") if isinstance(_eos06_ao85_hf2_payload, dict) else None,
+                _eos06_ao85_hf2_payload.get("route_family") if isinstance(_eos06_ao85_hf2_payload, dict) else None,
+                _eos06_ao85_hf2_payload.get("guard_route_family") if isinstance(_eos06_ao85_hf2_payload, dict) else None,
+                _ao01_route_diag.get("guard_version"),
+                _ao01_route_diag.get("guard_module"),
+                _ao01_route_diag.get("guard_function"),
+                _ao01_route_diag.get("guard_source_file"),
+                _ao01_route_diag.get("guard_source_sha256"),
+                _ao01_route_diag.get("stream_adapter_file"),
+                _ao01_route_diag.get("stream_integration_version"),
+                _ao01_route_diag.get("message_chars"),
+                _ao01_route_diag.get("message_lines"),
+            )
+        except Exception:
+            logger.exception("AO01_ROUTE_DECISION_LOG_FAILED trace_id=%s", trace_id)
+
         if isinstance(_eos06_ao85_hf2_payload, dict) and _eos06_ao85_hf2_payload.get("handled"):
             try:
                 _eos06_text = str(
