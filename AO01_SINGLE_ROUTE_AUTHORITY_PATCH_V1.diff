@@ -1,0 +1,212 @@
+--- a/main.py
++++ b/main.py
+@@ -42059,6 +42059,28 @@
+         except Exception:
+             _eos06_ao85_hf2_payload = {}
+ 
++        # AO-01 single route authority: once the stream-entry gate marks a
++        # complex prompt for the full LLM runtime, later deterministic
++        # corridors must not reclassify or terminate the same turn.
++        _ao01_force_full_llm_runtime = bool(
++            isinstance(_eos06_ao85_hf2_payload, dict)
++            and _eos06_ao85_hf2_payload.get("force_full_llm_runtime")
++        )
++        try:
++            logger.warning(
++                "AO01_SINGLE_ROUTE_DECISION trace_id=%s handled=%s category=%s route_family=%s force_full_llm_runtime=%s guard_version=%s guard_source_file=%s guard_source_sha256=%s",
++                trace_id,
++                bool(_eos06_ao85_hf2_payload.get("handled")) if isinstance(_eos06_ao85_hf2_payload, dict) else False,
++                _eos06_ao85_hf2_payload.get("category") if isinstance(_eos06_ao85_hf2_payload, dict) else None,
++                _eos06_ao85_hf2_payload.get("route_family") if isinstance(_eos06_ao85_hf2_payload, dict) else None,
++                _ao01_force_full_llm_runtime,
++                _eos06_ao85_hf2_payload.get("guard_version") if isinstance(_eos06_ao85_hf2_payload, dict) else None,
++                _eos06_ao85_hf2_payload.get("guard_source_file") if isinstance(_eos06_ao85_hf2_payload, dict) else None,
++                _eos06_ao85_hf2_payload.get("guard_source_sha256") if isinstance(_eos06_ao85_hf2_payload, dict) else None,
++            )
++        except Exception:
++            pass
++
+         if isinstance(_eos06_ao85_hf2_payload, dict) and _eos06_ao85_hf2_payload.get("handled"):
+             try:
+                 _eos06_text = str(
+@@ -42392,7 +42414,7 @@
+         # Minimal and reversible wiring before AMCHAM/Chris/Orion/Orkio public policies.
+         # The gateway is fail-open: if Decision Mesh or any new module fails, the
+         # existing AO66B/AO67A/public policy corridor continues unchanged.
+-        if _ao75_public_fastpath_allowed:
++        if _ao75_public_fastpath_allowed and not _ao01_force_full_llm_runtime:
+             try:
+                 _ao67f_gateway_decision = build_public_chat_gateway_decision(
+                     message=message,
+@@ -42428,7 +42450,7 @@
+                 "commit_memory": False,
+             }
+ 
+-        if (not ao68b_admin_internal_agent_bypass) and should_short_circuit_public_chat(_ao67f_gateway_decision):
++        if (not _ao01_force_full_llm_runtime) and (not ao68b_admin_internal_agent_bypass) and should_short_circuit_public_chat(_ao67f_gateway_decision):
+             try:
+                 _ao67f_stream_payload = dict(_ao67f_gateway_decision.get("stream_payload") or {})
+                 _ao67f_final_text = str(
+@@ -42493,7 +42515,8 @@
+             }
+ 
+         if (
+-            _ao75_public_fastpath_allowed
++            (not _ao01_force_full_llm_runtime)
++            and _ao75_public_fastpath_allowed
+             and (not ao68b_admin_internal_agent_bypass)
+             and isinstance(_amcham_public_journey_decision, dict)
+             and _amcham_public_journey_decision.get("handled")
+@@ -44255,10 +44278,11 @@
+             )
+ 
+             _eos06_ao85_hf1_payload = {}
+-            try:
+-                _eos06_ao85_hf1_payload = eos06_build_router_precedence_payload(_hf4k_msg)
+-            except Exception:
+-                _eos06_ao85_hf1_payload = {}
++            if not _ao01_force_full_llm_runtime:
++                try:
++                    _eos06_ao85_hf1_payload = eos06_build_router_precedence_payload(_hf4k_msg)
++                except Exception:
++                    _eos06_ao85_hf1_payload = {}
+ 
+             if isinstance(_eos06_ao85_hf1_payload, dict) and _eos06_ao85_hf1_payload.get("handled"):
+                 _hf4k_kind = str(_eos06_ao85_hf1_payload.get("category") or "eos06_ao85_router_precedence")
+@@ -45674,10 +45698,12 @@
+         # This is narrow and deterministic: it only handles quantitative executive math and
+         # EOS-06 governance/proposal_only requests. It performs no write, commit, branch, PR,
+         # deploy, DB schema change or provider call.
+-        try:
+-            _eos06_ao85_hf1_payload = eos06_build_router_precedence_payload(message)
+-        except Exception:
+-            _eos06_ao85_hf1_payload = {}
++        _eos06_ao85_hf1_payload = {}
++        if not _ao01_force_full_llm_runtime:
++            try:
++                _eos06_ao85_hf1_payload = eos06_build_router_precedence_payload(message)
++            except Exception:
++                _eos06_ao85_hf1_payload = {}
+ 
+         if isinstance(_eos06_ao85_hf1_payload, dict) and _eos06_ao85_hf1_payload.get("handled"):
+             try:
+@@ -45718,7 +45744,7 @@
+                     pass
+                 # Fail-open: existing routers may still answer safely.
+ 
+-        if _is_governed_evolution_pipeline_request(message):
++        if (not _ao01_force_full_llm_runtime) and _is_governed_evolution_pipeline_request(message):
+             try:
+                 payload = await asyncio.to_thread(_governed_evolution_pipeline_fastpath_in_isolated_session)
+                 async for ev in _emit_result_payload(payload, routing_source="stream_ao20j_governed_evolution_pipeline"):
+--- a/runtime/orkio_stream_precedence.py
++++ b/runtime/orkio_stream_precedence.py
+@@ -13,13 +13,15 @@
+ """
+ 
+ import copy
++import hashlib
++import inspect
+ import json
+ from typing import Any, Dict, Iterable, Iterator, List, Optional
+ 
+ try:
+-    from .orkio_executive_guard import eos06_build_router_precedence_payload
++    from .orkio_executive_guard import ORKIO_EXECUTIVE_GUARD_VERSION, eos06_build_router_precedence_payload
+ except Exception:  # pragma: no cover - standalone test fallback
+-    from runtime.orkio_executive_guard import eos06_build_router_precedence_payload
++    from runtime.orkio_executive_guard import ORKIO_EXECUTIVE_GUARD_VERSION, eos06_build_router_precedence_payload
+ 
+ try:
+     from .orkio_backend_cta_guard import enforce_backend_cta_policy
+@@ -27,7 +29,7 @@
+     from runtime.orkio_backend_cta_guard import enforce_backend_cta_policy
+ 
+ 
+-MANUS_UX_R3_1_STREAM_INTEGRATION_VERSION = "MANUS_UX_R3_2_MAIN_INTEGRATED_STREAM_ENTRY_PRECEDENCE_GATE_V1"
++MANUS_UX_R3_1_STREAM_INTEGRATION_VERSION = "AO01_SINGLE_ROUTE_AUTHORITY_STREAM_ADAPTER_V1"
+ 
+ 
+ _MESSAGE_KEYS = (
+@@ -92,10 +94,33 @@
+     guard_payload = eos06_build_router_precedence_payload(user_message)
+ 
+     if not guard_payload.get("handled"):
++        category = str(guard_payload.get("category") or "not_eos06_precedence_case")
++        force_full_llm_runtime = category == "full_llm_runtime_required"
++        try:
++            guard_source_file = inspect.getsourcefile(eos06_build_router_precedence_payload) or ""
++            guard_source_sha256 = ""
++            if guard_source_file:
++                with open(guard_source_file, "rb") as source_file:
++                    guard_source_sha256 = hashlib.sha256(source_file.read()).hexdigest()
++        except Exception:
++            guard_source_file = ""
++            guard_source_sha256 = ""
++
+         return {
+             "handled": False,
+-            "category": guard_payload.get("category", "not_eos06_precedence_case"),
+-            "route_family": "manus_ux_r3_1_stream_entry_precedence_gate",
++            "category": category,
++            "route_family": guard_payload.get("route_family") or "manus_ux_r3_1_stream_entry_precedence_gate",
++            "guard_route_family": guard_payload.get("route_family"),
++            "force_full_llm_runtime": force_full_llm_runtime,
++            "block_executive_templates": force_full_llm_runtime,
++            "block_public_deterministic_fastpaths": force_full_llm_runtime,
++            "block_governed_evolution_fastpath": force_full_llm_runtime,
++            "guard_payload": copy.deepcopy(guard_payload),
++            "guard_version": ORKIO_EXECUTIVE_GUARD_VERSION,
++            "guard_module": getattr(eos06_build_router_precedence_payload, "__module__", ""),
++            "guard_function": getattr(eos06_build_router_precedence_payload, "__name__", ""),
++            "guard_source_file": guard_source_file,
++            "guard_source_sha256": guard_source_sha256,
+             "stream_integration_version": MANUS_UX_R3_1_STREAM_INTEGRATION_VERSION,
+             "commercial_cta_allowed": bool(guard_payload.get("commercial_cta_allowed", False)),
+             "commercial_cta_suppressed": bool(guard_payload.get("commercial_cta_suppressed", True)),
+--- a/runtime/orkio_executive_guard.py
++++ b/runtime/orkio_executive_guard.py
+@@ -17,7 +17,7 @@
+ from typing import Any, Dict, Iterable, List, Optional, Tuple
+ 
+ 
+-ORKIO_EXECUTIVE_GUARD_VERSION = "AO85_ORKIO_EXECUTIVE_RUNTIME_AUTHORITY_V1"
++ORKIO_EXECUTIVE_GUARD_VERSION = "AO01_SINGLE_ROUTE_AUTHORITY_PATCH_V1"
+ EOS06_AO85_HF2_VERSION = "EOS06_AO85_HF2_EXECUTIVE_TURN_OWNERSHIP_V1"
+ MANUS_UX_R1_VERSION = "MANUS_UX_R1_EXECUTIVE_INTENT_ROUTING_V1"
+ MANUS_UX_R3_VERSION = "MANUS_UX_R3_ROUTER_AND_CTA_GUARD_V1"
+@@ -56,6 +56,24 @@
+     low = _normalize(raw)
+     if not low:
+         return False
++
++    # AO-01 explicit complexity signatures. These are intentionally evaluated
++    # before the generic template classifiers.
++    explicit_complex_markers = (
++        "entregue:",
++        "crie:",
++        "analise de sensibilidade",
++        "matriz de prioridades",
++        "criterios de go/no-go",
++        "plano de acao para 90 dias",
++        "vpl aproximado",
++        "ltv por duas metodologias",
++        "necessidade aproximada de capital de giro",
++        "separe estabilidade de melhorias premium",
++        "diferencie lucro contabil",
++    )
++    explicit_hits = sum(1 for marker in explicit_complex_markers if marker in low)
++    explicit_complex = explicit_hits >= 1
+ 
+     # Numbered deliverables such as "1.", "2.", ..., or "1)", "2)".
+     numbered_items = len(
+@@ -112,7 +130,8 @@
+     )
+ 
+     return bool(
+-        long_structured_prompt
++        explicit_complex
++        or long_structured_prompt
+         or multi_deliverable
+         or scenario_analysis
+         or complex_financial_request

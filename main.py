@@ -42059,38 +42059,27 @@ async def chat_stream(
         except Exception:
             _eos06_ao85_hf2_payload = {}
 
-        # AO-01 diagnostic only: prove which file/function/version made the
-        # stream-entry routing decision. This does not change route ownership.
+        # AO-01 single route authority: once the stream-entry gate marks a
+        # complex prompt for the full LLM runtime, later deterministic
+        # corridors must not reclassify or terminate the same turn.
+        _ao01_force_full_llm_runtime = bool(
+            isinstance(_eos06_ao85_hf2_payload, dict)
+            and _eos06_ao85_hf2_payload.get("force_full_llm_runtime")
+        )
         try:
-            _ao01_route_diag = (
-                _eos06_ao85_hf2_payload.get("_ao01_route_diagnostics", {})
-                if isinstance(_eos06_ao85_hf2_payload, dict)
-                else {}
-            )
             logger.warning(
-                "AO01_ROUTE_DECISION "
-                "trace_id=%s handled=%s category=%s route_family=%s "
-                "guard_route_family=%s guard_version=%s guard_module=%s "
-                "guard_function=%s guard_source_file=%s guard_source_sha256=%s "
-                "stream_adapter_file=%s stream_integration_version=%s "
-                "message_chars=%s message_lines=%s",
+                "AO01_SINGLE_ROUTE_DECISION trace_id=%s handled=%s category=%s route_family=%s force_full_llm_runtime=%s guard_version=%s guard_source_file=%s guard_source_sha256=%s",
                 trace_id,
                 bool(_eos06_ao85_hf2_payload.get("handled")) if isinstance(_eos06_ao85_hf2_payload, dict) else False,
                 _eos06_ao85_hf2_payload.get("category") if isinstance(_eos06_ao85_hf2_payload, dict) else None,
                 _eos06_ao85_hf2_payload.get("route_family") if isinstance(_eos06_ao85_hf2_payload, dict) else None,
-                _eos06_ao85_hf2_payload.get("guard_route_family") if isinstance(_eos06_ao85_hf2_payload, dict) else None,
-                _ao01_route_diag.get("guard_version"),
-                _ao01_route_diag.get("guard_module"),
-                _ao01_route_diag.get("guard_function"),
-                _ao01_route_diag.get("guard_source_file"),
-                _ao01_route_diag.get("guard_source_sha256"),
-                _ao01_route_diag.get("stream_adapter_file"),
-                _ao01_route_diag.get("stream_integration_version"),
-                _ao01_route_diag.get("message_chars"),
-                _ao01_route_diag.get("message_lines"),
+                _ao01_force_full_llm_runtime,
+                _eos06_ao85_hf2_payload.get("guard_version") if isinstance(_eos06_ao85_hf2_payload, dict) else None,
+                _eos06_ao85_hf2_payload.get("guard_source_file") if isinstance(_eos06_ao85_hf2_payload, dict) else None,
+                _eos06_ao85_hf2_payload.get("guard_source_sha256") if isinstance(_eos06_ao85_hf2_payload, dict) else None,
             )
         except Exception:
-            logger.exception("AO01_ROUTE_DECISION_LOG_FAILED trace_id=%s", trace_id)
+            pass
 
         if isinstance(_eos06_ao85_hf2_payload, dict) and _eos06_ao85_hf2_payload.get("handled"):
             try:
@@ -42425,7 +42414,7 @@ async def chat_stream(
         # Minimal and reversible wiring before AMCHAM/Chris/Orion/Orkio public policies.
         # The gateway is fail-open: if Decision Mesh or any new module fails, the
         # existing AO66B/AO67A/public policy corridor continues unchanged.
-        if _ao75_public_fastpath_allowed:
+        if _ao75_public_fastpath_allowed and not _ao01_force_full_llm_runtime:
             try:
                 _ao67f_gateway_decision = build_public_chat_gateway_decision(
                     message=message,
@@ -42461,7 +42450,7 @@ async def chat_stream(
                 "commit_memory": False,
             }
 
-        if (not ao68b_admin_internal_agent_bypass) and should_short_circuit_public_chat(_ao67f_gateway_decision):
+        if (not _ao01_force_full_llm_runtime) and (not ao68b_admin_internal_agent_bypass) and should_short_circuit_public_chat(_ao67f_gateway_decision):
             try:
                 _ao67f_stream_payload = dict(_ao67f_gateway_decision.get("stream_payload") or {})
                 _ao67f_final_text = str(
@@ -42526,7 +42515,8 @@ async def chat_stream(
             }
 
         if (
-            _ao75_public_fastpath_allowed
+            (not _ao01_force_full_llm_runtime)
+            and _ao75_public_fastpath_allowed
             and (not ao68b_admin_internal_agent_bypass)
             and isinstance(_amcham_public_journey_decision, dict)
             and _amcham_public_journey_decision.get("handled")
@@ -44288,10 +44278,11 @@ async def chat_stream(
             )
 
             _eos06_ao85_hf1_payload = {}
-            try:
-                _eos06_ao85_hf1_payload = eos06_build_router_precedence_payload(_hf4k_msg)
-            except Exception:
-                _eos06_ao85_hf1_payload = {}
+            if not _ao01_force_full_llm_runtime:
+                try:
+                    _eos06_ao85_hf1_payload = eos06_build_router_precedence_payload(_hf4k_msg)
+                except Exception:
+                    _eos06_ao85_hf1_payload = {}
 
             if isinstance(_eos06_ao85_hf1_payload, dict) and _eos06_ao85_hf1_payload.get("handled"):
                 _hf4k_kind = str(_eos06_ao85_hf1_payload.get("category") or "eos06_ao85_router_precedence")
@@ -45707,10 +45698,12 @@ async def chat_stream(
         # This is narrow and deterministic: it only handles quantitative executive math and
         # EOS-06 governance/proposal_only requests. It performs no write, commit, branch, PR,
         # deploy, DB schema change or provider call.
-        try:
-            _eos06_ao85_hf1_payload = eos06_build_router_precedence_payload(message)
-        except Exception:
-            _eos06_ao85_hf1_payload = {}
+        _eos06_ao85_hf1_payload = {}
+        if not _ao01_force_full_llm_runtime:
+            try:
+                _eos06_ao85_hf1_payload = eos06_build_router_precedence_payload(message)
+            except Exception:
+                _eos06_ao85_hf1_payload = {}
 
         if isinstance(_eos06_ao85_hf1_payload, dict) and _eos06_ao85_hf1_payload.get("handled"):
             try:
@@ -45751,7 +45744,7 @@ async def chat_stream(
                     pass
                 # Fail-open: existing routers may still answer safely.
 
-        if _is_governed_evolution_pipeline_request(message):
+        if (not _ao01_force_full_llm_runtime) and _is_governed_evolution_pipeline_request(message):
             try:
                 payload = await asyncio.to_thread(_governed_evolution_pipeline_fastpath_in_isolated_session)
                 async for ev in _emit_result_payload(payload, routing_source="stream_ao20j_governed_evolution_pipeline"):

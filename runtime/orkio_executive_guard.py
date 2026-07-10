@@ -17,7 +17,7 @@ import unicodedata
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 
-ORKIO_EXECUTIVE_GUARD_VERSION = "AO01_COMPLEX_PROMPT_BYPASS_V2"
+ORKIO_EXECUTIVE_GUARD_VERSION = "AO01_SINGLE_ROUTE_AUTHORITY_PATCH_V1"
 EOS06_AO85_HF2_VERSION = "EOS06_AO85_HF2_EXECUTIVE_TURN_OWNERSHIP_V1"
 MANUS_UX_R1_VERSION = "MANUS_UX_R1_EXECUTIVE_INTENT_ROUTING_V1"
 MANUS_UX_R3_VERSION = "MANUS_UX_R3_ROUTER_AND_CTA_GUARD_V1"
@@ -41,54 +41,6 @@ def _has_any(text: str, markers: Iterable[str]) -> bool:
     return any(marker in text for marker in markers)
 
 
-
-_COMPLEX_PROMPT_BYPASS_MARKERS = (
-    "entregue:",
-    "crie:",
-    "analise de sensibilidade",
-    "cenario a:",
-    "cenario b:",
-    "cenario c:",
-    "matriz de prioridades",
-    "roadmap de 30",
-    "criterios objetivos de go/no-go",
-    "indicadores tecnicos",
-    "indicadores de produto",
-    "riscos e mitigacoes",
-    "plano de acao para 90 dias",
-    "explique premissas",
-    "sinalize qualquer inconsistencia",
-    "ltv/cac",
-    "payback do cac",
-    "impacto do churn",
-    "runway",
-)
-
-
-def _has_explicit_complex_prompt_marker(message: Any) -> bool:
-    """Detect unequivocal prompts that must bypass deterministic templates.
-
-    The input is normalized before comparison, so the marker list is stored
-    without accents. This guard is intentionally simple and precedes all
-    executive/dashboard/math fast paths.
-    """
-    low = _normalize(message)
-    if not low:
-        return False
-
-    marker_hits = sum(1 for marker in _COMPLEX_PROMPT_BYPASS_MARKERS if marker in low)
-    scenario_hits = len(re.findall(r"\bcenario\s+[a-z0-9]+\s*:", low))
-    numbered_deliverables = len(
-        re.findall(r"(?m)^\s*\d{1,2}[.)]\s+", str(message or ""))
-    )
-
-    return bool(
-        marker_hits >= 1
-        or scenario_hits >= 2
-        or numbered_deliverables >= 4
-    )
-
-
 def _requires_full_llm_runtime(message: Any) -> bool:
     """Return True when deterministic templates would under-answer the request.
 
@@ -104,6 +56,24 @@ def _requires_full_llm_runtime(message: Any) -> bool:
     low = _normalize(raw)
     if not low:
         return False
+
+    # AO-01 explicit complexity signatures. These are intentionally evaluated
+    # before the generic template classifiers.
+    explicit_complex_markers = (
+        "entregue:",
+        "crie:",
+        "analise de sensibilidade",
+        "matriz de prioridades",
+        "criterios de go/no-go",
+        "plano de acao para 90 dias",
+        "vpl aproximado",
+        "ltv por duas metodologias",
+        "necessidade aproximada de capital de giro",
+        "separe estabilidade de melhorias premium",
+        "diferencie lucro contabil",
+    )
+    explicit_hits = sum(1 for marker in explicit_complex_markers if marker in low)
+    explicit_complex = explicit_hits >= 1
 
     # Numbered deliverables such as "1.", "2.", ..., or "1)", "2)".
     numbered_items = len(
@@ -160,7 +130,8 @@ def _requires_full_llm_runtime(message: Any) -> bool:
     )
 
     return bool(
-        long_structured_prompt
+        explicit_complex
+        or long_structured_prompt
         or multi_deliverable
         or scenario_analysis
         or complex_financial_request
@@ -722,13 +693,10 @@ def eos06_build_router_precedence_payload(message: Any) -> Dict[str, Any]:
     """
     raw_message = str(message or "")
 
-    # AO-01 HOTFIX V2: explicit complex markers take precedence over every
-    # deterministic executive/dashboard/math template. The broader heuristic
-    # remains as a secondary safety net.
-    if (
-        _has_explicit_complex_prompt_marker(raw_message)
-        or _requires_full_llm_runtime(raw_message)
-    ):
+    # AO-01: complex or multi-deliverable prompts must reach the full LLM
+    # runtime. Deterministic executive templates are only suitable for narrow
+    # requests and must fail open here.
+    if _requires_full_llm_runtime(raw_message):
         return {
             "handled": False,
             "category": "full_llm_runtime_required",
