@@ -36924,29 +36924,35 @@ async def chat_stream(
                 except Exception:
                     pass
 
-            # EOS06-AO85-HF4 — Single Assistant Commit Guard
-            # Prevent the same assistant answer from being committed twice for the same
-            # thread during short stream/reconcile races. This is intentionally generic,
-            # local to persistence, and fail-open: if the lookup fails, the previous
-            # behavior continues.
+            # AO72-HF2 — Turn-scoped Single Assistant Commit Guard.
+            #
+            # The previous guard deduplicated by (thread_id + identical content + 180s).
+            # That could suppress a legitimate answer from a NEW user turn when two
+            # different prompts produced similar or identical text. The new contract
+            # scopes idempotency to the current turn using client_message_id, with
+            # trace_id as a fallback. This preserves same-turn dedupe while preventing
+            # cross-turn response suppression.
             _assistant_content = str(text or "").strip()
+            _assistant_turn_key = f"assistant:{str(client_message_id or trace_id or '').strip()}"
+            if _assistant_turn_key == "assistant:":
+                _assistant_turn_key = f"assistant:{new_id()}"
+
             try:
-                _recent_floor = max(int(now_ts()) - 180, 0)
                 _existing_assistant = db2.execute(
                     select(Message).where(
                         Message.org_slug == org,
                         Message.thread_id == tid,
                         Message.role == "assistant",
-                        Message.content == _assistant_content,
-                        Message.created_at >= _recent_floor,
+                        Message.client_message_id == _assistant_turn_key,
                     ).order_by(Message.created_at.desc()).limit(1)
                 ).scalars().first()
                 if _existing_assistant:
                     try:
                         logger.warning(
-                            "EOS06_AO85_HF4_SINGLE_COMMIT_GUARD duplicate_suppressed trace_id=%s thread_id=%s assistant_message_id=%s",
+                            "AO72_HF2_TURN_COMMIT_GUARD duplicate_suppressed trace_id=%s thread_id=%s turn_key=%s assistant_message_id=%s",
                             trace_id,
                             tid,
+                            _assistant_turn_key,
                             getattr(_existing_assistant, "id", None),
                         )
                     except Exception:
@@ -36956,10 +36962,16 @@ async def chat_stream(
                         "assistant_message_id": getattr(_existing_assistant, "id", None),
                         "assistant_persisted": True,
                         "assistant_duplicate_suppressed": True,
+                        "assistant_turn_key": _assistant_turn_key,
                     }
             except Exception:
                 try:
-                    logger.exception("EOS06_AO85_HF4_SINGLE_COMMIT_GUARD_LOOKUP_FAILED trace_id=%s thread_id=%s", trace_id, tid)
+                    logger.exception(
+                        "AO72_HF2_TURN_COMMIT_GUARD_LOOKUP_FAILED trace_id=%s thread_id=%s turn_key=%s",
+                        trace_id,
+                        tid,
+                        _assistant_turn_key,
+                    )
                 except Exception:
                     pass
 
@@ -36971,6 +36983,7 @@ async def chat_stream(
                 content=_assistant_content,
                 agent_id=agent_id,
                 agent_name=agent_name,
+                client_message_id=_assistant_turn_key,
                 created_at=now_ts(),
             )
             db2.add(m_ass)
@@ -36980,6 +36993,7 @@ async def chat_stream(
                 "assistant_message_id": m_ass.id,
                 "assistant_persisted": True,
                 "assistant_duplicate_suppressed": False,
+                "assistant_turn_key": _assistant_turn_key,
             }
         except Exception:
             try:
@@ -46213,7 +46227,7 @@ async def chat_stream(
 
         # AO-35A: if chat() already persisted a real assistant answer,
         # suppress the false timeout fallback and close the stream cleanly.
-        def _ao35a_find_recent_assistant_payload(thread_id: str, since_ts: int):
+        def _ao35a_find_recent_assistant_payload(thread_id: str, since_ts: int, assistant_turn_key: str):
             try:
                 db2 = SessionLocal()
             except Exception:
@@ -46229,9 +46243,10 @@ async def chat_stream(
                     db2.query(Message)
                     .filter(Message.thread_id == thread_id)
                     .filter(Message.role == "assistant")
+                    .filter(Message.client_message_id == assistant_turn_key)
                     .filter(Message.created_at >= since_i)
                     .order_by(Message.created_at.desc())
-                    .limit(8)
+                    .limit(2)
                 )
 
                 for m in q.all():
@@ -46264,12 +46279,17 @@ async def chat_stream(
         try:
             while not task.done():
                 if await request.is_disconnected():
+                    # AO72-HF2 — do not cancel the background provider task on a transient
+                    # client disconnect. The task may still complete and persist the answer
+                    # under the current turn key. Cancelling here created a race in which the
+                    # provider finished later while the SSE lifecycle had already ended.
                     try:
-                        task.cancel()
-                    except Exception:
-                        pass
-                    try:
-                        logger.info("CHAT_STREAM_CLIENT_DISCONNECTED trace_id=%s thread_id=%s", trace_id, tid_seed)
+                        logger.info(
+                            "AO72_HF2_CLIENT_DISCONNECTED_BACKGROUND_CONTINUES trace_id=%s thread_id=%s turn_key=%s",
+                            trace_id,
+                            tid_seed,
+                            f"assistant:{str(client_message_id or trace_id or '').strip()}",
+                        )
                     except Exception:
                         pass
                     return
@@ -46280,10 +46300,12 @@ async def chat_stream(
                     except Exception:
                         pass
 
+                    _ao72_hf2_turn_key = f"assistant:{str(client_message_id or trace_id or '').strip()}"
                     existing_assistant = await asyncio.to_thread(
                         _ao35a_find_recent_assistant_payload,
                         tid_seed,
                         int(_ao35a_stream_started_at or 0),
+                        _ao72_hf2_turn_key,
                     )
                     if existing_assistant:
                         timeout_base = {
