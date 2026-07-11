@@ -1,0 +1,702 @@
+--- a/main.py
++++ b/main.py
+@@ -49,6 +49,8 @@
+ import unicodedata
+ from types import SimpleNamespace
+ from typing import Any, Dict, List, Optional
++
++from app.runtime.agent_turn_context import resolve_agent_turn_context
+ 
+ from app.self_heal.secret_broker import resolve_github_token
+ from app.self_heal.credential_scope import control_plane_github_context
+@@ -35031,6 +35033,32 @@
+         ao68b_admin_internal_agent_bypass = False
+         ao68b_requested_internal_agent = None
+ 
++    ao01_agent_turn_context = resolve_agent_turn_context(
++        ao68b_requested_internal_agent,
++        route_family="governed_evolution_pipeline",
++        orchestrator_agent="orkio",
++        technical_lead="orion",
++    )
++    ao01_response_agent_id = ao01_agent_turn_context.agent_id
++    ao01_response_agent_name = ao01_agent_turn_context.agent_name
++
++    try:
++        logger.error(
++            "AO01_AGENT_TURN_OWNERSHIP trace_id=%s requested_agent=%s "
++            "orchestrator_agent=%s turn_owner=%s display_agent=%s "
++            "technical_lead=%s route_family=%s ownership_locked=%s",
++            trace_id,
++            ao01_agent_turn_context.requested_agent,
++            ao01_agent_turn_context.orchestrator_agent,
++            ao01_agent_turn_context.turn_owner,
++            ao01_agent_turn_context.display_agent,
++            ao01_agent_turn_context.technical_lead,
++            ao01_agent_turn_context.route_family,
++            ao01_agent_turn_context.ownership_locked,
++        )
++    except Exception:
++        pass
++
+     def _safe_payload(obj: Any) -> Dict[str, Any]:
+         # AO40C: normalize runtime payloads for immediate SSE completion.
+         if obj is None:
+@@ -39111,7 +39139,7 @@
+             f"- execution_id: {execution_id}\n"
+             "- route_family: governed_evolution_pipeline\n"
+             f"- stage: {stage}\n"
+-            "- parent_agent: Orkio\n"
++            f"- parent_agent: {ao01_response_agent_name}\n"
+             "- lead_agent: Orion\n"
+             "- technical_audit_owner: Orion\n"
+             f"- business_context_owner: {business_context_line}\n"
+@@ -39933,7 +39961,7 @@
+             f"- execution_id: governed_evolution_proposal_only_{new_id()[:10]}\n"
+             "- route_family: governed_evolution_pipeline\n"
+             "- stage: proposal_only\n"
+-            "- parent_agent: Orkio\n"
++            f"- parent_agent: {ao01_response_agent_name}\n"
+             "- lead_agent: Orion\n"
+             "- technical_audit_owner: Orion\n"
+             "- business_context_owner: Chris_not_called\n"
+@@ -39969,16 +39997,16 @@
+         persisted = _persist_assistant_message(
+             text=final_text,
+             thread_id=tid_seed,
+-            agent_id="orkio",
+-            agent_name="Orkio",
++            agent_id=ao01_response_agent_id,
++            agent_name=ao01_response_agent_name,
+         )
+         return {
+             **persisted,
+             "answer": final_text,
+             "message": final_text,
+             "final_text": final_text,
+-            "agent_id": "orkio",
+-            "agent_name": "Orkio",
++            "agent_id": ao01_response_agent_id,
++            "agent_name": ao01_response_agent_name,
+             "voice_id": None,
+             "avatar_url": None,
+             "proposal_id": proposal_id,
+@@ -39988,8 +40016,13 @@
+                     "routing_source": "stream_ao20j_governed_proposal_gate",
+                     "route_applied": True,
+                     "route_family": "governed_evolution_pipeline",
++                    "agent_turn_context": ao01_agent_turn_context.to_routing_payload(),
++                    "turn_owner": ao01_agent_turn_context.turn_owner,
++                    "display_agent": ao01_agent_turn_context.display_agent,
++                    "orchestrator_agent": ao01_agent_turn_context.orchestrator_agent,
++                    "ownership_locked": ao01_agent_turn_context.ownership_locked,
+                     "stage": "proposal_only",
+-                    "parent_agent": "Orkio",
++                    "parent_agent": ao01_response_agent_name,
+                     "lead_agent": "Orion",
+                     "technical_audit_owner": "Orion",
+                     "chris_role": "strategic_context_only_not_technical_auditor",
+@@ -40107,16 +40140,16 @@
+         persisted = _persist_assistant_message(
+             text=final_text,
+             thread_id=tid_seed,
+-            agent_id="orkio",
+-            agent_name="Orkio",
++            agent_id=ao01_response_agent_id,
++            agent_name=ao01_response_agent_name,
+         )
+         return {
+             **persisted,
+             "answer": final_text,
+             "message": final_text,
+             "final_text": final_text,
+-            "agent_id": "orkio",
+-            "agent_name": "Orkio",
++            "agent_id": ao01_response_agent_id,
++            "agent_name": ao01_response_agent_name,
+             "voice_id": None,
+             "avatar_url": None,
+             "proposal_id": proposal_id,
+@@ -40125,6 +40158,11 @@
+                     "routing_source": "stream_ao20j_governed_dry_run_gate",
+                     "route_applied": True,
+                     "route_family": "governed_evolution_pipeline",
++                    "agent_turn_context": ao01_agent_turn_context.to_routing_payload(),
++                    "turn_owner": ao01_agent_turn_context.turn_owner,
++                    "display_agent": ao01_agent_turn_context.display_agent,
++                    "orchestrator_agent": ao01_agent_turn_context.orchestrator_agent,
++                    "ownership_locked": ao01_agent_turn_context.ownership_locked,
+                     "stage": "dry_run",
+                     "proposal_id": proposal_id,
+                     "write_allowed": False,
+@@ -40281,16 +40319,16 @@
+         persisted = _persist_assistant_message(
+             text=final_text,
+             thread_id=tid_seed,
+-            agent_id="orkio",
+-            agent_name="Orkio",
++            agent_id=ao01_response_agent_id,
++            agent_name=ao01_response_agent_name,
+         )
+         return {
+             **persisted,
+             "answer": final_text,
+             "message": final_text,
+             "final_text": final_text,
+-            "agent_id": "orkio",
+-            "agent_name": "Orkio",
++            "agent_id": ao01_response_agent_id,
++            "agent_name": ao01_response_agent_name,
+             "voice_id": None,
+             "avatar_url": None,
+             "proposal_id": proposal_id,
+@@ -40299,6 +40337,11 @@
+                     "routing_source": "stream_ao20k_branch_pr_plan_approval_gate",
+                     "route_applied": True,
+                     "route_family": "governed_evolution_pipeline",
++                    "agent_turn_context": ao01_agent_turn_context.to_routing_payload(),
++                    "turn_owner": ao01_agent_turn_context.turn_owner,
++                    "display_agent": ao01_agent_turn_context.display_agent,
++                    "orchestrator_agent": ao01_agent_turn_context.orchestrator_agent,
++                    "ownership_locked": ao01_agent_turn_context.ownership_locked,
+                     "stage": "branch_pr_plan",
+                     "proposal_id": proposal_id,
+                     "proposal_status": status_norm,
+@@ -40355,16 +40398,16 @@
+         persisted = _persist_assistant_message(
+             text=final_text,
+             thread_id=tid_seed,
+-            agent_id=None,
+-            agent_name="Orkio",
++            agent_id=ao01_response_agent_id,
++            agent_name=ao01_response_agent_name,
+         )
+         return {
+             **persisted,
+             "answer": final_text,
+             "message": final_text,
+             "final_text": final_text,
+-            "agent_id": None,
+-            "agent_name": "Orkio",
++            "agent_id": ao01_response_agent_id,
++            "agent_name": ao01_response_agent_name,
+             "voice_id": None,
+             "avatar_url": None,
+             "runtime_hints": {
+@@ -40471,16 +40514,16 @@
+         persisted = _persist_assistant_message(
+             text=final_text,
+             thread_id=tid_seed,
+-            agent_id=None,
+-            agent_name="Orkio",
++            agent_id=ao01_response_agent_id,
++            agent_name=ao01_response_agent_name,
+         )
+         return {
+             **persisted,
+             "answer": final_text,
+             "message": final_text,
+             "final_text": final_text,
+-            "agent_id": None,
+-            "agent_name": "Orkio",
++            "agent_id": ao01_response_agent_id,
++            "agent_name": ao01_response_agent_name,
+             "voice_id": None,
+             "avatar_url": None,
+             "proposal_id": proposal_id,
+@@ -40490,6 +40533,11 @@
+                     "route_applied": True,
+                     "execution_lifecycle": "completed",
+                     "route_family": "governed_evolution_pipeline",
++                    "agent_turn_context": ao01_agent_turn_context.to_routing_payload(),
++                    "turn_owner": ao01_agent_turn_context.turn_owner,
++                    "display_agent": ao01_agent_turn_context.display_agent,
++                    "orchestrator_agent": ao01_agent_turn_context.orchestrator_agent,
++                    "ownership_locked": ao01_agent_turn_context.ownership_locked,
+                     "stage": "branch_pr_plan",
+                     "minimal_probe": True,
+                     "proposal_id": proposal_id,
+@@ -40532,8 +40580,8 @@
+         persisted = _persist_assistant_message(
+             text=final_text,
+             thread_id=tid_seed,
+-            agent_id="orkio",
+-            agent_name="Orkio",
++            agent_id=ao01_response_agent_id,
++            agent_name=ao01_response_agent_name,
+         )
+         execution_id = f"governed_evolution_trace_{new_id()[:10]}"
+         return {
+@@ -40541,8 +40589,8 @@
+             "answer": final_text,
+             "message": final_text,
+             "final_text": final_text,
+-            "agent_id": "orkio",
+-            "agent_name": "Orkio",
++            "agent_id": ao01_response_agent_id,
++            "agent_name": ao01_response_agent_name,
+             "voice_id": None,
+             "avatar_url": None,
+             "runtime_hints": {
+@@ -40550,8 +40598,13 @@
+                     "routing_source": "stream_ao20j_governed_evolution_pipeline",
+                     "route_applied": True,
+                     "route_family": "governed_evolution_pipeline",
++                    "agent_turn_context": ao01_agent_turn_context.to_routing_payload(),
++                    "turn_owner": ao01_agent_turn_context.turn_owner,
++                    "display_agent": ao01_agent_turn_context.display_agent,
++                    "orchestrator_agent": ao01_agent_turn_context.orchestrator_agent,
++                    "ownership_locked": ao01_agent_turn_context.ownership_locked,
+                     "stage": stage,
+-                    "parent_agent": "Orkio",
++                    "parent_agent": ao01_response_agent_name,
+                     "lead_agent": "Orion",
+                     "technical_audit_owner": "Orion",
+                     "business_context_owner": "Chris_optional_context_only",
+@@ -41148,16 +41201,16 @@
+         persisted = _persist_assistant_message(
+             text=final_text,
+             thread_id=tid_seed,
+-            agent_id=None,
+-            agent_name="Orkio",
++            agent_id=ao01_response_agent_id,
++            agent_name=ao01_response_agent_name,
+         )
+         return {
+             **persisted,
+             "answer": final_text,
+             "message": final_text,
+             "final_text": final_text,
+-            "agent_id": None,
+-            "agent_name": "Orkio",
++            "agent_id": ao01_response_agent_id,
++            "agent_name": ao01_response_agent_name,
+             "voice_id": None,
+             "avatar_url": None,
+             "runtime_hints": {
+@@ -41175,16 +41228,16 @@
+         persisted = _persist_assistant_message(
+             text=final_text,
+             thread_id=tid_seed,
+-            agent_id=None,
+-            agent_name="Orkio",
++            agent_id=ao01_response_agent_id,
++            agent_name=ao01_response_agent_name,
+         )
+         return {
+             **persisted,
+             "answer": final_text,
+             "message": final_text,
+             "final_text": final_text,
+-            "agent_id": None,
+-            "agent_name": "Orkio",
++            "agent_id": ao01_response_agent_id,
++            "agent_name": ao01_response_agent_name,
+             "voice_id": None,
+             "avatar_url": None,
+             "runtime_hints": {
+@@ -41201,16 +41254,16 @@
+         persisted = _persist_assistant_message(
+             text=final_text,
+             thread_id=tid_seed,
+-            agent_id=None,
+-            agent_name="Orkio",
++            agent_id=ao01_response_agent_id,
++            agent_name=ao01_response_agent_name,
+         )
+         return {
+             **persisted,
+             "answer": final_text,
+             "message": final_text,
+             "final_text": final_text,
+-            "agent_id": None,
+-            "agent_name": "Orkio",
++            "agent_id": ao01_response_agent_id,
++            "agent_name": ao01_response_agent_name,
+             "voice_id": None,
+             "avatar_url": None,
+             "runtime_hints": {
+@@ -41854,8 +41907,8 @@
+                     "answer": str(payload or ""),
+                     "message": str(payload or ""),
+                     "final_text": str(payload or ""),
+-                    "agent_id": "orkio",
+-                    "agent_name": "Orkio",
++                    "agent_id": ao01_response_agent_id,
++                    "agent_name": ao01_response_agent_name,
+                     "runtime_hints": {},
+                 }
+             try:
+@@ -41865,8 +41918,8 @@
+                     "answer": "O runtime concluiu com fallback seguro de serialização.",
+                     "message": "O runtime concluiu com fallback seguro de serialização.",
+                     "final_text": "O runtime concluiu com fallback seguro de serialização.",
+-                    "agent_id": "orkio",
+-                    "agent_name": "Orkio",
++                    "agent_id": ao01_response_agent_id,
++                    "agent_name": ao01_response_agent_name,
+                     "runtime_hints": {
+                         "routing": {
+                             "routing_source": routing_source,
+@@ -42169,8 +42222,8 @@
+                     _persist_assistant_message,
+                     text=_literal_top_text,
+                     thread_id=tid_seed,
+-                    agent_id=None,
+-                    agent_name="Orkio",
++                    agent_id=ao01_response_agent_id,
++                    agent_name=ao01_response_agent_name,
+                 )
+                 payload = {
+                     **persisted,
+@@ -42180,8 +42233,8 @@
+                     "final_text": _literal_top_text,
+                     "content": _literal_top_text,
+                     "text": _literal_top_text,
+-                    "agent_id": None,
+-                    "agent_name": "Orkio",
++                    "agent_id": ao01_response_agent_id,
++                    "agent_name": ao01_response_agent_name,
+                     "service": "chat_literal_top_fastpath",
+                     "provider": "platform",
+                     "status": "done",
+@@ -42436,7 +42489,7 @@
+                 _ao67f_gateway_decision = {
+                     "handled": False,
+                     "reason": "ao67f_gateway_exception",
+-                    "agent_name": "Orkio",
++                    "agent_name": ao01_response_agent_name,
+                     "final_speaker": "Orkio",
+                     "intent_contract": _ao75_intent_contract,
+                 }
+@@ -42444,7 +42497,7 @@
+             _ao67f_gateway_decision = {
+                 "handled": False,
+                 "reason": "ao75_concrete_task_passthrough",
+-                "agent_name": "Orkio",
++                "agent_name": ao01_response_agent_name,
+                 "final_speaker": "Orkio",
+                 "intent_contract": _ao75_intent_contract,
+                 "commit_memory": False,
+@@ -42465,8 +42518,8 @@
+                     _persist_assistant_message,
+                     text=_ao67f_final_text,
+                     thread_id=tid_seed,
+-                    agent_id=None,
+-                    agent_name="Orkio",
++                    agent_id=ao01_response_agent_id,
++                    agent_name=ao01_response_agent_name,
+                 )
+ 
+                 _ao67f_payload = build_public_chat_gateway_stream_payload(
+@@ -42527,8 +42580,8 @@
+                     _persist_assistant_message,
+                     text=final_text,
+                     thread_id=tid_seed,
+-                    agent_id=None,
+-                    agent_name="Orkio",
++                    agent_id=ao01_response_agent_id,
++                    agent_name=ao01_response_agent_name,
+                 )
+                 payload = build_amcham_public_journey_stream_payload(
+                     _amcham_public_journey_decision,
+@@ -42577,8 +42630,8 @@
+                     _persist_assistant_message,
+                     text=final_text,
+                     thread_id=tid_seed,
+-                    agent_id=None,
+-                    agent_name="Orkio",
++                    agent_id=ao01_response_agent_id,
++                    agent_name=ao01_response_agent_name,
+                 )
+                 payload = build_public_orkio_stream_payload(_ao67a_unlock_decision, persisted=persisted)
+                 logger.warning(
+@@ -42618,8 +42671,8 @@
+                     _persist_assistant_message,
+                     text=final_text,
+                     thread_id=tid_seed,
+-                    agent_id=None,
+-                    agent_name="Orkio",
++                    agent_id=ao01_response_agent_id,
++                    agent_name=ao01_response_agent_name,
+                 )
+                 payload = build_public_chris_stream_payload(_public_chris_decision, persisted=persisted)
+                 logger.warning(
+@@ -42656,8 +42709,8 @@
+                     _persist_assistant_message,
+                     text=final_text,
+                     thread_id=tid_seed,
+-                    agent_id=None,
+-                    agent_name="Orkio",
++                    agent_id=ao01_response_agent_id,
++                    agent_name=ao01_response_agent_name,
+                 )
+                 payload = build_public_orion_stream_payload(_public_orion_decision, persisted=persisted)
+                 logger.warning(
+@@ -42709,8 +42762,8 @@
+                     _persist_assistant_message,
+                     text=final_text,
+                     thread_id=tid_seed,
+-                    agent_id=None,
+-                    agent_name="Orkio",
++                    agent_id=ao01_response_agent_id,
++                    agent_name=ao01_response_agent_name,
+                 )
+                 payload = build_public_orkio_stream_payload(_public_orkio_decision, persisted=persisted)
+                 logger.warning(
+@@ -42775,8 +42828,8 @@
+                     _persist_assistant_message,
+                     text=final_text,
+                     thread_id=tid_seed,
+-                    agent_id=None,
+-                    agent_name="Orkio",
++                    agent_id=ao01_response_agent_id,
++                    agent_name=ao01_response_agent_name,
+                 )
+                 assistant_message_id = persisted.get("assistant_message_id")
+                 assistant_persisted = bool(persisted.get("assistant_persisted", True))
+@@ -42789,8 +42842,8 @@
+             hf4b_base = {
+                 **base,
+                 "thread_id": tid_seed,
+-                "agent_id": "orkio",
+-                "agent_name": "Orkio",
++                "agent_id": ao01_response_agent_id,
++                "agent_name": ao01_response_agent_name,
+                 "final_speaker": "Orkio",
+             }
+             hf4b_runtime_hints = {
+@@ -42895,8 +42948,8 @@
+                     _persist_assistant_message,
+                     text=final_text,
+                     thread_id=tid_seed,
+-                    agent_id=None,
+-                    agent_name="Orkio",
++                    agent_id=ao01_response_agent_id,
++                    agent_name=ao01_response_agent_name,
+                 )
+                 assistant_message_id = persisted.get("assistant_message_id")
+                 assistant_persisted = bool(persisted.get("assistant_persisted", True))
+@@ -42909,8 +42962,8 @@
+             hf4b_base = {
+                 **base,
+                 "thread_id": tid_seed,
+-                "agent_id": "orkio",
+-                "agent_name": "Orkio",
++                "agent_id": ao01_response_agent_id,
++                "agent_name": ao01_response_agent_name,
+                 "final_speaker": "Orkio",
+             }
+             hf4b_runtime_hints = {
+@@ -42919,6 +42972,11 @@
+                     "route_applied": True,
+                     "execution_lifecycle": "completed",
+                     "route_family": "governed_evolution_pipeline",
++                    "agent_turn_context": ao01_agent_turn_context.to_routing_payload(),
++                    "turn_owner": ao01_agent_turn_context.turn_owner,
++                    "display_agent": ao01_agent_turn_context.display_agent,
++                    "orchestrator_agent": ao01_agent_turn_context.orchestrator_agent,
++                    "ownership_locked": ao01_agent_turn_context.ownership_locked,
+                     "stage": "branch_pr_plan",
+                     "minimal_probe": True,
+                     "proposal_id": proposal_id_hf4b,
+@@ -43027,16 +43085,16 @@
+                     _persist_assistant_message,
+                     text=final_text,
+                     thread_id=tid_seed,
+-                    agent_id=None,
+-                    agent_name="Orkio",
++                    agent_id=ao01_response_agent_id,
++                    agent_name=ao01_response_agent_name,
+                 )
+                 payload = {
+                     **persisted,
+                     "answer": final_text,
+                     "message": final_text,
+                     "final_text": final_text,
+-                    "agent_id": None,
+-                    "agent_name": "Orkio",
++                    "agent_id": ao01_response_agent_id,
++                    "agent_name": ao01_response_agent_name,
+                     "final_speaker": "Orkio",
+                     "runtime_hints": {
+                         "routing": {
+@@ -43134,7 +43192,7 @@
+                 "ORKIO — AUDITORIA READONLY DE ORQUESTRAÇÃO AO20K-HF4C\n\n"
+                 "1. Diagnóstico objetivo\n"
+                 f"- execution_id: {hf4c_execution_id}\n"
+-                "- parent_agent: Orkio\n"
++                f"- parent_agent: {ao01_response_agent_name}\n"
+                 "- mode: readonly\n"
+                 "- route_family: orchestration_audit\n"
+                 "- requested_agent: Orkio\n"
+@@ -43176,8 +43234,8 @@
+                     _persist_assistant_message,
+                     text=final_text,
+                     thread_id=tid_seed,
+-                    agent_id=None,
+-                    agent_name="Orkio",
++                    agent_id=ao01_response_agent_id,
++                    agent_name=ao01_response_agent_name,
+                 )
+                 assistant_message_id = persisted.get("assistant_message_id")
+                 assistant_persisted = bool(persisted.get("assistant_persisted", True))
+@@ -43190,8 +43248,8 @@
+             hf4c_base = {
+                 **base,
+                 "thread_id": tid_seed,
+-                "agent_id": "orkio",
+-                "agent_name": "Orkio",
++                "agent_id": ao01_response_agent_id,
++                "agent_name": ao01_response_agent_name,
+                 "final_speaker": "Orkio",
+             }
+             hf4c_runtime_hints = {
+@@ -43245,16 +43303,16 @@
+                     _persist_assistant_message,
+                     text=final_text,
+                     thread_id=tid_seed,
+-                    agent_id=None,
+-                    agent_name="Orkio",
++                    agent_id=ao01_response_agent_id,
++                    agent_name=ao01_response_agent_name,
+                 )
+                 payload = {
+                     **persisted,
+                     "answer": final_text,
+                     "message": final_text,
+                     "final_text": final_text,
+-                    "agent_id": None,
+-                    "agent_name": "Orkio",
++                    "agent_id": ao01_response_agent_id,
++                    "agent_name": ao01_response_agent_name,
+                     "runtime_hints": {
+                         "routing": {
+                             "routing_source": "stream_ao20h_hf2_explicit_orkio_mention_guard",
+@@ -43297,16 +43355,16 @@
+                     _persist_assistant_message,
+                     text=final_text,
+                     thread_id=tid_seed,
+-                    agent_id=None,
+-                    agent_name="Orkio",
++                    agent_id=ao01_response_agent_id,
++                    agent_name=ao01_response_agent_name,
+                 )
+                 payload = {
+                     **persisted,
+                     "answer": final_text,
+                     "message": final_text,
+                     "final_text": final_text,
+-                    "agent_id": None,
+-                    "agent_name": "Orkio",
++                    "agent_id": ao01_response_agent_id,
++                    "agent_name": ao01_response_agent_name,
+                     "runtime_hints": {
+                         "routing": {
+                             "routing_source": "stream_ao20e_orchestration_fastpath_guard",
+@@ -43490,7 +43548,7 @@
+                     _persisted43 = _persist_assistant_message(
+                         text=_answer43,
+                         thread_id=_tid43,
+-                        agent_id=None,
++                        agent_id=ao01_response_agent_id,
+                         agent_name=_hf4p_target,
+                     )
+                     return {
+@@ -43501,7 +43559,7 @@
+                         "final_text": _answer43,
+                         "content": _answer43,
+                         "text": _answer43,
+-                        "agent_id": None,
++                        "agent_id": ao01_response_agent_id,
+                         "agent_name": _hf4p_target,
+                         "service": "ao43_direct_agent_memory_fact_fastpath",
+                         "provider": "platform",
+@@ -43674,7 +43732,7 @@
+                     _persisted44 = _persist_assistant_message(
+                         text=_answer44,
+                         thread_id=_tid44,
+-                        agent_id=None,
++                        agent_id=ao01_response_agent_id,
+                         agent_name="Orion",
+                     )
+                     return {
+@@ -43685,7 +43743,7 @@
+                         "final_text": _answer44,
+                         "content": _answer44,
+                         "text": _answer44,
+-                        "agent_id": None,
++                        "agent_id": ao01_response_agent_id,
+                         "agent_name": "Orion",
+                         "service": "ao44_github_readonly_status_fastpath",
+                         "provider": "github",
+@@ -45442,7 +45500,7 @@
+                     _persist_assistant_message,
+                     text=_hf4k_final_text,
+                     thread_id=tid_seed,
+-                    agent_id=None,
++                    agent_id=ao01_response_agent_id,
+                     agent_name=_hf4k_agent_name,
+                 )
+ 
+@@ -45452,7 +45510,7 @@
+                     "answer": _hf4k_final_text,
+                     "message": _hf4k_final_text,
+                     "final_text": _hf4k_final_text,
+-                    "agent_id": None,
++                    "agent_id": ao01_response_agent_id,
+                     "agent_name": _hf4k_agent_name,
+                     "final_speaker": _hf4k_agent_name,
+                     "runtime_hints": {
+@@ -45510,13 +45568,18 @@
+                         "answer": str(payload or ""),
+                         "message": str(payload or ""),
+                         "final_text": str(payload or ""),
+-                        "agent_id": "orkio",
+-                        "agent_name": "Orkio",
++                        "agent_id": ao01_response_agent_id,
++                        "agent_name": ao01_response_agent_name,
+                         "runtime_hints": {
+                             "routing": {
+                                 "routing_source": "stream_ao20k_hf2_branch_pr_plan_sse_safe_emitter",
+                                 "route_applied": True,
+                                 "route_family": "governed_evolution_pipeline",
++                    "agent_turn_context": ao01_agent_turn_context.to_routing_payload(),
++                    "turn_owner": ao01_agent_turn_context.turn_owner,
++                    "display_agent": ao01_agent_turn_context.display_agent,
++                    "orchestrator_agent": ao01_agent_turn_context.orchestrator_agent,
++                    "ownership_locked": ao01_agent_turn_context.ownership_locked,
+                                 "stage": "branch_pr_plan",
+                                 "write_allowed": False,
+                                 "write_executed": False,
+@@ -45581,21 +45644,26 @@
+                     _persist_assistant_message,
+                     text=final_text,
+                     thread_id=tid_seed,
+-                    agent_id="orkio",
+-                    agent_name="Orkio",
++                    agent_id=ao01_response_agent_id,
++                    agent_name=ao01_response_agent_name,
+                 )
+                 fallback_payload = {
+                     **persisted,
+                     "answer": final_text,
+                     "message": final_text,
+                     "final_text": final_text,
+-                    "agent_id": "orkio",
+-                    "agent_name": "Orkio",
++                    "agent_id": ao01_response_agent_id,
++                    "agent_name": ao01_response_agent_name,
+                     "runtime_hints": _ao20k_hf2_json_safe({
+                         "routing": {
+                             "routing_source": "stream_ao20k_hf2_branch_pr_plan_sse_safe_fallback",
+                             "route_applied": True,
+                             "route_family": "governed_evolution_pipeline",
++                    "agent_turn_context": ao01_agent_turn_context.to_routing_payload(),
++                    "turn_owner": ao01_agent_turn_context.turn_owner,
++                    "display_agent": ao01_agent_turn_context.display_agent,
++                    "orchestrator_agent": ao01_agent_turn_context.orchestrator_agent,
++                    "ownership_locked": ao01_agent_turn_context.ownership_locked,
+                             "stage": "branch_pr_plan",
+                             "proposal_id": proposal_id,
+                             "branch_pr_plan": safe_plan,
