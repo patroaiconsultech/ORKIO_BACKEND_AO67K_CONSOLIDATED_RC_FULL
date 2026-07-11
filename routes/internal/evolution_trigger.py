@@ -118,7 +118,7 @@ def maybe_trigger_schema_patch(
     sql_patch = classification["sql"]
 
     direct_result = None
-    if _env_flag("AUTO_SCHEMA_HOTFIX_DIRECT", True):
+    if _env_flag("AUTO_SCHEMA_HOTFIX_DIRECT", False):
         direct_result = _apply_sql_patch_direct(sql_patch, table_name)
 
     pr_result = _best_effort_open_pr(raw, "app/db.py")
@@ -142,7 +142,7 @@ def evolution_trigger_health():
     return {
         "ok": True,
         "service": "evolution_trigger",
-        "auto_schema_hotfix_direct": _env_flag("AUTO_SCHEMA_HOTFIX_DIRECT", True),
+        "auto_schema_hotfix_direct": _env_flag("AUTO_SCHEMA_HOTFIX_DIRECT", False),
         "auto_schema_patch_create_pr": _env_flag(
             "AUTO_SCHEMA_PATCH_CREATE_PR", False
         ),

@@ -1,0 +1,576 @@
+--- a/main.py
++++ b/main.py
+@@ -1,7 +1,8 @@
+ # EFATA 777 V10 AO68D HF1 ADMIN ORCH + REALTIME COMPAT COMPLETE
+ # Consolidated package for governed capability answers + analytical readonly + registry alignment + realtime self-heal hardening.
+-
+ from __future__ import annotations
++
++from app.evolution_os.governance.mutation_authority import authorize_proposal_snapshot
+ 
+ # AO-01 BOOT HOTFIX — root-level main.py compatibility for Railway/uvicorn main:app.
+ # This repository deploys main.py at /app/main.py while many imports are written as
+@@ -29678,6 +29679,17 @@
+     if str(proposal.get("execution_status") or "").strip().lower() != "dry_run_completed":
+         raise HTTPException(status_code=409, detail="dry_run_must_be_completed_before_branch_creation")
+ 
++    mutation = authorize_proposal_snapshot(
++        proposal,
++        action="create_branch",
++        actor=actor,
++        target=str(branch_override or proposal.get("suggested_branch") or ""),
++        approval_id=pid,
++        require_dry_run=True,
++    )
++    if not mutation.allowed:
++        raise HTTPException(status_code=403, detail=mutation.to_dict())
++
+     if not _admin_evolution_is_ao17b_branch_creation_proposal(proposal):
+         raise HTTPException(status_code=409, detail="proposal_not_ao17b_branch_creation")
+ 
+@@ -30578,6 +30590,17 @@
+ 
+     if str(proposal.get("execution_status") or "").strip() != "dry_run_completed":
+         raise HTTPException(status_code=409, detail="dry_run_must_be_completed_before_merge")
++
++    mutation = authorize_proposal_snapshot(
++        proposal,
++        action="merge_pr",
++        actor=actor,
++        target=str(proposal.get("target_branch") or "main"),
++        approval_id=pid,
++        require_dry_run=True,
++    )
++    if not mutation.allowed:
++        raise HTTPException(status_code=403, detail=mutation.to_dict())
+ 
+     plan = _admin_evolution_build_branch_pr_plan(proposal)
+     if str(plan.get("stage") or "").strip() != "AO-22":
+@@ -31354,6 +31377,17 @@
+         raise HTTPException(status_code=409, detail="proposal_must_be_approved_before_branch_patch")
+     if str(proposal.get("execution_status") or "").strip().lower() != "dry_run_completed":
+         raise HTTPException(status_code=409, detail="dry_run_must_be_completed_before_branch_patch")
++
++    mutation = authorize_proposal_snapshot(
++        proposal,
++        action="write_file",
++        actor=actor,
++        target=str(getattr(body, "branch", None) or ""),
++        approval_id=pid,
++        require_dry_run=True,
++    )
++    if not mutation.allowed:
++        raise HTTPException(status_code=403, detail=mutation.to_dict())
+     if not _admin_evolution_is_restore_point_stage(proposal):
+         raise HTTPException(status_code=409, detail="proposal_not_ao17c_restore_point_stage")
+ 
+@@ -31496,6 +31530,16 @@
+     proposal = _admin_evolution_get_proposal(pid)
+     if not proposal:
+         raise HTTPException(status_code=404, detail="proposal_not_found")
++    mutation = authorize_proposal_snapshot(
++        proposal,
++        action="rollback",
++        actor=actor,
++        target=str(getattr(body, "restore_point_id", None) or ""),
++        approval_id=pid,
++        require_dry_run=False,
++    )
++    if not mutation.allowed:
++        raise HTTPException(status_code=403, detail=mutation.to_dict())
+     if not _admin_evolution_is_restore_point_stage(proposal):
+         raise HTTPException(status_code=409, detail="proposal_not_ao17c_restore_point_stage")
+ 
+
+--- a/routes/internal/evolution_trigger.py
++++ b/routes/internal/evolution_trigger.py
+@@ -118,7 +118,7 @@
+     sql_patch = classification["sql"]
+ 
+     direct_result = None
+-    if _env_flag("AUTO_SCHEMA_HOTFIX_DIRECT", True):
++    if _env_flag("AUTO_SCHEMA_HOTFIX_DIRECT", False):
+         direct_result = _apply_sql_patch_direct(sql_patch, table_name)
+ 
+     pr_result = _best_effort_open_pr(raw, "app/db.py")
+@@ -142,7 +142,7 @@
+     return {
+         "ok": True,
+         "service": "evolution_trigger",
+-        "auto_schema_hotfix_direct": _env_flag("AUTO_SCHEMA_HOTFIX_DIRECT", True),
++        "auto_schema_hotfix_direct": _env_flag("AUTO_SCHEMA_HOTFIX_DIRECT", False),
+         "auto_schema_patch_create_pr": _env_flag(
+             "AUTO_SCHEMA_PATCH_CREATE_PR", False
+         ),
+
+--- a/routes/internal/git_internal.py
++++ b/routes/internal/git_internal.py
+@@ -10,6 +10,8 @@
+ 
+ from app.self_heal.credential_scope import branch_allowlist, is_branch_allowed, is_protected_branch, resolve_scoped_credentials, control_plane_github_context
+ from app.services.admin_master_identity import get_master_admin_key, require_master_admin_access
++from app.db import get_db
++from app.evolution_os.governance.mutation_authority import authorize_database_proposal
+ 
+ router = APIRouter(prefix="/api/internal/git", tags=["git-internal"])
+ 
+@@ -193,6 +195,8 @@
+ class BranchCreateIn(BaseModel):
+     branch_name: str = Field(min_length=3, max_length=120)
+     source_branch: Optional[str] = Field(default=None, max_length=120)
++    proposal_id: Optional[str] = Field(default=None, max_length=120)
++    approval_id: Optional[str] = Field(default=None, max_length=120)
+ 
+ 
+ class CommitFileIn(BaseModel):
+@@ -200,6 +204,8 @@
+     content: str = Field(min_length=0)
+     message: str = Field(min_length=3, max_length=300)
+     branch: Optional[str] = Field(default=None, max_length=120)
++    proposal_id: Optional[str] = Field(default=None, max_length=120)
++    approval_id: Optional[str] = Field(default=None, max_length=120)
+ 
+ 
+ class PullRequestIn(BaseModel):
+@@ -207,6 +213,34 @@
+     body: str = Field(default="", max_length=20000)
+     head: str = Field(min_length=1, max_length=120)
+     base: Optional[str] = Field(default=None, max_length=120)
++    proposal_id: Optional[str] = Field(default=None, max_length=120)
++    approval_id: Optional[str] = Field(default=None, max_length=120)
++
++
++
++
++def _require_mutation_authority(
++    *,
++    db: Any,
++    proposal_id: Optional[str],
++    approval_id: Optional[str],
++    action: str,
++    actor: str,
++    target: str,
++    require_dry_run: bool = False,
++) -> Dict[str, Any]:
++    decision = authorize_database_proposal(
++        db,
++        proposal_id=str(proposal_id or ""),
++        approval_id=str(approval_id or ""),
++        action=action,
++        actor=actor,
++        target=target,
++        require_dry_run=require_dry_run,
++    )
++    if not decision.allowed:
++        raise HTTPException(status_code=403, detail=decision.to_dict())
++    return decision.to_dict()
+ 
+ 
+ @router.get("/health")
+@@ -310,8 +344,10 @@
+ 
+ 
+ @router.post("/branch")
+-def git_create_branch(payload: BranchCreateIn, _admin=Depends(_require_master_admin_access)):
++def git_create_branch(payload: BranchCreateIn, db=Depends(get_db), _admin=Depends(_require_master_admin_access)):
+     _ensure_write_enabled()
++    actor = str((_admin or {}).get("email") or (_admin or {}).get("sub") or "master_admin") if isinstance(_admin, dict) else "master_admin"
++    mutation = _require_mutation_authority(db=db, proposal_id=payload.proposal_id, approval_id=payload.approval_id, action="create_branch", actor=actor, target=payload.branch_name, require_dry_run=True)
+     if is_protected_branch(payload.branch_name) or not is_branch_allowed(payload.branch_name):
+         raise HTTPException(status_code=403, detail={"reason": "unsafe_branch_name", "branch": payload.branch_name, "allowlist": branch_allowlist()})
+     source_branch = _branch(payload.source_branch)
+@@ -334,12 +370,15 @@
+         "ref": data.get("ref"),
+         "sha": data.get("object", {}).get("sha"),
+         "credential_scope": resolve_scoped_credentials(branch=payload.branch_name),
++        "mutation_authority": mutation,
+     }
+ 
+ 
+ @router.post("/commit")
+-def git_commit_file(payload: CommitFileIn, _admin=Depends(_require_master_admin_access)):
++def git_commit_file(payload: CommitFileIn, db=Depends(get_db), _admin=Depends(_require_master_admin_access)):
+     _ensure_write_enabled()
++    actor = str((_admin or {}).get("email") or (_admin or {}).get("sub") or "master_admin") if isinstance(_admin, dict) else "master_admin"
++    mutation = _require_mutation_authority(db=db, proposal_id=payload.proposal_id, approval_id=payload.approval_id, action="write_file", actor=actor, target=payload.path, require_dry_run=True)
+     branch_name = _branch(payload.branch)
+     _guard_branch_write(branch_name)
+ 
+@@ -387,16 +426,19 @@
+         "commit_sha": commit.get("sha"),
+         "commit_url": commit.get("html_url"),
+         "credential_scope": resolve_scoped_credentials(branch=branch_name),
++        "mutation_authority": mutation,
+     }
+ 
+ 
+ @router.post("/pr")
+-def git_open_pr(payload: PullRequestIn, _admin=Depends(_require_master_admin_access)):
++def git_open_pr(payload: PullRequestIn, db=Depends(get_db), _admin=Depends(_require_master_admin_access)):
+     if not _pr_enabled():
+         raise HTTPException(
+             status_code=403,
+             detail="GitHub PR runtime disabled by environment",
+         )
++    actor = str((_admin or {}).get("email") or (_admin or {}).get("sub") or "master_admin") if isinstance(_admin, dict) else "master_admin"
++    mutation = _require_mutation_authority(db=db, proposal_id=payload.proposal_id, approval_id=payload.approval_id, action="open_pr", actor=actor, target=payload.head, require_dry_run=True)
+ 
+     _guard_branch_write(payload.head)
+     base_branch = _branch(payload.base)
+@@ -416,4 +458,5 @@
+         "state": data.get("state"),
+         "url": data.get("html_url"),
+         "credential_scope": resolve_scoped_credentials(branch=payload.head),
+-    }
++        "mutation_authority": mutation,
++    }
+
+--- /dev/null
++++ b/evolution_os/__init__.py
+@@ -0,0 +1 @@
++"""ORKIO Evolution Operating System."""
+
+--- /dev/null
++++ b/evolution_os/governance/__init__.py
+@@ -0,0 +1,3 @@
++from .mutation_authority import MutationDecision, authorize_proposal_snapshot, authorize_database_proposal
++
++__all__ = ["MutationDecision", "authorize_proposal_snapshot", "authorize_database_proposal"]
+
+--- /dev/null
++++ b/evolution_os/governance/mutation_authority.py
+@@ -0,0 +1,237 @@
++from __future__ import annotations
++
++"""Single authorization gate for governed ORKIO mutations.
++
++This module does not execute mutations. It only validates whether a previously
++approved proposal may authorize a specific action at the current time.
++
++The first release intentionally reuses EvolutionProposal instead of introducing
++a new approval table. ``approval_id`` is therefore an alias for ``proposal_id``.
++A future migration may replace this adapter with immutable scoped approvals
++without changing callers.
++"""
++
++from dataclasses import asdict, dataclass
++import os
++import time
++from typing import Any, Mapping, Optional
++
++
++MUTATION_AUTHORITY_VERSION = "EGA005_MUTATION_AUTHORITY_V1"
++
++_MUTATING_ACTIONS = {
++    "db_schema_direct",
++    "create_branch",
++    "write_file",
++    "create_commit",
++    "open_pr",
++    "merge_pr",
++    "deploy",
++    "rollback",
++}
++
++_ACTION_ENV = {
++    "db_schema_direct": "EVOLUTION_ALLOW_DIRECT_SCHEMA",
++    "create_branch": "EVOLUTION_ALLOW_CREATE_BRANCH",
++    "write_file": "EVOLUTION_ALLOW_WRITE_FILE",
++    "create_commit": "EVOLUTION_ALLOW_CREATE_COMMIT",
++    "open_pr": "EVOLUTION_ALLOW_OPEN_PR",
++    "merge_pr": "EVOLUTION_ALLOW_MERGE_PR",
++    "deploy": "EVOLUTION_ALLOW_DEPLOY",
++    "rollback": "EVOLUTION_ALLOW_ROLLBACK",
++}
++
++
++def _env_bool(name: str, default: bool = False) -> bool:
++    raw = str(os.getenv(name, "true" if default else "false") or "").strip().lower()
++    return raw in {"1", "true", "yes", "on"}
++
++
++def _env_int(name: str, default: int) -> int:
++    try:
++        return int(str(os.getenv(name, str(default)) or default).strip())
++    except Exception:
++        return int(default)
++
++
++def mutation_authority_required() -> bool:
++    return _env_bool("EVOLUTION_MUTATION_AUTHORITY_REQUIRED", False)
++
++
++@dataclass(frozen=True)
++class MutationDecision:
++    allowed: bool
++    reason: str
++    action: str
++    proposal_id: str = ""
++    approval_id: str = ""
++    actor: str = ""
++    target: str = ""
++    approval_age_seconds: Optional[int] = None
++    approval_ttl_seconds: Optional[int] = None
++    authority_version: str = MUTATION_AUTHORITY_VERSION
++    legacy_mode: bool = False
++
++    def to_dict(self) -> dict[str, Any]:
++        return asdict(self)
++
++
++def _snapshot_value(snapshot: Mapping[str, Any], key: str, default: Any = None) -> Any:
++    try:
++        return snapshot.get(key, default)
++    except Exception:
++        return default
++
++
++def authorize_proposal_snapshot(
++    proposal: Mapping[str, Any],
++    *,
++    action: str,
++    actor: str,
++    target: str = "",
++    approval_id: Optional[str] = None,
++    require_dry_run: bool = False,
++    now: Optional[int] = None,
++) -> MutationDecision:
++    action = str(action or "").strip().lower()
++    actor = str(actor or "").strip()
++    target = str(target or "").strip()
++    proposal_id = str(_snapshot_value(proposal, "id", "") or "").strip()
++    supplied_approval_id = str(approval_id or proposal_id or "").strip()
++
++    if action not in _MUTATING_ACTIONS:
++        return MutationDecision(
++            False, "unknown_mutation_action", action,
++            proposal_id=proposal_id, approval_id=supplied_approval_id,
++            actor=actor, target=target,
++        )
++
++    if not mutation_authority_required():
++        return MutationDecision(
++            True, "mutation_authority_observe_only", action,
++            proposal_id=proposal_id, approval_id=supplied_approval_id,
++            actor=actor, target=target, legacy_mode=True,
++        )
++
++    action_env = _ACTION_ENV[action]
++    if not _env_bool(action_env, False):
++        return MutationDecision(
++            False, f"action_disabled:{action_env}", action,
++            proposal_id=proposal_id, approval_id=supplied_approval_id,
++            actor=actor, target=target,
++        )
++
++    if not proposal_id:
++        return MutationDecision(False, "proposal_id_required", action, actor=actor, target=target)
++
++    if supplied_approval_id != proposal_id:
++        return MutationDecision(
++            False, "approval_id_must_match_proposal_id_v1", action,
++            proposal_id=proposal_id, approval_id=supplied_approval_id,
++            actor=actor, target=target,
++        )
++
++    status = str(_snapshot_value(proposal, "status", "") or "").strip().lower()
++    allowed_statuses = {"approved", "executed", "failed", "rolled_back"} if action == "rollback" else {"approved"}
++    if status not in allowed_statuses:
++        return MutationDecision(
++            False, f"proposal_status_not_authorized:{status or 'empty'}", action,
++            proposal_id=proposal_id, approval_id=supplied_approval_id,
++            actor=actor, target=target,
++        )
++
++    approved_by = str(_snapshot_value(proposal, "approved_by", "") or "").strip()
++    approved_at = int(_snapshot_value(proposal, "approved_at", 0) or 0)
++    if not approved_by or approved_at <= 0:
++        return MutationDecision(
++            False, "persisted_human_approval_required", action,
++            proposal_id=proposal_id, approval_id=supplied_approval_id,
++            actor=actor, target=target,
++        )
++
++    if not actor:
++        return MutationDecision(
++            False, "execution_actor_required", action,
++            proposal_id=proposal_id, approval_id=supplied_approval_id,
++            target=target,
++        )
++
++    now = int(now or time.time())
++    ttl = max(60, _env_int("EVOLUTION_APPROVAL_TTL_SECONDS", 3600))
++    age = max(0, now - approved_at)
++    if action != "rollback" and age > ttl:
++        return MutationDecision(
++            False, "approval_expired", action,
++            proposal_id=proposal_id, approval_id=supplied_approval_id,
++            actor=actor, target=target,
++            approval_age_seconds=age, approval_ttl_seconds=ttl,
++        )
++
++    if require_dry_run:
++        execution_status = str(
++            _snapshot_value(proposal, "execution_status", "")
++            or _snapshot_value(proposal, "last_execution_status", "")
++            or ""
++        ).strip().lower()
++        if execution_status != "dry_run_completed":
++            return MutationDecision(
++                False, "dry_run_completed_required", action,
++                proposal_id=proposal_id, approval_id=supplied_approval_id,
++                actor=actor, target=target,
++                approval_age_seconds=age, approval_ttl_seconds=ttl,
++            )
++
++    return MutationDecision(
++        True, "governed_mutation_authorized", action,
++        proposal_id=proposal_id, approval_id=supplied_approval_id,
++        actor=actor, target=target,
++        approval_age_seconds=age, approval_ttl_seconds=ttl,
++    )
++
++
++def authorize_database_proposal(
++    db: Any,
++    *,
++    proposal_id: str,
++    action: str,
++    actor: str,
++    target: str = "",
++    approval_id: Optional[str] = None,
++    require_dry_run: bool = False,
++) -> MutationDecision:
++    proposal_id = str(proposal_id or "").strip()
++    if not proposal_id:
++        return MutationDecision(False, "proposal_id_required", str(action or ""), actor=actor, target=target)
++
++    try:
++        from app.models import EvolutionProposal
++        row = db.query(EvolutionProposal).filter(EvolutionProposal.id == proposal_id).first()
++    except Exception as exc:
++        return MutationDecision(
++            False, f"proposal_lookup_failed:{type(exc).__name__}",
++            str(action or ""), proposal_id=proposal_id,
++            approval_id=str(approval_id or ""), actor=actor, target=target,
++        )
++
++    if row is None:
++        return MutationDecision(
++            False, "proposal_not_found", str(action or ""),
++            proposal_id=proposal_id, approval_id=str(approval_id or ""),
++            actor=actor, target=target,
++        )
++
++    snapshot = {
++        "id": getattr(row, "id", ""),
++        "status": getattr(row, "status", ""),
++        "approved_by": getattr(row, "approved_by", ""),
++        "approved_at": getattr(row, "approved_at", 0),
++        "last_execution_status": getattr(row, "last_execution_status", ""),
++    }
++    return authorize_proposal_snapshot(
++        snapshot,
++        action=action,
++        actor=actor,
++        target=target,
++        approval_id=approval_id,
++        require_dry_run=require_dry_run,
++    )
+
+--- /dev/null
++++ b/tests/test_ega005_mutation_authority.py
+@@ -0,0 +1,93 @@
++from __future__ import annotations
++
++import os
++
++from evolution_os.governance.mutation_authority import authorize_proposal_snapshot
++
++
++def _proposal(**overrides):
++    base = {
++        "id": "proposal_123",
++        "status": "approved",
++        "approved_by": "admin@example.com",
++        "approved_at": 1_700_000_000,
++        "execution_status": "dry_run_completed",
++    }
++    base.update(overrides)
++    return base
++
++
++def test_observe_only_mode_preserves_legacy_flow(monkeypatch):
++    monkeypatch.setenv("EVOLUTION_MUTATION_AUTHORITY_REQUIRED", "false")
++    decision = authorize_proposal_snapshot(
++        {},
++        action="create_branch",
++        actor="admin@example.com",
++        target="evolution/test",
++    )
++    assert decision.allowed is True
++    assert decision.legacy_mode is True
++
++
++def test_strict_mode_requires_action_flag(monkeypatch):
++    monkeypatch.setenv("EVOLUTION_MUTATION_AUTHORITY_REQUIRED", "true")
++    monkeypatch.setenv("EVOLUTION_ALLOW_CREATE_BRANCH", "false")
++    decision = authorize_proposal_snapshot(
++        _proposal(),
++        action="create_branch",
++        actor="admin@example.com",
++        target="evolution/test",
++        approval_id="proposal_123",
++        require_dry_run=True,
++        now=1_700_000_100,
++    )
++    assert decision.allowed is False
++    assert decision.reason.startswith("action_disabled:")
++
++
++def test_strict_mode_authorizes_fresh_scoped_approval(monkeypatch):
++    monkeypatch.setenv("EVOLUTION_MUTATION_AUTHORITY_REQUIRED", "true")
++    monkeypatch.setenv("EVOLUTION_ALLOW_CREATE_BRANCH", "true")
++    monkeypatch.setenv("EVOLUTION_APPROVAL_TTL_SECONDS", "3600")
++    decision = authorize_proposal_snapshot(
++        _proposal(),
++        action="create_branch",
++        actor="executor@example.com",
++        target="evolution/test",
++        approval_id="proposal_123",
++        require_dry_run=True,
++        now=1_700_000_100,
++    )
++    assert decision.allowed is True
++    assert decision.reason == "governed_mutation_authorized"
++
++
++def test_expired_approval_is_denied(monkeypatch):
++    monkeypatch.setenv("EVOLUTION_MUTATION_AUTHORITY_REQUIRED", "true")
++    monkeypatch.setenv("EVOLUTION_ALLOW_OPEN_PR", "true")
++    monkeypatch.setenv("EVOLUTION_APPROVAL_TTL_SECONDS", "300")
++    decision = authorize_proposal_snapshot(
++        _proposal(),
++        action="open_pr",
++        actor="executor@example.com",
++        target="evolution/test",
++        approval_id="proposal_123",
++        require_dry_run=True,
++        now=1_700_001_000,
++    )
++    assert decision.allowed is False
++    assert decision.reason == "approval_expired"
++
++
++def test_rollback_remains_available_after_approval_ttl(monkeypatch):
++    monkeypatch.setenv("EVOLUTION_MUTATION_AUTHORITY_REQUIRED", "true")
++    monkeypatch.setenv("EVOLUTION_ALLOW_ROLLBACK", "true")
++    decision = authorize_proposal_snapshot(
++        _proposal(status="executed"),
++        action="rollback",
++        actor="executor@example.com",
++        target="restore_point_1",
++        approval_id="proposal_123",
++        now=1_800_000_000,
++    )
++    assert decision.allowed is True

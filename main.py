@@ -1,7 +1,8 @@
 # EFATA 777 V10 AO68D HF1 ADMIN ORCH + REALTIME COMPAT COMPLETE
 # Consolidated package for governed capability answers + analytical readonly + registry alignment + realtime self-heal hardening.
-
 from __future__ import annotations
+
+from app.evolution_os.governance.mutation_authority import authorize_proposal_snapshot
 
 # AO-01 BOOT HOTFIX — root-level main.py compatibility for Railway/uvicorn main:app.
 # This repository deploys main.py at /app/main.py while many imports are written as
@@ -29678,6 +29679,17 @@ def _admin_evolution_create_governed_branch(
     if str(proposal.get("execution_status") or "").strip().lower() != "dry_run_completed":
         raise HTTPException(status_code=409, detail="dry_run_must_be_completed_before_branch_creation")
 
+    mutation = authorize_proposal_snapshot(
+        proposal,
+        action="create_branch",
+        actor=actor,
+        target=str(branch_override or proposal.get("suggested_branch") or ""),
+        approval_id=pid,
+        require_dry_run=True,
+    )
+    if not mutation.allowed:
+        raise HTTPException(status_code=403, detail=mutation.to_dict())
+
     if not _admin_evolution_is_ao17b_branch_creation_proposal(proposal):
         raise HTTPException(status_code=409, detail="proposal_not_ao17b_branch_creation")
 
@@ -30579,6 +30591,17 @@ def admin_evolution_proposal_merge_pr(
     if str(proposal.get("execution_status") or "").strip() != "dry_run_completed":
         raise HTTPException(status_code=409, detail="dry_run_must_be_completed_before_merge")
 
+    mutation = authorize_proposal_snapshot(
+        proposal,
+        action="merge_pr",
+        actor=actor,
+        target=str(proposal.get("target_branch") or "main"),
+        approval_id=pid,
+        require_dry_run=True,
+    )
+    if not mutation.allowed:
+        raise HTTPException(status_code=403, detail=mutation.to_dict())
+
     plan = _admin_evolution_build_branch_pr_plan(proposal)
     if str(plan.get("stage") or "").strip() != "AO-22":
         raise HTTPException(status_code=409, detail={
@@ -31354,6 +31377,17 @@ def _admin_evolution_apply_branch_patch(
         raise HTTPException(status_code=409, detail="proposal_must_be_approved_before_branch_patch")
     if str(proposal.get("execution_status") or "").strip().lower() != "dry_run_completed":
         raise HTTPException(status_code=409, detail="dry_run_must_be_completed_before_branch_patch")
+
+    mutation = authorize_proposal_snapshot(
+        proposal,
+        action="write_file",
+        actor=actor,
+        target=str(getattr(body, "branch", None) or ""),
+        approval_id=pid,
+        require_dry_run=True,
+    )
+    if not mutation.allowed:
+        raise HTTPException(status_code=403, detail=mutation.to_dict())
     if not _admin_evolution_is_restore_point_stage(proposal):
         raise HTTPException(status_code=409, detail="proposal_not_ao17c_restore_point_stage")
 
@@ -31496,6 +31530,16 @@ def _admin_evolution_revert_branch_patch(
     proposal = _admin_evolution_get_proposal(pid)
     if not proposal:
         raise HTTPException(status_code=404, detail="proposal_not_found")
+    mutation = authorize_proposal_snapshot(
+        proposal,
+        action="rollback",
+        actor=actor,
+        target=str(getattr(body, "restore_point_id", None) or ""),
+        approval_id=pid,
+        require_dry_run=False,
+    )
+    if not mutation.allowed:
+        raise HTTPException(status_code=403, detail=mutation.to_dict())
     if not _admin_evolution_is_restore_point_stage(proposal):
         raise HTTPException(status_code=409, detail="proposal_not_ao17c_restore_point_stage")
 

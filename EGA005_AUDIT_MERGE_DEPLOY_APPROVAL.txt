@@ -1,0 +1,35 @@
+EGA-005 — AUDITORIA DE MERGE, DEPLOY E APROVAÇÕES
+
+EVIDÊNCIAS
+- Merge exige status approved.
+- Merge exige dry_run_completed.
+- Merge exige confirm_merge_pr=True.
+- Merge valida stage AO-22.
+- Merge bloqueia deploy e migration no receipt.
+- Não foi encontrado deploy automático dentro da rota de merge auditada.
+- Aprovação atual não possui TTL.
+- Aprovação atual não possui actions_allowed persistido.
+- Aprovação atual não possui revoked_at.
+- approval_id é sintetizado a partir do proposal_id.
+- Branch, patch e merge possuem validações próprias, mas não compartilhavam
+  uma autoridade única.
+
+CAUSA RAIZ
+A governança é boa por rota, porém fragmentada. Uma aprovação aprova a proposta
+inteira e permanece válida indefinidamente, sem escopo formal por ação.
+
+CORREÇÃO V1
+- TTL configurável.
+- flags por ação.
+- proposal_id como approval_id transitório.
+- gate único.
+- enforcement progressivo.
+
+CORREÇÃO V2 RECOMENDADA
+Criar tabela evolution_approvals e receipt imutável, sem reutilizar o status da
+proposta como autorização operacional.
+
+VEREDITO
+Merge: AMARELO-VERDE.
+Deploy: VERDE/BLOQUEADO no fluxo auditado.
+Approval validity: AMARELO-VERMELHO antes do EGA-005.

@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 
 from app.self_heal.credential_scope import branch_allowlist, is_branch_allowed, is_protected_branch, resolve_scoped_credentials, control_plane_github_context
 from app.services.admin_master_identity import get_master_admin_key, require_master_admin_access
+from app.db import get_db
+from app.evolution_os.governance.mutation_authority import authorize_database_proposal
 
 router = APIRouter(prefix="/api/internal/git", tags=["git-internal"])
 
@@ -193,6 +195,8 @@ def _get_file(path: str, branch: str) -> Dict[str, Any]:
 class BranchCreateIn(BaseModel):
     branch_name: str = Field(min_length=3, max_length=120)
     source_branch: Optional[str] = Field(default=None, max_length=120)
+    proposal_id: Optional[str] = Field(default=None, max_length=120)
+    approval_id: Optional[str] = Field(default=None, max_length=120)
 
 
 class CommitFileIn(BaseModel):
@@ -200,6 +204,8 @@ class CommitFileIn(BaseModel):
     content: str = Field(min_length=0)
     message: str = Field(min_length=3, max_length=300)
     branch: Optional[str] = Field(default=None, max_length=120)
+    proposal_id: Optional[str] = Field(default=None, max_length=120)
+    approval_id: Optional[str] = Field(default=None, max_length=120)
 
 
 class PullRequestIn(BaseModel):
@@ -207,6 +213,34 @@ class PullRequestIn(BaseModel):
     body: str = Field(default="", max_length=20000)
     head: str = Field(min_length=1, max_length=120)
     base: Optional[str] = Field(default=None, max_length=120)
+    proposal_id: Optional[str] = Field(default=None, max_length=120)
+    approval_id: Optional[str] = Field(default=None, max_length=120)
+
+
+
+
+def _require_mutation_authority(
+    *,
+    db: Any,
+    proposal_id: Optional[str],
+    approval_id: Optional[str],
+    action: str,
+    actor: str,
+    target: str,
+    require_dry_run: bool = False,
+) -> Dict[str, Any]:
+    decision = authorize_database_proposal(
+        db,
+        proposal_id=str(proposal_id or ""),
+        approval_id=str(approval_id or ""),
+        action=action,
+        actor=actor,
+        target=target,
+        require_dry_run=require_dry_run,
+    )
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.to_dict())
+    return decision.to_dict()
 
 
 @router.get("/health")
@@ -310,8 +344,10 @@ def git_search(
 
 
 @router.post("/branch")
-def git_create_branch(payload: BranchCreateIn, _admin=Depends(_require_master_admin_access)):
+def git_create_branch(payload: BranchCreateIn, db=Depends(get_db), _admin=Depends(_require_master_admin_access)):
     _ensure_write_enabled()
+    actor = str((_admin or {}).get("email") or (_admin or {}).get("sub") or "master_admin") if isinstance(_admin, dict) else "master_admin"
+    mutation = _require_mutation_authority(db=db, proposal_id=payload.proposal_id, approval_id=payload.approval_id, action="create_branch", actor=actor, target=payload.branch_name, require_dry_run=True)
     if is_protected_branch(payload.branch_name) or not is_branch_allowed(payload.branch_name):
         raise HTTPException(status_code=403, detail={"reason": "unsafe_branch_name", "branch": payload.branch_name, "allowlist": branch_allowlist()})
     source_branch = _branch(payload.source_branch)
@@ -334,12 +370,15 @@ def git_create_branch(payload: BranchCreateIn, _admin=Depends(_require_master_ad
         "ref": data.get("ref"),
         "sha": data.get("object", {}).get("sha"),
         "credential_scope": resolve_scoped_credentials(branch=payload.branch_name),
+        "mutation_authority": mutation,
     }
 
 
 @router.post("/commit")
-def git_commit_file(payload: CommitFileIn, _admin=Depends(_require_master_admin_access)):
+def git_commit_file(payload: CommitFileIn, db=Depends(get_db), _admin=Depends(_require_master_admin_access)):
     _ensure_write_enabled()
+    actor = str((_admin or {}).get("email") or (_admin or {}).get("sub") or "master_admin") if isinstance(_admin, dict) else "master_admin"
+    mutation = _require_mutation_authority(db=db, proposal_id=payload.proposal_id, approval_id=payload.approval_id, action="write_file", actor=actor, target=payload.path, require_dry_run=True)
     branch_name = _branch(payload.branch)
     _guard_branch_write(branch_name)
 
@@ -387,16 +426,19 @@ def git_commit_file(payload: CommitFileIn, _admin=Depends(_require_master_admin_
         "commit_sha": commit.get("sha"),
         "commit_url": commit.get("html_url"),
         "credential_scope": resolve_scoped_credentials(branch=branch_name),
+        "mutation_authority": mutation,
     }
 
 
 @router.post("/pr")
-def git_open_pr(payload: PullRequestIn, _admin=Depends(_require_master_admin_access)):
+def git_open_pr(payload: PullRequestIn, db=Depends(get_db), _admin=Depends(_require_master_admin_access)):
     if not _pr_enabled():
         raise HTTPException(
             status_code=403,
             detail="GitHub PR runtime disabled by environment",
         )
+    actor = str((_admin or {}).get("email") or (_admin or {}).get("sub") or "master_admin") if isinstance(_admin, dict) else "master_admin"
+    mutation = _require_mutation_authority(db=db, proposal_id=payload.proposal_id, approval_id=payload.approval_id, action="open_pr", actor=actor, target=payload.head, require_dry_run=True)
 
     _guard_branch_write(payload.head)
     base_branch = _branch(payload.base)
@@ -416,4 +458,5 @@ def git_open_pr(payload: PullRequestIn, _admin=Depends(_require_master_admin_acc
         "state": data.get("state"),
         "url": data.get("html_url"),
         "credential_scope": resolve_scoped_credentials(branch=payload.head),
+        "mutation_authority": mutation,
     }
