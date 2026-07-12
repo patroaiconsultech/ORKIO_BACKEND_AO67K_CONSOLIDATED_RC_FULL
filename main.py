@@ -45881,9 +45881,14 @@ async def chat_stream(
         # Follow-ups curtos depois de respostas Chris/AO44 preservam a Chris e
         # o domínio anterior da thread antes de cair no roteamento genérico.
         try:
+            _ao45a_requested_agent = str((route_plan if isinstance(route_plan, dict) else {}).get("requested_agent") or "").strip().lower()
+            _ao45a_explicit_non_chris_owner = bool(_ao45a_requested_agent and _ao45a_requested_agent not in {"chris", "cris"})
+        except Exception:
+            _ao45a_explicit_non_chris_owner = False
+        try:
             _ao45a_context = (
                 None
-                if _ao75_force_context_runtime
+                if (_ao75_force_context_runtime or _ao45a_explicit_non_chris_owner)
                 else _ao45a_load_recent_chris_context(db, org, tid_seed, message)
             )
         except Exception:
