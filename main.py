@@ -52,6 +52,26 @@ from typing import Any, Dict, List, Optional
 
 from app.runtime.agent_turn_context import resolve_agent_turn_context
 
+# OEC-004 — immutable ownership enforcement. Fail-open protects partial deploys.
+try:
+    from app.runtime.agent_ownership_enforcement import (
+        OEC004_OWNERSHIP_ENFORCEMENT_VERSION,
+        enforce_locked_payload_owner,
+        resolve_persistence_owner,
+        should_allow_chris_context_continuity,
+    )
+except Exception:
+    OEC004_OWNERSHIP_ENFORCEMENT_VERSION = "OEC004_IMPORT_FAILED"
+
+    def enforce_locked_payload_owner(payload, turn_context):
+        return dict(payload or {}), False
+
+    def resolve_persistence_owner(agent_id, agent_name, turn_context):
+        return agent_id, agent_name, False
+
+    def should_allow_chris_context_continuity(turn_context):
+        return True, "oec004_import_failed_fail_open"
+
 from app.self_heal.secret_broker import resolve_github_token
 from app.self_heal.credential_scope import control_plane_github_context
 
@@ -36890,6 +36910,27 @@ async def chat_stream(
         agent_id: Optional[str] = None,
         agent_name: str = "Orkio",
     ) -> Dict[str, Any]:
+        # OEC-004 — persistence must honor the immutable owner selected for this turn.
+        try:
+            agent_id, agent_name, _oec004_persistence_owner_changed = resolve_persistence_owner(
+                agent_id,
+                agent_name,
+                ao01_agent_turn_context,
+            )
+            if _oec004_persistence_owner_changed:
+                logger.warning(
+                    "OEC004_PERSISTENCE_OWNER_ENFORCED trace_id=%s thread_id=%s "
+                    "requested_agent=%s agent_id=%s agent_name=%s version=%s",
+                    trace_id,
+                    thread_id or tid_seed,
+                    getattr(ao01_agent_turn_context, "requested_agent", None),
+                    agent_id,
+                    agent_name,
+                    OEC004_OWNERSHIP_ENFORCEMENT_VERSION,
+                )
+        except Exception:
+            pass
+
         db2 = SessionLocal()
         try:
             tid = str(thread_id or tid_seed or "").strip()
@@ -36985,6 +37026,20 @@ async def chat_stream(
                         )
                     except Exception:
                         pass
+                    # OEC-004 — reconcile same-turn duplicate metadata as well.
+                    try:
+                        _existing_agent_id = getattr(_existing_assistant, "agent_id", None)
+                        _existing_agent_name = getattr(_existing_assistant, "agent_name", None)
+                        if _existing_agent_id != agent_id or _existing_agent_name != agent_name:
+                            _existing_assistant.agent_id = agent_id
+                            _existing_assistant.agent_name = agent_name
+                            db2.add(_existing_assistant)
+                            db2.commit()
+                    except Exception:
+                        try:
+                            db2.rollback()
+                        except Exception:
+                            pass
                     return {
                         "thread_id": tid,
                         "assistant_message_id": getattr(_existing_assistant, "id", None),
@@ -41960,6 +42015,28 @@ async def chat_stream(
                 except Exception:
                     pass
 
+            # OEC-004 — final envelope is normalized from the immutable turn owner.
+            # This is a defense-in-depth layer: fast-paths may contribute content and
+            # metadata, but cannot replace an explicitly selected agent.
+            try:
+                payload, _oec004_payload_owner_changed = enforce_locked_payload_owner(
+                    payload,
+                    ao01_agent_turn_context,
+                )
+                if _oec004_payload_owner_changed:
+                    logger.warning(
+                        "OEC004_FINAL_ENVELOPE_OWNER_ENFORCED trace_id=%s thread_id=%s "
+                        "requested_agent=%s turn_owner=%s display_agent=%s version=%s",
+                        trace_id,
+                        tid_seed,
+                        getattr(ao01_agent_turn_context, "requested_agent", None),
+                        getattr(ao01_agent_turn_context, "turn_owner", None),
+                        getattr(ao01_agent_turn_context, "display_agent", None),
+                        OEC004_OWNERSHIP_ENFORCEMENT_VERSION,
+                    )
+            except Exception:
+                pass
+
             route_plan_safe = _ao20k_hf2_json_safe(route_plan if isinstance(route_plan, dict) else {})
 
             final_text = str(
@@ -45881,14 +45958,34 @@ async def chat_stream(
         # Follow-ups curtos depois de respostas Chris/AO44 preservam a Chris e
         # o domínio anterior da thread antes de cair no roteamento genérico.
         try:
-            _ao45a_requested_agent = str((route_plan if isinstance(route_plan, dict) else {}).get("requested_agent") or "").strip().lower()
-            _ao45a_explicit_non_chris_owner = bool(_ao45a_requested_agent and _ao45a_requested_agent not in {"chris", "cris"})
+            _ao45a_chris_allowed, _ao45a_ownership_reason = should_allow_chris_context_continuity(
+                ao01_agent_turn_context
+            )
         except Exception:
-            _ao45a_explicit_non_chris_owner = False
+            _ao45a_chris_allowed, _ao45a_ownership_reason = True, "oec004_guard_failed_fail_open"
+
+        if not _ao45a_chris_allowed:
+            try:
+                logger.warning(
+                    "AO45A_CHRIS_CONTEXT_CONTINUITY_SKIPPED trace_id=%s thread_id=%s "
+                    "requested_agent=%s turn_owner=%s display_agent=%s ownership_locked=%s "
+                    "reason=%s version=%s",
+                    trace_id,
+                    tid_seed,
+                    getattr(ao01_agent_turn_context, "requested_agent", None),
+                    getattr(ao01_agent_turn_context, "turn_owner", None),
+                    getattr(ao01_agent_turn_context, "display_agent", None),
+                    getattr(ao01_agent_turn_context, "ownership_locked", False),
+                    _ao45a_ownership_reason,
+                    OEC004_OWNERSHIP_ENFORCEMENT_VERSION,
+                )
+            except Exception:
+                pass
+
         try:
             _ao45a_context = (
                 None
-                if (_ao75_force_context_runtime or _ao45a_explicit_non_chris_owner)
+                if (_ao75_force_context_runtime or not _ao45a_chris_allowed)
                 else _ao45a_load_recent_chris_context(db, org, tid_seed, message)
             )
         except Exception:

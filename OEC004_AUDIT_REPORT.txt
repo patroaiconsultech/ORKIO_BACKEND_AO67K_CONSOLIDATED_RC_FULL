@@ -1,0 +1,35 @@
+ORKIO OEC-004 — CONSOLIDATED TECHNICAL REPORT
+
+1. OBJETIVO
+Correct the AO45A ownership corruption and add defense-in-depth across
+persistence and the final SSE envelope.
+
+2. EVIDENCE
+The baseline already tried to block AO45A using route_plan.requested_agent.
+That source is not canonical and may diverge from AgentTurnContext.
+
+3. MINIMUM PATCH
+AO45A now checks immutable ownership before loading Chris continuity.
+
+4. PREMIUM PATCH
+Persistence and final payload identities are normalized from AgentTurnContext.
+Same-turn duplicate message metadata is reconciled.
+
+5. FILES
+main.py
+runtime/agent_ownership_enforcement.py
+tests/test_oec004_agent_ownership_enforcement.py
+docs/orion/OEC004_IMMUTABLE_AGENT_OWNERSHIP.md
+
+6. VALIDATION
+Python syntax: OK
+Focused tests: 5 passed
+
+7. RISK
+Low to medium. No schema, frontend, GitHub or deployment policy changes.
+
+8. ROLLBACK
+Restore main.py and remove new OEC-004 files.
+
+9. VERDICT
+GO CONTROLLED for deploy and post-deploy ownership smoke test.
