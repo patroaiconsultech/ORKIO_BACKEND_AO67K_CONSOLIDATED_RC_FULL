@@ -1,0 +1,37 @@
+{
+  "pack": "OEC005_TENANT_DIAGNOSTIC_PACK_V1_1",
+  "version": "1.1",
+  "status": "diagnostic_only",
+  "hardening": {
+    "internal_database_url_first": true,
+    "transaction_read_only_assertion": true,
+    "user_id_redacted": true,
+    "database_user_removed": true
+  },
+  "architecture": {
+    "main_py_lines_added": 0,
+    "app_console_lines_added": 0
+  },
+  "validation": {
+    "py_compile": "passed",
+    "pytest": "\u001b[32m.\u001b[0m\u001b[32m.\u001b[0m\u001b[32m.\u001b[0m\u001b[32m.\u001b[0m\u001b[32m.\u001b[0m\u001b[32m.\u001b[0m\u001b[32m.\u001b[0m\u001b[32m.\u001b[0m\u001b[32m.\u001b[0m\u001b[32m.\u001b[0m\u001b[32m.\u001b[0m\u001b[32m.\u001b[0m\u001b[32m                                                             [100%]\u001b[0m\n\u001b[32m\u001b[32m\u001b[1m12 passed\u001b[0m\u001b[32m in 0.46s\u001b[0m\u001b[0m"
+  },
+  "governance": {
+    "write_executed": false,
+    "commit_executed": false,
+    "merge_executed": false,
+    "deploy_executed": false,
+    "migration_executed": false,
+    "recovery_allowed": false,
+    "human_approval_required": true
+  },
+  "files": [
+    "services/tenant_inventory_service.py",
+    "scripts/diagnose_tenant_drift.py",
+    "scripts/sql/oec005_tenant_inventory_readonly.sql",
+    "tests/test_tenant_inventory_service.py",
+    "tests/test_diagnose_tenant_drift_cli.py",
+    "docs/audits/2026-07/OEC005_AUTH_THREAD_TENANT_DIAGNOSTIC.md",
+    "DRY_RUN_RESULTS.txt"
+  ]
+}
