@@ -98,6 +98,27 @@ def _xlsx_col_index(cell_ref: str, fallback: int) -> int:
 
 
 def _extract_xlsx_text(content: bytes) -> str:
+    try:
+        from openpyxl import load_workbook  # type: ignore
+
+        workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+        parts: list[str] = []
+        for sheet in workbook.worksheets:
+            rows_out: list[str] = []
+            for row in sheet.iter_rows(values_only=True):
+                values = [str(value).strip() for value in row if value is not None and str(value).strip()]
+                if values:
+                    rows_out.append(" | ".join(values))
+            if rows_out:
+                parts.append(f"Sheet: {sheet.title}\n" + "\n".join(rows_out))
+        try:
+            workbook.close()
+        except Exception:
+            pass
+        return _trim("\n\n".join(parts))
+    except Exception:
+        pass
+
     parts: list[str] = []
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
@@ -128,6 +149,37 @@ def _extract_xlsx_text(content: bytes) -> str:
     except Exception:
         return ""
     return _trim("\n\n".join(parts))
+
+
+def _extract_pptx_text(content: bytes) -> str:
+    try:
+        from pptx import Presentation  # type: ignore
+    except Exception:
+        return ""
+
+    try:
+        deck = Presentation(io.BytesIO(content))
+    except Exception:
+        return ""
+
+    slides: list[str] = []
+    for idx, slide in enumerate(deck.slides, start=1):
+        parts: list[str] = []
+        for shape in slide.shapes:
+            text = getattr(shape, "text", None)
+            if text:
+                parts.append(str(text).strip())
+            try:
+                if getattr(shape, "has_table", False):
+                    for row in shape.table.rows:
+                        values = [str(cell.text or "").strip() for cell in row.cells if str(cell.text or "").strip()]
+                        if values:
+                            parts.append(" | ".join(values))
+            except Exception:
+                continue
+        if parts:
+            slides.append(f"Slide {idx}\n" + "\n".join(parts))
+    return _trim("\n\n".join(slides))
 
 
 def extract_text(filename: str, content: bytes) -> Tuple[str, int]:
@@ -171,7 +223,12 @@ def extract_text(filename: str, content: bytes) -> Tuple[str, int]:
         text = _extract_xlsx_text(content)
         return text, len(text)
 
-    # TXT/MD fallback
+    # PPTX
+    if name.endswith(".pptx"):
+        text = _extract_pptx_text(content)
+        return text, len(text)
+
+    # TXT/MD/CSV fallback
     try:
         text = content.decode("utf-8", errors="ignore")
     except Exception:
