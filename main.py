@@ -9487,6 +9487,14 @@ def _canonical_dispatch_specialist_slug(name: Any) -> Optional[str]:
     return slug
 
 
+def explicit_turn_owner_candidate(*values: Any) -> Optional[str]:
+    for value in values:
+        slug = _canonical_dispatch_specialist_slug(value)
+        if slug and slug != "orkio":
+            return slug
+    return None
+
+
 
 
 
