@@ -26,6 +26,10 @@ from app.services.capability_service import load_runtime_governed_capabilities
 from app.services.governance_service import build_governance_health, evaluate_governance_action
 from app.services.receipt_service import make_governed_receipt
 from app.services.admin_master_identity import require_admin_console_access, require_master_admin_access
+from app.runtime.execution_evidence_contract import (
+    apply_execution_evidence_to_envelope,
+    build_trace_lite_receipt,
+)
 
 try:
     from app.runtime.intent_engine import _extract_known_roster_agents_from_text
@@ -1301,7 +1305,7 @@ def _build_single_target_specialist_dispatch_payload(
         message=message,
         visible_agent=target,
         selected_specialists=[target],
-        dispatch_executed=True,
+        dispatch_executed=False,
         fallback_used=False,
         fallback_reason="",
     )
@@ -1328,16 +1332,17 @@ def _build_single_target_specialist_dispatch_payload(
         "target_agents": [target],
         "selected_specialists": [target],
         "selected_specialists_count": 1,
-        "dispatch_executed": True,
+        "dispatch_executed": False,
         "dispatch_attempted": True,
-        "dispatch_receipts": [{
-            "agent": target,
-            "status": "executed",
-            "mode": "single_target_dispatch",
-            "scope": "specialist",
-            "deliverable": _single_target_specialist_focus(target),
-            "generated_at": _now_ts(),
-        }],
+        "dispatch_receipts": [
+            build_trace_lite_receipt(
+                agent=target,
+                mode="single_target_dispatch",
+                scope="specialist",
+                deliverable=_single_target_specialist_focus(target),
+                generated_at=_now_ts(),
+            )
+        ],
         "dispatch_receipts_count": 1,
         "specialist_reports": [report],
         "specialist_reports_count": 1,
@@ -1352,7 +1357,7 @@ def _build_single_target_specialist_dispatch_payload(
         "mediated_single_target_delegation": bool(delegator),
         "generated_at": _now_ts(),
     }
-    return _apply_dispatch_receipt_payload(payload, receipt)
+    return apply_execution_evidence_to_envelope(_apply_dispatch_receipt_payload(payload, receipt))
 
 
 
@@ -2391,13 +2396,13 @@ def platform_self_evolution_plan(inp: "OrionRuntimeIn") -> Dict[str, Any]:
     specialist_reports = _audit_specialist_reports(selected_specialists, "specialist")
     counts = _dispatch_receipt_counts(dispatch_receipts, specialist_reports, selected_specialists)
     sections = _build_controlled_self_evolution_sections(selected_specialists)
-    return {
+    payload = {
         "ok": True,
         "service": "orion_internal",
         "mode": "controlled_self_evolution_propose_only",
         "provider": "platform",
         "event": "CONTROLLED_SELF_EVOLUTION_PROPOSED",
-        "status": "executed",
+        "status": "planned",
         "scope": "specialist",
         "report_format": "controlled_self_evolution_propose_only_v1",
         "delivery_contract": "controlled_self_evolution_propose_only_v1",
@@ -2444,6 +2449,7 @@ def platform_self_evolution_plan(inp: "OrionRuntimeIn") -> Dict[str, Any]:
         ],
         "generated_at": _now_ts(),
     }
+    return apply_execution_evidence_to_envelope(payload, planned_status="planned")
 
 
 def platform_improvement_review(inp: "OrionRuntimeIn") -> Dict[str, Any]:
@@ -2481,7 +2487,7 @@ def platform_improvement_review(inp: "OrionRuntimeIn") -> Dict[str, Any]:
         "multiagent_coherence",
         "security_and_multi_tenant_isolation",
     ]
-    return payload
+    return apply_execution_evidence_to_envelope(payload, planned_status="planned")
 
 
 def _audit_wants_full_execution(message: str, prepare_only: bool = False) -> bool:
@@ -2820,14 +2826,15 @@ def _audit_dispatch_receipts(selected_specialists: List[str], scope: str) -> Lis
         "ux_frontend": "renderização, sincronização visual e percepção de resposta",
     }
     for agent in selected_specialists:
-        receipts.append({
-            "agent": agent,
-            "status": "executed",
-            "mode": "read_only_dispatch",
-            "scope": scope,
-            "deliverable": deliverables.get(agent, "análise especializada"),
-            "generated_at": _now_ts(),
-        })
+        receipts.append(
+            build_trace_lite_receipt(
+                agent=agent,
+                mode="read_only_dispatch",
+                scope=scope,
+                deliverable=deliverables.get(agent, "análise especializada"),
+                generated_at=_now_ts(),
+            )
+        )
     return receipts
 
 
@@ -3401,7 +3408,7 @@ def _build_platform_self_audit_payload(inp: "OrionRuntimeIn", visible_agent: str
             fallback_used=False,
             fallback_reason="prepare_only" if bool(inp.prepare_only) else "dispatch_not_requested",
         )
-        return _apply_dispatch_receipt_payload({
+        payload = _apply_dispatch_receipt_payload({
             "ok": True,
             "service": "orion_internal",
             "mode": "premium_platform_audit" if premium_mode else "platform_self_audit",
@@ -3439,6 +3446,7 @@ def _build_platform_self_audit_payload(inp: "OrionRuntimeIn", visible_agent: str
             "audit_plan": audit_plan,
             "generated_at": _now_ts(),
         }, receipt)
+        return apply_execution_evidence_to_envelope(payload)
 
     selected_specialists = (
         ["orion", "auditor", "cto"]
@@ -3474,12 +3482,12 @@ def _build_platform_self_audit_payload(inp: "OrionRuntimeIn", visible_agent: str
         message=inp.message,
         visible_agent=visible_agent,
         selected_specialists=selected_specialists,
-        dispatch_executed=bool(selected_specialists),
+        dispatch_executed=False,
         fallback_used=False,
         fallback_reason="",
     )
 
-    return _apply_dispatch_receipt_payload({
+    payload = _apply_dispatch_receipt_payload({
         "ok": True,
         "service": "orion_internal",
         "mode": "premium_platform_audit" if premium_mode else "platform_self_audit",
@@ -3639,6 +3647,7 @@ def _build_platform_self_audit_payload(inp: "OrionRuntimeIn", visible_agent: str
         "audit_plan": audit_plan,
         "generated_at": _now_ts(),
     }, receipt)
+    return apply_execution_evidence_to_envelope(payload)
 
 
 
