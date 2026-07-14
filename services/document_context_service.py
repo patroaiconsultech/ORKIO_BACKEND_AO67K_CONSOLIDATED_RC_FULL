@@ -508,59 +508,6 @@ def _file_has_text_or_chunks(db: Session, *, org: str, file_id: str) -> bool:
         return False
 
 
-def _maybe_reindex_file_from_stored_content(db: Session, *, org: str, file_id: str) -> bool:
-    """Best-effort repair for files uploaded before a newer extractor existed."""
-    fid = _safe_str(file_id)
-    if not fid or _file_has_text_or_chunks(db, org=org, file_id=fid):
-        return False
-
-    try:
-        f = db.get(File, fid)
-    except Exception:
-        try:
-            db.rollback()
-        except Exception:
-            pass
-        return False
-
-    if f is None or _safe_str(getattr(f, "org_slug", "")) != _safe_str(org):
-        return False
-
-    raw = getattr(f, "content", None)
-    if not raw:
-        return False
-
-    try:
-        from .file_upload_indexing_service import index_uploaded_file_text
-
-        result = index_uploaded_file_text(
-            db,
-            org=org,
-            file_id=fid,
-            filename=_safe_str(getattr(f, "filename", "")) or fid,
-            raw=bytes(raw),
-            mime_type=_safe_str(getattr(f, "mime_type", "")) or None,
-            logger_obj=logger,
-        )
-        repaired = bool(result.get("has_extracted_text"))
-        if repaired:
-            logger.warning(
-                "RTB09_LAZY_FILE_REINDEX_OK file_id=%s filename=%s extracted_chars=%s chunks_created=%s",
-                fid,
-                result.get("filename"),
-                result.get("extracted_chars"),
-                result.get("chunks_created"),
-            )
-        return repaired
-    except Exception:
-        try:
-            db.rollback()
-        except Exception:
-            pass
-        logger.exception("RTB09_LAZY_FILE_REINDEX_FAILED file_id=%s", fid)
-        return False
-
-
 def load_thread_document_citations(
     db: Session,
     *,
@@ -596,9 +543,6 @@ def load_thread_document_citations(
                 file_ids = list(thread_file_ids)
     else:
         file_ids = list(thread_file_ids)
-
-    for fid in list(file_ids or [])[:12]:
-        _maybe_reindex_file_from_stored_content(db, org=org, file_id=fid)
 
     citations: List[Dict[str, Any]] = []
     retrieval_error: Optional[str] = None
