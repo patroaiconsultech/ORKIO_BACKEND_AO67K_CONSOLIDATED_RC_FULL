@@ -66,6 +66,19 @@ def test_stream_open_base_uses_locked_turn_owner_not_public_orkio() -> None:
     assert '"agent_id": "aria" if glip_aria_mode else "orkio"' not in base_block
 
 
+def test_stream_owner_falls_back_to_route_plan_before_context_resolution() -> None:
+    source = _main_source()
+    owner_call = source.index("ao01_requested_turn_owner = stream_turn_owner_from_contract")
+    route_fallback = source.index("if not ao01_requested_turn_owner and isinstance(route_plan, dict):", owner_call)
+    context_resolution = source.index("ao01_agent_turn_context = resolve_agent_turn_context", owner_call)
+    fallback_block = source[route_fallback:context_resolution]
+
+    assert route_fallback < context_resolution
+    assert "explicit_turn_owner_candidate(" in fallback_block
+    assert 'route_plan.get("requested_agent")' in fallback_block
+    assert 'route_plan.get("resolved_agent")' in fallback_block
+
+
 def test_specialist_readonly_fastpath_uses_canonical_owner_for_orion_comma() -> None:
     source = _main_source()
     builder_start = source.index("def _build_specialist_readonly_audit_answer")
