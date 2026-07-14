@@ -52,3 +52,30 @@ def test_orion_readonly_negative_constraints_precede_execution_matcher() -> None
     assert "extract_mutation_constraints(text)" in source
     assert "sem proposta" in source
     assert "proposal_created=false" in source
+
+
+def test_stream_open_base_uses_locked_turn_owner_not_public_orkio() -> None:
+    source = _main_source()
+    base_start = source.index('base = {\n            "thread_id": tid_seed,')
+    base_end = source.index("if glip_aria_mode:", base_start)
+    base_block = source[base_start:base_end]
+
+    assert '"agent_id": "aria" if glip_aria_mode else ao01_response_agent_id' in base_block
+    assert '"agent_name": "Aria" if glip_aria_mode else ao01_response_agent_name' in base_block
+    assert '"final_speaker": "Aria" if glip_aria_mode else ao01_response_agent_name' in base_block
+    assert '"agent_id": "aria" if glip_aria_mode else "orkio"' not in base_block
+
+
+def test_specialist_readonly_fastpath_uses_canonical_owner_for_orion_comma() -> None:
+    source = _main_source()
+    builder_start = source.index("def _build_specialist_readonly_audit_answer")
+    builder_end = source.index("def _specialist_readonly_audit_fastpath_in_isolated_session", builder_start)
+    builder_block = source[builder_start:builder_end]
+    fastpath_end = source.index("def _ao20i_normalized_evolution_text", builder_end)
+    fastpath_block = source[builder_end:fastpath_end]
+
+    assert "requested_agent: str" in builder_block
+    assert "_normalize_router_text(text)" not in builder_block
+    assert "ao01_agent_turn_context" in fastpath_block
+    assert "requested_agent=resolved_agent" in fastpath_block
+    assert "raw.startswith(\"orion \")" not in fastpath_block

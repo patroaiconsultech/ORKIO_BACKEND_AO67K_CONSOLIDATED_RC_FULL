@@ -38715,9 +38715,8 @@ async def chat_stream(
         return bool(has_orion_or_orkio and has_specialist_scope and has_audit_scope and (has_readonly_scope or explicit_proposal_block))
 
 
-    def _build_specialist_readonly_audit_answer(text: str) -> str:
-        raw = _normalize_router_text(text)
-        requested_agent = "Orion" if ("@orion" in raw or raw.startswith("orion ") or " orion " in f" {raw} ") else "Orkio"
+    def _build_specialist_readonly_audit_answer(text: str, *, requested_agent: str) -> str:
+        requested_agent = str(requested_agent or "").strip() or "Orkio"
         execution_id = f"specialist_readonly_audit_{new_id()[:10]}"
         return (
             "AUDITORIA ORKIO + ORION SPECIALISTS — REALTIME / ORCHESTRATION / BUGS\n\n"
@@ -38822,9 +38821,15 @@ async def chat_stream(
 
 
     def _specialist_readonly_audit_fastpath_in_isolated_session() -> Dict[str, Any]:
-        final_text = _build_specialist_readonly_audit_answer(message)
-        raw = _normalize_router_text(message)
-        resolved_agent = "Orion" if ("@orion" in raw or raw.startswith("orion ") or " orion " in f" {raw} ") else "Orkio"
+        resolved_agent = (
+            str(getattr(ao01_agent_turn_context, "agent_name", "") or "").strip()
+            or str(route_plan.get("resolved_agent") or route_plan.get("requested_agent") or "").strip()
+            or "Orkio"
+        )
+        final_text = _build_specialist_readonly_audit_answer(
+            message,
+            requested_agent=resolved_agent,
+        )
         persisted = _persist_assistant_message(
             text=final_text,
             thread_id=tid_seed,
@@ -41884,9 +41889,9 @@ async def chat_stream(
         base = {
             "thread_id": tid_seed,
             "trace_id": trace_id,
-            "agent_id": "aria" if glip_aria_mode else "orkio",
-            "agent_name": "Aria" if glip_aria_mode else "Orkio",
-            "final_speaker": "Aria" if glip_aria_mode else "Orkio",
+            "agent_id": "aria" if glip_aria_mode else ao01_response_agent_id,
+            "agent_name": "Aria" if glip_aria_mode else ao01_response_agent_name,
+            "final_speaker": "Aria" if glip_aria_mode else ao01_response_agent_name,
         }
 
         if glip_aria_mode:
