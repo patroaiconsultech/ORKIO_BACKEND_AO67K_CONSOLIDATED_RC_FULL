@@ -82,6 +82,20 @@ def test_stream_owner_route_plan_overrides_orchestrator_default_before_context_r
     assert "ao01_requested_turn_owner = ao01_route_plan_turn_owner" in fallback_block
 
 
+def test_ao79a_public_guard_does_not_scrub_explicit_orion_owner() -> None:
+    source = _main_source()
+    guard_start = source.index("def _ao79a_force_public_orkio_payload")
+    guard_end = source.index("blocked_agent = str(", guard_start)
+    guard_block = source[guard_start:guard_end]
+
+    assert "explicit_owner_markers = (" in guard_block
+    assert 'payload.get("agent_id")' in guard_block
+    assert 'routing_hints_raw.get("requested_agent")' in guard_block
+    assert 'routing_hints_raw.get("turn_owner")' in guard_block
+    assert 'if marker_s in {"orion", "chris", "cris", "laura", "team"}:' in guard_block
+    assert "return payload" in guard_block
+
+
 def test_specialist_readonly_fastpath_uses_canonical_owner_for_orion_comma() -> None:
     source = _main_source()
     builder_start = source.index("def _build_specialist_readonly_audit_answer")

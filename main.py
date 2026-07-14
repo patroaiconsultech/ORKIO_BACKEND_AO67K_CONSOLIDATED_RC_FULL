@@ -4506,6 +4506,25 @@ def _ao79a_force_public_orkio_payload(
 ) -> Dict[str, Any]:
     if not isinstance(payload, dict) or not _ao79a_is_public_orkio_surface(user_payload):
         return payload
+    try:
+        runtime_hints_raw = payload.get("runtime_hints") if isinstance(payload.get("runtime_hints"), dict) else {}
+        routing_hints_raw = runtime_hints_raw.get("routing") if isinstance(runtime_hints_raw.get("routing"), dict) else {}
+        explicit_owner_markers = (
+            payload.get("agent_id"),
+            payload.get("agent_name"),
+            payload.get("final_speaker"),
+            payload.get("visible_agent"),
+            routing_hints_raw.get("requested_agent"),
+            routing_hints_raw.get("resolved_agent"),
+            routing_hints_raw.get("turn_owner"),
+            routing_hints_raw.get("display_agent"),
+        )
+        for marker in explicit_owner_markers:
+            marker_s = str(marker or "").strip().lower().lstrip("@")
+            if marker_s in {"orion", "chris", "cris", "laura", "team"}:
+                return payload
+    except Exception:
+        pass
     blocked_agent = str(payload.get("agent_name") or payload.get("final_speaker") or payload.get("agent_id") or "").strip()
     clean = _ao79a_scrub_public_payload(payload)
     if not isinstance(clean, dict):
