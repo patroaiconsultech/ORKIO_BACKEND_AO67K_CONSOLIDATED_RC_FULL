@@ -50,7 +50,10 @@ import unicodedata
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
-from app.runtime.agent_turn_context import resolve_agent_turn_context
+from app.runtime.agent_turn_context import (
+    resolve_agent_turn_context,
+    stream_turn_owner_from_contract,
+)
 
 # OEC-004 — immutable ownership enforcement. Fail-open protects partial deploys.
 try:
@@ -35054,8 +35057,19 @@ async def chat_stream(
         ao68b_admin_internal_agent_bypass = False
         ao68b_requested_internal_agent = None
 
+    ao01_requested_turn_owner = stream_turn_owner_from_contract(
+        admin_bypass_agent=ao68b_requested_internal_agent,
+        route_plan=route_plan if isinstance(route_plan, dict) else None,
+        visible_agent=getattr(inp, "visible_agent", None),
+        target_agent_slug=getattr(inp, "target_agent_slug", None),
+        agent_id=getattr(inp, "agent_id", None),
+        requested_agent_names=getattr(inp, "requested_agent_names", None),
+        target_agent_slugs=getattr(inp, "target_agent_slugs", None),
+        agent_ids=getattr(inp, "agent_ids", None),
+    )
+
     ao01_agent_turn_context = resolve_agent_turn_context(
-        ao68b_requested_internal_agent,
+        ao01_requested_turn_owner,
         route_family="governed_evolution_pipeline",
         orchestrator_agent="orkio",
         technical_lead="orion",
@@ -41974,7 +41988,7 @@ async def chat_stream(
                         }
                     },
                 }
-            if not glip_aria_mode:
+            if not glip_aria_mode and not bool(getattr(ao01_agent_turn_context, "ownership_locked", False)):
                 payload = _ao79a_force_public_orkio_payload(
                     payload,
                     user_payload=user,
@@ -42692,7 +42706,7 @@ async def chat_stream(
         except Exception:
             _ao67a_unlock_decision = {"handled": False, "reason": "ao67a_policy_exception"}
 
-        if _ao75_public_fastpath_allowed and (not ao68b_admin_internal_agent_bypass) and isinstance(_ao67a_unlock_decision, dict) and _ao67a_unlock_decision.get("handled"):
+        if _ao75_public_fastpath_allowed and (not ao68b_admin_internal_agent_bypass) and (not bool(getattr(ao01_agent_turn_context, "ownership_locked", False))) and isinstance(_ao67a_unlock_decision, dict) and _ao67a_unlock_decision.get("handled"):
             try:
                 final_text = str(_ao67a_unlock_decision.get("answer") or "").strip()
                 persisted = await asyncio.to_thread(
@@ -42732,10 +42746,11 @@ async def chat_stream(
         except Exception:
             _public_chris_decision = {"handled": False, "reason": "policy_exception"}
 
-        if _ao75_public_fastpath_allowed and (not ao68b_admin_internal_agent_bypass) and isinstance(_public_chris_decision, dict) and _public_chris_decision.get("handled"):
+        if _ao75_public_fastpath_allowed and (not ao68b_admin_internal_agent_bypass) and (not bool(getattr(ao01_agent_turn_context, "ownership_locked", False))) and isinstance(_public_chris_decision, dict) and _public_chris_decision.get("handled"):
             try:
                 final_text = str(_public_chris_decision.get("answer") or "").strip()
-                final_text = _ao79a_scrub_public_internal_text(final_text)
+                if not bool(getattr(ao01_agent_turn_context, "ownership_locked", False)):
+                    final_text = _ao79a_scrub_public_internal_text(final_text)
                 persisted = await asyncio.to_thread(
                     _persist_assistant_message,
                     text=final_text,
@@ -42770,10 +42785,11 @@ async def chat_stream(
         except Exception:
             _public_orion_decision = {"handled": False, "reason": "policy_exception"}
 
-        if _ao75_public_fastpath_allowed and (not ao68b_admin_internal_agent_bypass) and isinstance(_public_orion_decision, dict) and _public_orion_decision.get("handled"):
+        if _ao75_public_fastpath_allowed and (not ao68b_admin_internal_agent_bypass) and (not bool(getattr(ao01_agent_turn_context, "ownership_locked", False))) and isinstance(_public_orion_decision, dict) and _public_orion_decision.get("handled"):
             try:
                 final_text = str(_public_orion_decision.get("answer") or "").strip()
-                final_text = _ao79a_scrub_public_internal_text(final_text)
+                if not bool(getattr(ao01_agent_turn_context, "ownership_locked", False)):
+                    final_text = _ao79a_scrub_public_internal_text(final_text)
                 persisted = await asyncio.to_thread(
                     _persist_assistant_message,
                     text=final_text,
@@ -42824,7 +42840,7 @@ async def chat_stream(
         except Exception:
             _public_orkio_decision = {"handled": False, "reason": "policy_exception"}
 
-        if _ao75_public_fastpath_allowed and (not ao68b_admin_internal_agent_bypass) and isinstance(_public_orkio_decision, dict) and _public_orkio_decision.get("handled"):
+        if _ao75_public_fastpath_allowed and (not ao68b_admin_internal_agent_bypass) and (not bool(getattr(ao01_agent_turn_context, "ownership_locked", False))) and isinstance(_public_orkio_decision, dict) and _public_orkio_decision.get("handled"):
             try:
                 final_text = str(_public_orkio_decision.get("answer") or "").strip()
                 persisted = await asyncio.to_thread(

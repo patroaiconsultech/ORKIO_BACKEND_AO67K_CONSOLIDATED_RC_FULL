@@ -60,3 +60,47 @@ def resolve_agent_turn_context(
         route_family=route_family,
         ownership_locked=False,
     )
+
+
+def explicit_turn_owner_candidate(*values: Any) -> Optional[str]:
+    """Return the explicit agent owner when request metadata already resolved one."""
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, (list, tuple, set)):
+            nested = explicit_turn_owner_candidate(*list(value))
+            if nested:
+                return nested
+            continue
+        raw = str(value or "").strip().lower().lstrip("@")
+        if raw in {"orion", "chris", "orkio"}:
+            return raw
+    return None
+
+
+def stream_turn_owner_from_contract(
+    *,
+    admin_bypass_agent: Any = None,
+    route_plan: Optional[Dict[str, Any]] = None,
+    visible_agent: Any = None,
+    target_agent_slug: Any = None,
+    agent_id: Any = None,
+    requested_agent_names: Any = None,
+    target_agent_slugs: Any = None,
+    agent_ids: Any = None,
+) -> Optional[str]:
+    """Resolve immutable stream owner from destination contract plus route output."""
+    route = route_plan if isinstance(route_plan, dict) else {}
+    return explicit_turn_owner_candidate(
+        admin_bypass_agent,
+        visible_agent,
+        target_agent_slug,
+        agent_id,
+        requested_agent_names,
+        target_agent_slugs,
+        agent_ids,
+        route.get("requested_agent"),
+        route.get("resolved_agent"),
+        route.get("target_agent"),
+        route.get("agent"),
+    )
