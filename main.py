@@ -397,6 +397,10 @@ from .routes.internal.orion_internal import router as orion_internal_router, Ori
 from .routes.internal.git_internal import router as git_internal_router
 from .routes.internal.evolution_internal import router as evolution_internal_router
 from .routes.internal.evolution_trigger import router as evolution_trigger_router, maybe_trigger_schema_patch
+from .routes.document_artifacts import (
+    DocumentArtifactRouterDeps,
+    build_document_artifacts_router,
+)
 from .services.identity_service import load_active_identity
 from .services.governance_service import build_governance_health
 from .services.capability_service import load_runtime_governed_capabilities
@@ -408,7 +412,6 @@ from .services.document_context_service import (
     load_thread_document_citations as svc_load_thread_document_citations,
     rag_fallback_recent_chunks as svc_rag_fallback_recent_chunks,
 )
-from .services.document_artifact_service import generate_document_artifact
 from .services.file_upload_indexing_service import index_uploaded_file_text
 from .core.orkio_constitution import load_constitution
 from .core.orkio_permissions import load_permissions
@@ -3575,16 +3578,6 @@ class ManusRunIn(BaseModel):
     context: Optional[Dict[str, Any]] = None
 
 
-class DocumentArtifactGenerateIn(BaseModel):
-    format: str = Field(default="md", max_length=20)
-    title: str = Field(default="Documento Orkio", max_length=180)
-    content: Optional[str] = Field(default=None, max_length=200000)
-    filename: Optional[str] = Field(default=None, max_length=180)
-    rows: Optional[List[Any]] = None
-    thread_id: Optional[str] = None
-    agent_name: Optional[str] = Field(default=None, max_length=80)
-
-
 def ensure_request_id(req: Request) -> str:
     rid = req.headers.get("x-request-id") or req.headers.get("x-railway-request-id") or None
     return rid or uuid.uuid4().hex
@@ -6184,6 +6177,19 @@ app.include_router(orion_internal_router)
 app.include_router(git_internal_router)
 app.include_router(evolution_internal_router)
 app.include_router(evolution_trigger_router)
+app.include_router(
+    build_document_artifacts_router(
+        DocumentArtifactRouterDeps(
+            get_current_user=get_current_user,
+            get_request_org=get_request_org,
+            require_thread_member=_require_thread_member,
+            check_thread_member=_check_thread_member,
+            new_id=new_id,
+            now_ts=now_ts,
+            logger=logger,
+        )
+    )
+)
 
 
 def _audit_realtime_safe(db: Session, org_slug: str, user_id: Optional[str], action: str, meta: Optional[Dict[str, Any]] = None):
@@ -27237,239 +27243,6 @@ async def upload(
             e.__class__.__name__,
         )
         raise HTTPException(status_code=500, detail="Falha ao processar upload. Tente novamente.")
-
-@app.get("/api/documents/thread-context")
-def get_thread_document_context(
-    thread_id: str,
-    file_id: Optional[str] = None,
-    query: Optional[str] = None,
-    strict_file_id: bool = False,
-    x_org_slug: Optional[str] = Header(default=None),
-    user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """RTB-08: authorized strict document context endpoint for chat/realtime bridges.
-
-    This endpoint returns extracted evidence for files attached to the current
-    thread. It does not expose cross-thread files and is intentionally read-only.
-    """
-    org = get_request_org(user, x_org_slug)
-    tid = (thread_id or "").strip()
-    if not tid:
-        raise HTTPException(status_code=400, detail="thread_id_required")
-
-    uid = user.get("sub")
-    if user.get("role") != "admin":
-        _require_thread_member(db, org, tid, uid)
-
-    try:
-        ctx = svc_build_thread_document_context(
-            db,
-            org=org,
-            thread_id=tid,
-            query=(query or "documento anexado"),
-            top_k=8,
-            preferred_file_id=(file_id or None),
-            strict_preferred_file_id=bool(strict_file_id or file_id),
-        )
-        logger.warning(
-            "RTB08_DOCUMENT_CONTEXT_READY thread_id=%s file_id=%s strict=%s file_count=%s evidence_count=%s context_chars=%s preferred_diag=%s",
-            tid,
-            file_id,
-            bool(strict_file_id or file_id),
-            len(list(ctx.get("file_ids") or [])),
-            int(ctx.get("file_evidence_count") or 0),
-            int(ctx.get("context_chars") or ctx.get("file_context_chars") or 0),
-            ctx.get("preferred_file_diagnostic") or {},
-        )
-        return ctx
-    except HTTPException:
-        raise
-    except Exception as e:
-        try:
-            db.rollback()
-        except Exception:
-            pass
-        logger.exception("RTB08_DOCUMENT_CONTEXT_FAILED thread_id=%s file_id=%s", tid, file_id)
-        raise HTTPException(status_code=500, detail=f"document_context_failed:{e.__class__.__name__}")
-
-
-def _require_file_read_access(db: Session, org: str, file_row: File, user: Dict[str, Any]) -> None:
-    if user.get("role") == "admin":
-        return
-    uid = user.get("sub")
-    if getattr(file_row, "uploader_id", None) and getattr(file_row, "uploader_id", None) == uid:
-        return
-    for attr in ("thread_id", "scope_thread_id", "origin_thread_id"):
-        tid = str(getattr(file_row, attr, "") or "").strip()
-        if not tid:
-            continue
-        if _check_thread_member(db, org, tid, uid):
-            return
-    raise HTTPException(status_code=403, detail="file_access_denied")
-
-
-@app.get("/api/files/{file_id}/download")
-def download_file(
-    file_id: str,
-    x_org_slug: Optional[str] = Header(default=None),
-    user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    org = get_request_org(user, x_org_slug)
-    f = db.get(File, file_id)
-    if not f or getattr(f, "org_slug", None) != org:
-        raise HTTPException(status_code=404, detail="file_not_found")
-    _require_file_read_access(db, org, f, user)
-
-    raw = getattr(f, "content", None)
-    if not raw:
-        raise HTTPException(status_code=404, detail="file_content_not_available")
-
-    filename = str(getattr(f, "filename", "") or "orkio_document").replace('"', "")
-    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
-    return Response(content=bytes(raw), media_type=(getattr(f, "mime_type", None) or "application/octet-stream"), headers=headers)
-
-
-@app.post("/api/document-artifacts/generate")
-def generate_document_artifact_endpoint(
-    inp: DocumentArtifactGenerateIn,
-    x_org_slug: Optional[str] = Header(default=None),
-    user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    org = get_request_org(user, x_org_slug)
-    uid = user.get("sub")
-    tid = str(inp.thread_id or "").strip() or None
-    if tid:
-        if user.get("role") != "admin":
-            _require_thread_member(db, org, tid, uid)
-        thread = db.execute(select(Thread).where(Thread.org_slug == org, Thread.id == tid)).scalar_one_or_none()
-        if not thread:
-            raise HTTPException(status_code=404, detail="thread_not_found")
-
-    try:
-        artifact = generate_document_artifact(inp.model_dump())
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except RuntimeError as exc:
-        raise HTTPException(status_code=501, detail=str(exc))
-
-    f = File(
-        id=new_id(),
-        org_slug=org,
-        thread_id=tid,
-        uploader_id=uid,
-        uploader_name=user.get("name"),
-        uploader_email=user.get("email"),
-        filename=artifact.filename,
-        original_filename=artifact.filename,
-        origin="generated",
-        scope_thread_id=tid,
-        mime_type=artifact.mime_type,
-        size_bytes=len(artifact.content),
-        content=artifact.content,
-        extraction_failed=False,
-        is_institutional=False,
-        created_at=now_ts(),
-    )
-    try:
-        if tid:
-            setattr(f, "origin_thread_id", tid)
-    except Exception:
-        pass
-    db.add(f)
-    db.commit()
-
-    chunks_created = 0
-    extracted_chars = 0
-    try:
-        index_result = index_uploaded_file_text(
-            db,
-            org=org,
-            file_id=f.id,
-            filename=f.filename,
-            raw=artifact.content,
-            mime_type=artifact.mime_type,
-            logger_obj=logger,
-        )
-        extracted_chars = int(index_result.get("extracted_chars") or 0)
-        chunks_created = int(index_result.get("chunks_created") or 0)
-    except Exception:
-        try:
-            db.rollback()
-        except Exception:
-            pass
-        f.extraction_failed = True
-        db.add(f)
-        db.commit()
-        logger.exception("DOCUMENT_ARTIFACT_INDEX_FAILED file_id=%s filename=%s", f.id, f.filename)
-
-    if tid:
-        try:
-            ts = now_ts()
-            visible_text = f"📄 Artefato gerado: {f.filename}"
-            payload = {
-                "kind": "document_artifact",
-                "type": "generated_file",
-                "file_id": f.id,
-                "filename": f.filename,
-                "format": artifact.format,
-                "mime": f.mime_type,
-                "size": int(f.size_bytes or 0),
-                "download_url": f"/api/files/{f.id}/download",
-                "created_by": user.get("email") or user.get("name"),
-                "agent_name": inp.agent_name,
-                "ts": ts,
-                "text": visible_text,
-            }
-            db.add(Message(
-                id=new_id(),
-                org_slug=org,
-                thread_id=tid,
-                user_id=uid,
-                user_name=user.get("name"),
-                role="system",
-                content=visible_text + "\n\nORKIO_EVENT:" + json.dumps(payload, ensure_ascii=False),
-                created_at=ts,
-            ))
-            db.commit()
-        except Exception:
-            try:
-                db.rollback()
-            except Exception:
-                pass
-            logger.exception("DOCUMENT_ARTIFACT_THREAD_EVENT_FAILED file_id=%s thread_id=%s", f.id, tid)
-
-    try:
-        audit(
-            db=db,
-            org_slug=org,
-            user_id=uid,
-            action="document_artifact.generated",
-            request_id=new_id(),
-            path="/api/document-artifacts/generate",
-            status_code=200,
-            latency_ms=0,
-            meta={"file_id": f.id, "filename": f.filename, "format": artifact.format, "thread_id": tid, "chunks_created": chunks_created},
-        )
-    except Exception:
-        pass
-
-    return {
-        "ok": True,
-        "file_id": f.id,
-        "filename": f.filename,
-        "format": artifact.format,
-        "mime_type": f.mime_type,
-        "size_bytes": f.size_bytes,
-        "thread_id": tid,
-        "download_url": f"/api/files/{f.id}/download",
-        "extracted_chars": extracted_chars,
-        "chunks_created": chunks_created,
-        "extraction_failed": bool(getattr(f, "extraction_failed", False)),
-    }
-
 
 @app.get("/api/files")
 def list_files(x_org_slug: Optional[str] = Header(default=None), user=Depends(get_current_user), db: Session = Depends(get_db)):
