@@ -120,6 +120,7 @@ from .runtime.orkio_context_intent import (
     requires_document_context as orkio_requires_document_context,
 )
 from .runtime.orkio_executive_guard import classify_orkio_executive_request, eos06_build_router_precedence_payload
+from .runtime.orion_capability_policy import is_explicit_ux_audit_request
 
 # MANUS UX R3.2 — fail-open stream-entry gate wiring with boot diagnostics.
 # This closes the pre-deploy integration gap by making the R3.1 adapter available
@@ -38374,19 +38375,10 @@ async def chat_stream(
                 + context_block
             )
 
-        wants_ux = any(x in raw for x in [
-            "ux",
-            "landing",
-            "landings",
-            "premium",
-            "experiencia",
-            "experiência",
-            "jornada",
-            "onboarding",
-            "interface",
-            "mobile",
-            "pwa",
-        ])
+        # CEF-001A-P1: AO-17 may only win when the current turn explicitly
+        # requests a UX audit. Generic words inside attached architecture reports
+        # or retrieved context are not routing authority.
+        wants_ux = is_explicit_ux_audit_request(raw)
 
         if wants_ux:
             return (

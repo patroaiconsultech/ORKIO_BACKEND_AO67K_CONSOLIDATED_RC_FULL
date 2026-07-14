@@ -10,6 +10,12 @@ import re
 from config.runtime import RUNTIME_FLAGS
 from services.governance_service import evaluate_governance_action
 from runtime.capability_registry import is_team_roster_question_text, is_presence_status_question_text, is_war_room_readonly_architecture_plan_text, is_readonly_implementation_plan_text, get_full_agent_roster
+from runtime.orion_capability_policy import (
+    extract_mutation_constraints,
+    is_readonly_technical_request,
+    should_route_explicit_agent_to_capability,
+)
+from runtime.execution_evidence_contract import readonly_governance_fields
 
 
 def _normalize(text: str) -> str:
@@ -692,6 +698,117 @@ def _build_direct_agent_message_payload(
     }
 
 
+def _build_explicit_agent_capability_payload(
+    *,
+    raw_user_input: str,
+    effective_user_input: str,
+    context: Dict[str, Any],
+    target_agent: str,
+) -> Dict[str, Any]:
+    """
+    Preserve explicit ownership while allowing a technical read-only request to
+    reach capability inference. The previous shortcut converted every explicit
+    destination into direct_agent_message and disabled runtime execution.
+    """
+    nested_context = dict(context or {})
+    for key in (
+        "target_agent_from_payload",
+        "target_agent_frozen",
+        "target_agent_slug",
+        "target_agents_from_payload",
+        "target_agents_frozen",
+        "requested_agent_names",
+        "visible_agent",
+        "dest_mode",
+        "destination_contract_used",
+    ):
+        nested_context.pop(key, None)
+    nested_context["_explicit_agent_capability_reentry"] = True
+
+    payload = build_intent_package(
+        effective_user_input or raw_user_input or "",
+        nested_context,
+    )
+    runtime_op = dict(payload.get("runtime_operation") or {})
+
+    # Defensive fallback for short technical requests such as "mapeie o código"
+    # that may not contain the older audit vocabulary.
+    if not runtime_op.get("kind"):
+        target_scope = _infer_target_scope(effective_user_input or raw_user_input or "")
+        governance_decision = evaluate_governance_action(
+            action_scope="diagnose",
+            capability_name="platform_self_audit",
+            target_scope=target_scope,
+            context=context,
+            safe_mode=bool(context.get("safe_mode", False)),
+        )
+        runtime_op = {
+            "kind": "platform_self_audit",
+            "action_scope": "diagnose",
+            "target_scope": target_scope,
+            "capability_name": "platform_self_audit",
+            "execution_mode": "read_only_dispatch",
+            "force_dispatch": False,
+            "dispatch_attempted": False,
+            "dispatch_executed": False,
+            "dispatch_receipt_id": None,
+            "fallback_used": False,
+            "fallback_reason": "",
+        }
+        payload.update(
+            {
+                "intent": "platform_self_audit",
+                "confidence": 0.99,
+                "action_scope": "diagnose",
+                "target_scope": target_scope,
+                "capability_name": "platform_self_audit",
+                "governance_decision": governance_decision,
+                "allowed": bool(governance_decision.get("allowed")),
+                "requires_human_authorization": False,
+                "requires_write_approval": False,
+                "delivery_contract": "orion_team_technical_audit_v1",
+                "structured_output": True,
+                "first_win_goal": "execute_orion_runtime",
+            }
+        )
+
+    if str(payload.get("action_scope") or "").strip() not in {"read", "diagnose"}:
+        # An explicit technical read-only route must never escalate into write.
+        return _build_direct_agent_message_payload(
+            raw_user_input=raw_user_input,
+            effective_user_input=effective_user_input,
+            context=context,
+            target_agent=target_agent,
+        )
+
+    recommended = _dedupe_preserve([target_agent] + list(payload.get("recommended_agents") or []))
+    advisors = _dedupe_preserve([target_agent] + list(payload.get("advisor_agents") or []))
+    runtime_op.update(
+        {
+            "target_agent": target_agent,
+            "target_agent_frozen": target_agent,
+            "visible_signer_expected": target_agent,
+            "visible_only_agent": target_agent,
+            "explicit_destination_capability_routing": True,
+            "ownership_locked": True,
+        }
+    )
+    payload.update(
+        {
+            "target_agent": target_agent,
+            "target_agent_frozen": target_agent,
+            "recommended_agents": recommended,
+            "advisor_agents": advisors,
+            "runtime_operation": runtime_op,
+            "requires_runtime_execution": bool(runtime_op.get("kind")),
+            "visible_signer_expected": target_agent,
+            "ownership_locked": True,
+            "routing_source": "explicit_destination_capability_v1",
+        }
+    )
+    return payload
+
+
 def _build_orchestrator_dispatch_readonly_payload(
     *,
     raw_user_input: str,
@@ -1328,29 +1445,64 @@ def _looks_like_incremental_dispatch_followup_request(text: str) -> bool:
 
 def _infer_action_scope(text: str) -> str:
     txt = _normalize(text)
+    constraints = extract_mutation_constraints(text)
+
     if _looks_like_squad_resolution_request(text) or _looks_like_squad_resolution_trace_request(text):
         return "read"
     if _looks_like_continuous_audit_status_request(text):
         return "read"
     if _looks_like_privileged_admin_read(txt):
         return "read"
-    if _looks_like_pwa_console_repair_request(text):
+
+    # Negative constraints are authoritative. They are evaluated before any
+    # substring-based mutation inference so "sem proposta" cannot become PR.
+    if constraints.force_readonly:
+        return "diagnose" if is_readonly_technical_request(text) else "read"
+
+    if _looks_like_pwa_console_repair_request(text) and not constraints.block_write:
         return "write_branch"
-    if _looks_like_platform_improvement_review_request(txt):
+    if _looks_like_platform_improvement_review_request(txt) and not constraints.block_proposal:
         return "propose_patch"
-    if _contains_any(txt, ["merge", "mergear"]):
+    if not constraints.block_merge and _contains_any(txt, ["merge", "mergear"]):
         return "merge"
-    if _contains_any(txt, ["deploy", "publicar"]):
+    if not constraints.block_deploy and _contains_any(txt, ["deploy", "publicar"]):
         return "deploy"
-    if _contains_any(txt, ["pull request", "abrir pr", "open pr", "pr #", "pr "]):
+    if (
+        not constraints.block_pr
+        and not constraints.block_proposal
+        and _contains_any(txt, ["pull request", "abrir pr", "open pr", "pr #", "pr "])
+    ):
         return "open_pr"
-    if _contains_any(txt, ["write", "escrever", "criar arquivo", "alterar arquivo", "corrigir arquivo", "branch"]):
+    if not constraints.block_write and _contains_any(
+        txt,
+        ["write", "escrever", "criar arquivo", "alterar arquivo", "corrigir arquivo", "branch"],
+    ):
         return "write_branch"
-    if _contains_any(txt, ["patch", "proposta de patch", "plano de patch"]):
+    if not constraints.block_proposal and _contains_any(
+        txt,
+        ["patch", "proposta de patch", "plano de patch"],
+    ):
         return "propose_patch"
     if _looks_like_continuous_audit_request(txt):
         return "diagnose"
-    if _contains_any(txt, ["audit", "auditoria", "scan", "diagnóstico", "diagnostico", "self audit", "war room"]):
+    if is_readonly_technical_request(text):
+        return "diagnose"
+    if _contains_any(
+        txt,
+        [
+            "audit",
+            "auditoria",
+            "scan",
+            "diagnóstico",
+            "diagnostico",
+            "self audit",
+            "war room",
+            "mapear",
+            "mapeie",
+            "inventariar",
+            "inventarie",
+        ],
+    ):
         return "diagnose"
     return "read"
 
@@ -1370,6 +1522,8 @@ def _infer_target_scope(text: str) -> str:
 
 def _infer_capability(action_scope: str, text: str) -> Optional[str]:
     txt = _normalize(text)
+    if is_readonly_technical_request(text):
+        return "platform_self_audit"
     if _looks_like_squad_resolution_trace_request(text):
         return "squad_resolution_trace_readonly"
     if _looks_like_squad_resolution_request(text):
@@ -1765,6 +1919,19 @@ def build_intent_package(
     payload_has_destination = bool(context.get("destination_contract_used") or payload_target or payload_targets or payload_mode)
 
     if payload_target:
+        if (
+            not context.get("_explicit_agent_capability_reentry")
+            and should_route_explicit_agent_to_capability(
+                effective_user_input or raw_user_input or "",
+                payload_target,
+            )
+        ):
+            return _build_explicit_agent_capability_payload(
+                raw_user_input=raw_user_input,
+                effective_user_input=effective_user_input,
+                context=context,
+                target_agent=payload_target,
+            )
         return _build_direct_agent_message_payload(
             raw_user_input=raw_user_input,
             effective_user_input=effective_user_input,
@@ -2296,6 +2463,12 @@ def build_intent_package(
         "session_write_approval_authority": bool(session_write_approval_authority),
         "required_authority_for_execution": ("master_admin" if requires_write_approval else "standard"),
     }
+    if (
+        str(target_agent or "").strip().lower() == "orion"
+        and str(action_scope or "").strip().lower() == "diagnose"
+        and is_readonly_technical_request(text)
+    ):
+        payload.update(readonly_governance_fields())
     payload.update(_runtime_self_audit_override(intent))
     return payload
 
