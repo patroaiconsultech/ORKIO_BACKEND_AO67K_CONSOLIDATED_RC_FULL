@@ -123,7 +123,11 @@ from .runtime.orkio_context_intent import (
     requires_document_context as orkio_requires_document_context,
 )
 from .runtime.orkio_executive_guard import classify_orkio_executive_request, eos06_build_router_precedence_payload
-from .runtime.orion_capability_policy import is_explicit_ux_audit_request
+from .runtime.orion_capability_policy import (
+    extract_mutation_constraints,
+    is_explicit_ux_audit_request,
+    is_readonly_technical_request,
+)
 
 # MANUS UX R3.2 — fail-open stream-entry gate wiring with boot diagnostics.
 # This closes the pre-deploy integration gap by making the R3.1 adapter available
@@ -35628,6 +35632,8 @@ async def chat_stream(
             return False
         if _ao68a_is_natural_voice_conversation_no_audit_text(text):
             return False
+        if _orion_readonly_negative_constraints_active(text):
+            return False
 
         execution_markers = [
             "vamos ao patch",
@@ -35677,6 +35683,55 @@ async def chat_stream(
                 return True
 
         return False
+
+
+    def _orion_readonly_negative_constraints_active(text: str) -> bool:
+        """Fail closed before proposal/execution builders for explicit Orion readonly turns."""
+        try:
+            if str(getattr(ao01_agent_turn_context, "agent_id", "") or "").strip().lower() != "orion":
+                return False
+        except Exception:
+            return False
+
+        try:
+            if is_readonly_technical_request(text):
+                return True
+        except Exception:
+            pass
+
+        try:
+            constraints = extract_mutation_constraints(text)
+            if bool(getattr(constraints, "force_readonly", False)):
+                return True
+            if bool(getattr(constraints, "block_proposal", False)) or bool(getattr(constraints, "block_write", False)):
+                return True
+        except Exception:
+            pass
+
+        normalized = _normalize_router_text(text)
+        negative_markers = [
+            "sem proposta",
+            "nao crie proposta",
+            "não crie proposta",
+            "nao gere proposta",
+            "não gere proposta",
+            "sem escrita",
+            "nao escreva",
+            "não escreva",
+            "nao abra pr",
+            "não abra pr",
+            "nao faca commit",
+            "não faça commit",
+            "nao faca merge",
+            "não faça merge",
+            "nao faca deploy",
+            "não faça deploy",
+            "nao execute migration",
+            "não execute migration",
+            "proposal_created=false",
+            "proposal_only=false",
+        ]
+        return any(marker in normalized for marker in negative_markers)
 
 
     def _build_internal_warroom_governed_execution_answer(text: str) -> str:
@@ -37137,6 +37192,43 @@ async def chat_stream(
                     "route_applied": True,
                     "execution_lifecycle": "completed",
                     "governance_mode": "proposal_artifact_fastpath",
+                }
+            },
+        }
+
+
+    def _internal_warroom_governed_execution_fastpath_in_isolated_session() -> Dict[str, Any]:
+        final_text = _build_internal_warroom_governed_execution_answer(message)
+        persisted = _persist_assistant_message(
+            text=final_text,
+            thread_id=tid_seed,
+            agent_id=None,
+            agent_name="Auditor",
+        )
+        return {
+            **persisted,
+            "answer": final_text,
+            "message": final_text,
+            "final_text": final_text,
+            "agent_id": None,
+            "agent_name": "Auditor",
+            "voice_id": None,
+            "avatar_url": None,
+            "runtime_hints": {
+                "routing": {
+                    "routing_source": "stream_internal_warroom_governed_execution_v1",
+                    "route_applied": True,
+                    "execution_lifecycle": "completed",
+                    "governance_mode": "proposal_execution_fastpath",
+                    "proposal_created": False,
+                    "proposal_only": True,
+                    "write_allowed": False,
+                    "write_executed": False,
+                    "commit_executed": False,
+                    "merge_executed": False,
+                    "deploy_executed": False,
+                    "migration_executed": False,
+                    "human_approval_required": True,
                 }
             },
         }
@@ -42550,7 +42642,7 @@ async def chat_stream(
         # Minimal and reversible wiring before AMCHAM/Chris/Orion/Orkio public policies.
         # The gateway is fail-open: if Decision Mesh or any new module fails, the
         # existing AO66B/AO67A/public policy corridor continues unchanged.
-        if _ao75_public_fastpath_allowed and not _ao01_force_full_llm_runtime:
+        if _ao75_public_fastpath_allowed and not _ao01_force_full_llm_runtime and not bool(getattr(ao01_agent_turn_context, "ownership_locked", False)):
             try:
                 _ao67f_gateway_decision = build_public_chat_gateway_decision(
                     message=message,
@@ -42586,7 +42678,7 @@ async def chat_stream(
                 "commit_memory": False,
             }
 
-        if (not _ao01_force_full_llm_runtime) and (not ao68b_admin_internal_agent_bypass) and should_short_circuit_public_chat(_ao67f_gateway_decision):
+        if (not _ao01_force_full_llm_runtime) and (not ao68b_admin_internal_agent_bypass) and (not bool(getattr(ao01_agent_turn_context, "ownership_locked", False))) and should_short_circuit_public_chat(_ao67f_gateway_decision):
             try:
                 _ao67f_stream_payload = dict(_ao67f_gateway_decision.get("stream_payload") or {})
                 _ao67f_final_text = str(
@@ -42654,6 +42746,7 @@ async def chat_stream(
             (not _ao01_force_full_llm_runtime)
             and _ao75_public_fastpath_allowed
             and (not ao68b_admin_internal_agent_bypass)
+            and (not bool(getattr(ao01_agent_turn_context, "ownership_locked", False)))
             and isinstance(_amcham_public_journey_decision, dict)
             and _amcham_public_journey_decision.get("handled")
         ):
