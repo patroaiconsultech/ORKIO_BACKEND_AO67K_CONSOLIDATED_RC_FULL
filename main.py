@@ -35071,16 +35071,21 @@ async def chat_stream(
         target_agent_slugs=getattr(inp, "target_agent_slugs", None),
         agent_ids=getattr(inp, "agent_ids", None),
     )
-    if not ao01_requested_turn_owner and isinstance(route_plan, dict):
-        # Defense in depth for deployments where older helper code misses route-plan
-        # ownership. The router has already resolved the explicit speaker, so the
-        # stream entrypoint must lock the same owner before the first SSE event.
-        ao01_requested_turn_owner = explicit_turn_owner_candidate(
+    if isinstance(route_plan, dict):
+        # Defense in depth for deployments where an earlier helper returns the
+        # orchestrator default. The router has already resolved the explicit
+        # speaker, so a non-Orkio route owner must lock the first SSE event too.
+        ao01_route_plan_turn_owner = explicit_turn_owner_candidate(
             route_plan.get("requested_agent"),
             route_plan.get("resolved_agent"),
             route_plan.get("target_agent"),
             route_plan.get("agent"),
         )
+        if ao01_route_plan_turn_owner and (
+            not ao01_requested_turn_owner
+            or str(ao01_requested_turn_owner or "").strip().lower() == "orkio"
+        ):
+            ao01_requested_turn_owner = ao01_route_plan_turn_owner
 
     ao01_agent_turn_context = resolve_agent_turn_context(
         ao01_requested_turn_owner,
