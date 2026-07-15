@@ -42661,10 +42661,11 @@ async def chat_stream(
             })
             _docio_payload = await asyncio.to_thread(_docio_chat_artifact_fastpath_in_isolated_session)
             if isinstance(_docio_payload, dict) and _docio_payload.get("handled"):
-                await _emit_result_payload(
+                async for ev in _emit_result_payload(
                     _docio_payload,
                     routing_source="docio001_4_chat_artifact_bridge_v1",
-                )
+                ):
+                    yield ev
                 return
 
 
