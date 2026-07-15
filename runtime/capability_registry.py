@@ -2206,3 +2206,47 @@ def get_governed_capability_profile(capability: str) -> Dict[str, Any]:
 
 def get_governed_capability_registry() -> Dict[str, Dict[str, Any]]:
     return {key: dict(value) for key, value in GOVERNED_CAPABILITY_PROFILES.items()}
+
+# DOCIO-001.4 — Conversational Artifact Execution Bridge
+# A user-requested deliverable is a governed artifact write, not a repository,
+# migration or production mutation. It is executable only by the canonical
+# Orkio/Orion owners and does not bypass tenant/thread authorization.
+_DOCIO0014_CAPABILITY = "document_artifact_generate"
+CAPABILITY_METADATA[_DOCIO0014_CAPABILITY] = {
+    "purpose": "gerar artefatos documentais solicitados explicitamente pelo usuário",
+    "risk_level": "low",
+    "requires_authorization": False,
+    "allowed_targets": ["user_artifact", "thread"],
+    "governed": True,
+}
+CAPABILITY_EXECUTION_BINDINGS[_DOCIO0014_CAPABILITY] = {
+    "executor": "services.document_artifact_command_service.execute_document_artifact_command",
+    "mode": "runtime",
+    "write": True,
+    "write_kind": "user_requested_artifact",
+    "human_approval_required": False,
+    "allowed_agents": ["orkio", "orion"],
+}
+GOVERNED_CAPABILITY_PROFILES[_DOCIO0014_CAPABILITY] = {
+    "purpose": "criar arquivo solicitado pelo usuário com auditoria e persistência transacional",
+    "risk_level": "low",
+    "requires_authorization": False,
+    "allowed_targets": ["user_artifact", "thread"],
+    "governed": True,
+}
+for _docio0014_agent_slug in ("orkio", "orion"):
+    _docio0014_registry_row = CAPABILITY_REGISTRY.get(_docio0014_agent_slug)
+    if isinstance(_docio0014_registry_row, dict):
+        _docio0014_capabilities = _docio0014_registry_row.setdefault(
+            "capabilities", []
+        )
+        if _DOCIO0014_CAPABILITY not in _docio0014_capabilities:
+            _docio0014_capabilities.append(_DOCIO0014_CAPABILITY)
+
+    _docio0014_roster_row = AGENT_ROSTER.get(_docio0014_agent_slug)
+    if isinstance(_docio0014_roster_row, dict):
+        _docio0014_roster_caps = _docio0014_roster_row.setdefault(
+            "capabilities", []
+        )
+        if _DOCIO0014_CAPABILITY not in _docio0014_roster_caps:
+            _docio0014_roster_caps.append(_DOCIO0014_CAPABILITY)

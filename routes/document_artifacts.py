@@ -27,6 +27,11 @@ from ..services.document_artifact_service import (
     DocumentArtifactWorkerError,
     generate_document_artifact_isolated,
 )
+from ..services.document_artifact_command_service import (
+    DocumentArtifactCommandDeps,
+    DocumentArtifactThreadNotFound,
+    execute_document_artifact_command,
+)
 from ..services.document_context_service import build_thread_document_context
 from ..services.document_governance_service import (
     DocioAuditPersistenceError,
@@ -54,6 +59,7 @@ class DocumentArtifactRouterDeps:
     new_id: Callable[[], str]
     now_ts: Callable[[], int]
     logger: logging.Logger
+    session_factory: Callable[[], Session]
 
 
 def _request_id(request: Request) -> str:
@@ -324,165 +330,35 @@ def build_document_artifacts_router(
                 if thread is None:
                     raise HTTPException(status_code=404, detail="thread_not_found")
 
-            execution_id = uuid.uuid4().hex
-            locks = (
-                ("docio_generation_tenant", org),
-                ("docio_generation_user", f"{org}:{user_id}"),
+            command_deps = DocumentArtifactCommandDeps(
+                new_id=deps.new_id,
+                now_ts=deps.now_ts,
+                logger=deps.logger,
+                generate_artifact=generate_document_artifact_isolated,
+                stage_audit_record=stage_audit,
             )
-            with distributed_locks(db, locks):
-                # Fast fail on count quotas before spending worker resources.
-                enforce_prospective_quota(
-                    db,
-                    org=org,
-                    user_id=user_id,
-                    prospective_bytes=0,
-                    now_ts=deps.now_ts(),
-                )
 
-                artifact = await asyncio.to_thread(
-                    generate_document_artifact_isolated,
-                    input_model.model_dump(),
-                    limits=limits,
-                )
-
-                now = deps.now_ts()
-                quota_before = enforce_prospective_quota(
-                    db,
-                    org=org,
-                    user_id=user_id,
-                    prospective_bytes=len(artifact.content),
-                    now_ts=now,
-                )
-
-                file_id = deps.new_id()
-                file_row = File(
-                    id=file_id,
-                    org_slug=org,
-                    thread_id=thread_id,
-                    uploader_id=user_id,
-                    uploader_name=user.get("name"),
-                    uploader_email=user.get("email"),
-                    filename=artifact.filename,
-                    original_filename=artifact.filename,
-                    origin="generated",
-                    scope_thread_id=thread_id,
-                    scope_agent_id=None,
-                    mime_type=artifact.mime_type,
-                    size_bytes=len(artifact.content),
-                    content=artifact.content,
-                    extraction_failed=False,
-                    is_institutional=False,
-                    created_at=now,
-                )
-                db.add(file_row)
-
-                index_result = stage_text_index(
-                    db,
-                    org=org,
-                    file_id=file_id,
-                    text_content=artifact.text_content,
-                    now_ts=now,
-                )
-                file_row.extraction_failed = not bool(
-                    index_result.get("has_extracted_text")
-                )
-                db.add(file_row)
-
-                event_persisted = False
-                if thread_id:
-                    visible_text = f"📄 Artefato gerado: {artifact.filename}"
-                    event_payload = {
-                        "kind": "document_artifact",
-                        "type": "generated_file",
-                        "file_id": file_id,
-                        "filename": artifact.filename,
-                        "format": artifact.format,
-                        "mime": artifact.mime_type,
-                        "size": len(artifact.content),
-                        "download_url": f"/api/files/{file_id}/download",
-                        "created_by_user_id": user_id,
-                        "created_by_user_name": user.get("name"),
-                        "requested_agent_hint": input_model.requested_agent_hint,
-                        "resolved_agent": None,
-                        "execution_id": execution_id,
-                        "authorship_claim": "user_or_system",
-                        "ts": now,
-                        "text": visible_text,
-                    }
-                    db.add(
-                        Message(
-                            id=deps.new_id(),
-                            org_slug=org,
-                            thread_id=thread_id,
-                            user_id=user_id,
-                            user_name=user.get("name"),
-                            role="system",
-                            agent_id=None,
-                            agent_name=None,
-                            content=(
-                                visible_text
-                                + "\n\nORKIO_EVENT:"
-                                + json.dumps(event_payload, ensure_ascii=False)
-                            ),
-                            created_at=now,
-                        )
+            def _run_command() -> Dict[str, Any]:
+                command_db = deps.session_factory()
+                try:
+                    return execute_document_artifact_command(
+                        command_db,
+                        input_model=input_model,
+                        org=org,
+                        user=user,
+                        request_id=request_id,
+                        path=path,
+                        deps=command_deps,
+                        limits=limits,
+                        resolved_agent_id=None,
+                        resolved_agent_name=None,
+                        assistant_text_builder=None,
+                        authorship_claim="user_or_system",
                     )
-                    event_persisted = True
+                finally:
+                    command_db.close()
 
-                audit_meta = {
-                    "file_id": file_id,
-                    "filename": artifact.filename,
-                    "format": artifact.format,
-                    "thread_id": thread_id,
-                    "size_bytes": len(artifact.content),
-                    "extracted_chars": int(
-                        index_result.get("extracted_chars") or 0
-                    ),
-                    "chunks_created": int(
-                        index_result.get("chunks_created") or 0
-                    ),
-                    "thread_event_persisted": event_persisted,
-                    "execution_id": execution_id,
-                    "authorship_claim": "user_or_system",
-                    "quota_before": quota_before.as_dict(),
-                }
-                stage_audit(
-                    db,
-                    audit_id=deps.new_id(),
-                    org=org,
-                    user_id=user_id,
-                    action="document_artifact.generated",
-                    request_id=request_id,
-                    path=path,
-                    status_code=200,
-                    latency_ms=_latency_ms(started),
-                    now_ts=now,
-                    meta=audit_meta,
-                )
-
-                # File, index, thread event and audit become visible together.
-                db.commit()
-
-            return {
-                "ok": True,
-                "file_id": file_id,
-                "filename": artifact.filename,
-                "format": artifact.format,
-                "mime_type": artifact.mime_type,
-                "size_bytes": len(artifact.content),
-                "thread_id": thread_id,
-                "download_url": f"/api/files/{file_id}/download",
-                "extracted_chars": int(
-                    index_result.get("extracted_chars") or 0
-                ),
-                "chunks_created": int(index_result.get("chunks_created") or 0),
-                "extraction_failed": bool(file_row.extraction_failed),
-                "thread_event_persisted": event_persisted,
-                "audit_persisted": True,
-                "execution_id": execution_id,
-                "resolved_agent": None,
-                "authorship_claim": "user_or_system",
-            }
+            return await asyncio.to_thread(_run_command)
 
         except HTTPException as exc:
             _persist_failure_or_raise(
@@ -497,6 +373,19 @@ def build_document_artifacts_router(
                 detail=str(exc.detail),
             )
             raise
+        except DocumentArtifactThreadNotFound as exc:
+            _persist_failure_or_raise(
+                db,
+                org=org,
+                user_id=user_id,
+                action="document_artifact.generate.rejected",
+                request_id=request_id,
+                path=path,
+                status_code=404,
+                started=started,
+                detail=str(exc),
+            )
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         except DocumentArtifactLimitError as exc:
             _persist_failure_or_raise(
                 db,
