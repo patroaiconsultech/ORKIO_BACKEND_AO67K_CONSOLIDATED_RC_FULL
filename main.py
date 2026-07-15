@@ -1,4 +1,4 @@
-﻿# EFATA 777 V10 AO68D HF1 ADMIN ORCH + REALTIME COMPAT COMPLETE
+# EFATA 777 V10 AO68D HF1 ADMIN ORCH + REALTIME COMPAT COMPLETE
 # Consolidated package for governed capability answers + analytical readonly + registry alignment + realtime self-heal hardening.
 
 from __future__ import annotations
@@ -401,24 +401,25 @@ from .routes.document_artifacts import (
     DocumentArtifactRouterDeps,
     build_document_artifacts_router,
 )
-from .schemas.document_artifacts import DocumentArtifactGenerateIn
-from .services.document_artifact_service import (
-    DocumentArtifactConcurrencyError,
-    DocumentArtifactLimitError,
-    DocumentArtifactLimits,
-    DocumentArtifactTimeoutError,
-    DocumentArtifactWorkerError,
-    generate_document_artifact_isolated,
+from .routes.access_grants import (
+    AccessGrantRouterDeps,
+    build_access_grants_router,
 )
-from .services.document_governance_service import (
-    DocioAuditPersistenceError,
-    DocioCoordinationUnavailable,
-    DocioLockUnavailable,
-    DocioQuotaExceeded,
-    distributed_locks,
-    enforce_prospective_quota,
-    stage_audit,
-    stage_text_index,
+from .services.access_grant_service import (
+    access_gate_auth_required,
+    find_signup_code_by_id,
+    load_access_grant_config,
+    require_request_access_grant,
+)
+from .schemas.document_artifacts import DocumentArtifactGenerateIn
+from .runtime.document_artifact_intent import (
+    artifact_success_message,
+    build_document_artifact_payload,
+    classify_document_artifact_request,
+)
+from .services.document_artifact_command_service import (
+    DocumentArtifactCommandDeps,
+    execute_document_artifact_command,
 )
 from .services.identity_service import load_active_identity
 from .services.governance_service import build_governance_health
@@ -461,73 +462,6 @@ from email.mime.multipart import MIMEMultipart
 import urllib.request as _urllib_request
 import ssl as _ssl
 import time as _time  # AO-33: global alias for AO-32 observability
-
-
-def _docio_chat_ascii_fold(value: Any) -> str:
-    raw = str(value or "")
-    return unicodedata.normalize("NFKD", raw).encode("ascii", "ignore").decode("ascii").lower()
-
-
-def _docio_chat_artifact_plan(message: str) -> Optional[Dict[str, Any]]:
-    """Return a generation plan only for explicit chat artifact requests."""
-
-    text = str(message or "").strip()
-    folded = _docio_chat_ascii_fold(text)
-    if not folded:
-        return None
-
-    action_match = re.search(
-        r"\b(ger(e|a|ar|e uma|ar uma)?|cri(e|a|ar|e uma|ar uma)?|mont(e|a|ar)|"
-        r"produz(a|ir)|export(e|a|ar)|fa(c|ca|zer)|prepar(e|a|ar)|me manda|manda)\b",
-        folded,
-    )
-    format_patterns = [
-        ("xlsx", r"\b(xlsx|excel|planilha|spreadsheet)\b"),
-        ("pptx", r"\b(pptx|powerpoint|apresentacao|slides?|deck)\b"),
-        ("pdf", r"\b(pdf)\b"),
-        ("docx", r"\b(docx|word|documento)\b"),
-        ("csv", r"\b(csv)\b"),
-        ("md", r"\b(markdown|\.md| md)\b"),
-    ]
-    detected_format = None
-    for fmt, pattern in format_patterns:
-        if re.search(pattern, folded):
-            detected_format = fmt
-            break
-    if not action_match or not detected_format:
-        return None
-
-    title_by_format = {
-        "xlsx": "Planilha de teste",
-        "csv": "Tabela de teste",
-        "pptx": "Apresentacao de teste",
-        "pdf": "Documento PDF de teste",
-        "docx": "Documento Word de teste",
-        "md": "Documento Markdown de teste",
-    }
-    if "amcham" in folded:
-        title_by_format["xlsx"] = "Analise AMCHAM"
-        title_by_format["pptx"] = "Apresentacao AMCHAM"
-
-    rows = [
-        ["Campo", "Valor"],
-        ["Status", "Teste OK"],
-        ["Origem", "Orkio"],
-        ["Formato", detected_format],
-    ]
-    content = (
-        f"{title_by_format.get(detected_format, 'Documento Orkio')}\n\n"
-        "Arquivo gerado pela plataforma Orkio a partir de um pedido explicito no chat.\n\n"
-        "- Status: Teste OK\n"
-        "- Origem: Orkio\n"
-        f"- Formato: {detected_format}\n"
-    )
-    return {
-        "format": detected_format,
-        "title": title_by_format.get(detected_format, "Documento Orkio"),
-        "content": content,
-        "rows": rows if detected_format in {"csv", "xlsx", "pptx"} else None,
-    }
 
 
 
@@ -2482,8 +2416,7 @@ def _is_summit_eligible_user(u: Optional[User]) -> bool:
     return (
         usage_tier.startswith("summit_")
         or usage_tier == "partner_access"
-        or signup_source in {"investor", "amcham_rs_partner"}
-        or signup_code_label in {"efatah777", "amcham_rs_orkio_only", "amcham_rs_partner_access"}
+        or _is_summit_auto_approved_code(None, signup_code_label, signup_source)
         or product_scope in {"full", "orkio_only", "patroai_partner"}
     )
 
@@ -2745,118 +2678,19 @@ def get_request_org(user: Dict[str, Any], x_org_slug: Optional[str]) -> str:
 
 
 
+
 def _seed_default_summit_codes(db: Session, org: str = "public") -> None:
-    """Create default Summit access codes if they do not already exist.
+    """Deprecated SEC-001 compatibility shim.
 
-    Hardened for production drift:
-    - creates signup_codes table if missing
-    - never raises out of startup/bootstrap
+    Plaintext access codes must never be embedded in the repository or seeded
+    implicitly during application startup. Create and rotate codes through the
+    governed ``POST /api/admin/summit/codes`` endpoint instead.
     """
+    _ = db, org
     try:
-        db.execute(text("""
-        CREATE TABLE IF NOT EXISTS signup_codes (
-            id VARCHAR PRIMARY KEY, org_slug VARCHAR NOT NULL, code_hash VARCHAR NOT NULL,
-            label VARCHAR NOT NULL, source VARCHAR NOT NULL, expires_at BIGINT,
-            max_uses INTEGER NOT NULL DEFAULT 500, used_count INTEGER NOT NULL DEFAULT 0,
-            active BOOLEAN NOT NULL DEFAULT TRUE, created_at BIGINT NOT NULL, created_by VARCHAR
-        )
-        """))
-        db.execute(text("CREATE INDEX IF NOT EXISTS ix_signup_codes_org ON signup_codes(org_slug)"))
-        db.commit()
+        logger.info("SIGNUP_CODES_BOOTSTRAP_DISABLED reason=governed_admin_endpoint_required")
     except Exception:
-        try:
-            db.rollback()
-        except Exception:
-            pass
-        try:
-            logger.exception("SIGNUP_CODES_BOOTSTRAP_CREATE_FAILED")
-        except Exception:
-            pass
-        return
-
-    seeds = [
-        {
-            "id": "seed_summit2026_public",
-            "plain_code": "SOUTHSUMMIT26",
-            "label": "Participante Summit",
-            "source": "summit_user",
-            "max_uses": 5000,
-            "expires_days": 30,
-            "created_by": "system_seed",
-        },
-        {
-            "id": "seed_efatah777_public",
-            "plain_code": "EFATAH777",
-            "label": "Investidor",
-            "source": "investor",
-            "max_uses": 200,
-            "expires_days": 90,
-            "created_by": "system_seed",
-        },
-        {
-            # EFATA777_V9_AMCHAM_RS_PARTNER_ACCESS_LEGACY
-            # Legacy partner access code retained for backward compatibility.
-            "id": "seed_amchamrsorkio_partner",
-            "plain_code": "AMCHAMRSORKIO",
-            "label": "amcham_rs_orkio_only",
-            "source": "amcham_rs_partner",
-            "max_uses": 500,
-            "expires_days": None,
-            "created_by": "system_seed",
-        },
-        {
-            # EFATA777_V9_AMCHAM_RS_PARTNER_ACCESS_CANONICAL
-            # Canonical AmCham RS partner access code.
-            "id": "seed_amchamrs_partner",
-            "plain_code": "AMCHAMRS",
-            "label": "amcham_rs_partner_access",
-            "source": "amcham_rs_partner",
-            "max_uses": 500,
-            "expires_days": None,
-            "created_by": "system_seed",
-        },
-    ]
-
-    try:
-        for item in seeds:
-            code_hash = hashlib.sha256(item["plain_code"].strip().upper().encode()).hexdigest()
-            existing = db.execute(
-                select(SignupCode).where(
-                    SignupCode.org_slug == org,
-                    SignupCode.code_hash == code_hash,
-                )
-            ).scalar_one_or_none()
-            if existing:
-                continue
-
-            now = now_ts()
-            expires_days = item.get("expires_days")
-            sc = SignupCode(
-                id=item["id"],
-                org_slug=org,
-                code_hash=code_hash,
-                label=item["label"],
-                source=item["source"],
-                expires_at=(None if expires_days is None else now + int(expires_days) * 86400),
-                max_uses=int(item["max_uses"]),
-                used_count=0,
-                active=True,
-                created_at=now,
-                created_by=item["created_by"],
-            )
-            db.add(sc)
-
-        db.commit()
-    except Exception:
-        try:
-            db.rollback()
-        except Exception:
-            pass
-        try:
-            logger.exception("SIGNUP_CODES_BOOTSTRAP_SEED_FAILED")
-        except Exception:
-            pass
-
+        pass
 
 def _normalize_voice_id(raw: Optional[str], *, default: str = "cedar") -> str:
     voice = (raw or "").strip().lower()
@@ -4326,8 +4160,11 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> Dic
         summit_eligible = (
             str(payload.get("usage_tier") or "").startswith("summit_")
             or str(payload.get("usage_tier") or "").lower() == "partner_access"
-            or str(payload.get("signup_source") or "").lower() in {"investor", "amcham_rs_partner"}
-            or str(payload.get("signup_code_label") or "").lower() in {"efatah777", "amcham_rs_orkio_only", "amcham_rs_partner_access"}
+            or _is_summit_auto_approved_code(
+                None,
+                str(payload.get("signup_code_label") or ""),
+                str(payload.get("signup_source") or ""),
+            )
             or str(payload.get("product_scope") or "").lower() in {"full", "orkio_only", "patroai_partner"}
         )
 
@@ -6264,6 +6101,17 @@ app.include_router(git_internal_router)
 app.include_router(evolution_internal_router)
 app.include_router(evolution_trigger_router)
 app.include_router(
+    build_access_grants_router(
+        AccessGrantRouterDeps(
+            get_db=get_db,
+            get_org=get_org,
+            new_id=new_id,
+            now_ts=now_ts,
+            logger=logger,
+        )
+    )
+)
+app.include_router(
     build_document_artifacts_router(
         DocumentArtifactRouterDeps(
             get_current_user=get_current_user,
@@ -6273,6 +6121,7 @@ app.include_router(
             new_id=new_id,
             now_ts=now_ts,
             logger=logger,
+            session_factory=SessionLocal,
         )
     )
 )
@@ -6492,6 +6341,12 @@ def validate_runtime_env() -> None:
         cors = cors_list()
         if cors == ["*"] or any(v == "*" for v in cors):
             raise RuntimeError("CORS_ORIGINS must be an allowlist in production (refuse to start)")
+
+@app.on_event("startup")
+def _startup_access_gate_guard():
+    """Fail closed when the server-side access gate is enabled but incomplete."""
+    load_access_grant_config(require_signing_key=access_gate_auth_required())
+
 
 @app.on_event("startup")
 def _startup_schema_guard():
@@ -7114,30 +6969,44 @@ def _get_feature_flag(db: Session, org: str, key: str) -> Optional[str]:
         return None
 
 
-def _is_summit_auto_approved_code(raw_access_code: Optional[str], signup_code_label: Optional[str], signup_source: Optional[str]) -> bool:
+
+def _csv_env_set(name: str, default: str = "") -> set[str]:
+    raw = _clean_env(os.getenv(name, default), default=default)
+    return {part.strip().lower() for part in raw.split(",") if part.strip()}
+
+
+def _summit_auto_approve_labels() -> set[str]:
+    return _csv_env_set(
+        "SUMMIT_AUTO_APPROVE_LABELS",
+        "investor,amcham_rs_orkio_only,amcham_rs_partner_access",
+    )
+
+
+def _summit_auto_approve_sources() -> set[str]:
+    return _csv_env_set(
+        "SUMMIT_AUTO_APPROVE_SOURCES",
+        "investor,amcham_rs_partner",
+    )
+
+
+def _is_summit_auto_approved_code(
+    raw_access_code: Optional[str],
+    signup_code_label: Optional[str],
+    signup_source: Optional[str],
+) -> bool:
+    """Return approval eligibility from server-owned metadata only.
+
+    SEC-001 deliberately ignores the raw code. Plaintext access codes must not
+    be embedded in source or treated as policy identifiers.
     """
-    Summit access code EFATAH777 must auto-approve without manual admin approval.
-    Compatible with legacy states where the signal may live in label/source.
-    """
-    raw = (raw_access_code or "").strip().lower()
+    _ = raw_access_code
     label = (signup_code_label or "").strip().lower()
     source = (signup_source or "").strip().lower()
-    if raw == "efatah777":
-        return True
-    if label == "efatah777":
-        return True
-    if source == "investor":
-        return True
+    return (
+        bool(label and label in _summit_auto_approve_labels())
+        or bool(source and source in _summit_auto_approve_sources())
+    )
 
-    # EFATA777_V9_AMCHAM_RS_PARTNER_ACCESS
-    if raw in {"amchamrsorkio", "amchamrs"}:
-        return True
-    if label in {"amcham_rs_orkio_only", "amcham_rs_partner_access"}:
-        return True
-    if source == "amcham_rs_partner":
-        return True
-
-    return False
 
 # AO20K-HF6A_TESTER_BILLING_BYPASS
 def _tester_billing_bypass_plan_codes() -> set:
@@ -7176,6 +7045,16 @@ def register(inp: RegisterIn, request: Request = None, x_org_slug: Optional[str]
     email_ref = _ao79a_email_ref(email)
     is_admin_email = email in admin_emails()
 
+    access_grant_claims = None
+    if access_gate_auth_required():
+        if request is None:
+            raise HTTPException(status_code=403, detail="ACCESS_GRANT_REQUIRED")
+        access_grant_claims = require_request_access_grant(
+            request,
+            expected_org=org,
+            db=db,
+        )
+
     try:
         logger.warning(
             "REGISTER_ATTEMPT request_id=%s org=%s email_ref=%s summit_mode=%s access_code_present=%s accept_terms=%s",
@@ -7198,21 +7077,26 @@ def register(inp: RegisterIn, request: Request = None, x_org_slug: Optional[str]
     product_scope = "full"
     is_amcham_partner_access = False
 
+
     if SUMMIT_MODE and not is_admin_email:
-        if not inp.access_code:
-            logger.warning("REGISTER_DENIED reason=missing_code ip=%s org=%s", ip, org)
-            raise HTTPException(status_code=403, detail="Access code is required in Summit mode.")
+        sc = None
+        if inp.access_code:
+            sc = _validate_access_code(db, org, inp.access_code)
+        elif access_grant_claims:
+            sc = find_signup_code_by_id(
+                db,
+                org_slug=org,
+                code_id=str(access_grant_claims.get("code_id") or ""),
+                consume=True,
+                now=now_ts(),
+            )
 
-        normalized_input_code = (inp.access_code or "").strip().lower()
-        allowed_partner_codes = {"efatah777", "amchamrsorkio", "amchamrs"}
-        if normalized_input_code not in allowed_partner_codes:
-            logger.warning("REGISTER_DENIED reason=unsupported_partner_code ip=%s org=%s", ip, org)
-            raise HTTPException(status_code=403, detail="Access code is not enabled for this build.")
-
-        sc = _validate_access_code(db, org, inp.access_code)
         if not sc:
-            logger.warning("REGISTER_DENIED reason=invalid_code ip=%s org=%s", ip, org)
-            raise HTTPException(status_code=403, detail="Invalid, expired or exhausted access code.")
+            logger.warning("REGISTER_DENIED reason=invalid_or_missing_code ip=%s org=%s", ip, org)
+            raise HTTPException(
+                status_code=403,
+                detail="A valid server-side access grant is required in Summit mode.",
+            )
 
         signup_code_label = sc.label
         signup_source = sc.source
@@ -7223,22 +7107,34 @@ def register(inp: RegisterIn, request: Request = None, x_org_slug: Optional[str]
         normalized_signup_source = (sc.source or "").strip().lower()
         normalized_signup_label = (sc.label or "").strip().lower()
 
-        is_investor_access = normalized_signup_source == "investor" or normalized_signup_label == "efatah777"
+        is_investor_access = (
+            normalized_signup_source == "investor"
+            or normalized_signup_label == "investor"
+        )
         is_amcham_partner_access = (
-            normalized_input_code in {"amchamrsorkio", "amchamrs"}
-            or normalized_signup_source == "amcham_rs_partner"
-            or normalized_signup_label in {"amcham_rs_orkio_only", "amcham_rs_partner_access"}
+            normalized_signup_source == "amcham_rs_partner"
+            or normalized_signup_label in {
+                "amcham_rs_orkio_only",
+                "amcham_rs_partner_access",
+            }
         )
 
         if not (is_investor_access or is_amcham_partner_access):
-            logger.warning("REGISTER_DENIED reason=unsupported_signup_source ip=%s org=%s", ip, org)
-            raise HTTPException(status_code=403, detail="Access code is not enabled for this build.")
+            logger.warning(
+                "REGISTER_DENIED reason=unsupported_signup_source ip=%s org=%s source=%s label=%s",
+                ip,
+                org,
+                normalized_signup_source,
+                normalized_signup_label,
+            )
+            raise HTTPException(
+                status_code=403,
+                detail="Access code is not enabled for this program.",
+            )
 
         if is_amcham_partner_access:
             usage_tier = "partner_access"
             product_scope = "orkio_only"
-            signup_code_label = "amcham_rs_partner_access" if normalized_input_code == "amchamrs" else "amcham_rs_orkio_only"
-            signup_source = "amcham_rs_partner"
         else:
             usage_tier = "summit_investor"
             product_scope = "full"
@@ -7295,10 +7191,10 @@ def register(inp: RegisterIn, request: Request = None, x_org_slug: Optional[str]
     try:
         if SUMMIT_MODE and not is_admin_email:
             if is_amcham_partner_access:
-                # EFATA777_V9_AMCHAM_RS_PARTNER_ACCESS
                 usage_tier = "partner_access"
                 signup_source = "amcham_rs_partner"
-                signup_code_label = "amcham_rs_partner_access" if normalized_input_code == "amchamrs" else "amcham_rs_orkio_only"
+                # Preserve the server-owned database label; never derive policy
+                # from a plaintext code.
                 product_scope = "orkio_only"
             else:
                 # HARD ENFORCEMENT FOR INVESTOR-ONLY SUMMIT
@@ -7416,6 +7312,14 @@ def login(inp: LoginIn, x_org_slug: Optional[str] = Header(default=None), db: Se
         raise HTTPException(status_code=429, detail="Muitas tentativas de login. Aguarde 1 minuto.")
 
     org = (get_org(x_org_slug) if x_org_slug else (inp.tenant or default_tenant())).strip()
+    if access_gate_auth_required():
+        if request is None:
+            raise HTTPException(status_code=403, detail="ACCESS_GRANT_REQUIRED")
+        require_request_access_grant(
+            request,
+            expected_org=org,
+            db=db,
+        )
     email = inp.email.lower().strip()
     email_ref = _ao79a_email_ref(email)
     try:
@@ -37258,305 +37162,6 @@ async def chat_stream(
                 pass
 
 
-    def _docio_chat_artifact_fastpath_in_isolated_session() -> Dict[str, Any]:
-        plan = _docio_chat_artifact_plan(message)
-        if not plan:
-            return {"handled": False}
-
-        db2 = SessionLocal()
-        started = _time.monotonic()
-        file_id = None
-        artifact = None
-        thread_id = str(tid_seed or "").strip()
-        user_id = str(user.get("sub") or "")
-        try:
-            if not thread_id:
-                t = Thread(
-                    id=new_id(),
-                    org_slug=org,
-                    title="Nova conversa",
-                    created_at=now_ts(),
-                )
-                db2.add(t)
-                db2.commit()
-                thread_id = t.id
-                _ensure_thread_owner(db2, org, thread_id, user_id)
-            else:
-                thread = db2.execute(
-                    select(Thread).where(
-                        Thread.id == thread_id,
-                        Thread.org_slug == org,
-                    )
-                ).scalar_one_or_none()
-                if thread is None:
-                    thread = Thread(
-                        id=thread_id,
-                        org_slug=org,
-                        title="Nova conversa",
-                        created_at=now_ts(),
-                    )
-                    db2.add(thread)
-                    db2.commit()
-                elif user.get("role") != "admin":
-                    _require_thread_member(db2, org, thread_id, user_id)
-
-            _get_or_create_user_message(
-                db2,
-                org,
-                thread_id,
-                user,
-                message,
-                client_message_id,
-            )
-
-            input_model = DocumentArtifactGenerateIn.model_validate({
-                **plan,
-                "thread_id": thread_id,
-                "requested_agent_hint": ao01_response_agent_name,
-            })
-            limits = DocumentArtifactLimits.from_env()
-            execution_id = uuid.uuid4().hex
-            locks = (
-                ("docio_generation_tenant", org),
-                ("docio_generation_user", f"{org}:{user_id}"),
-            )
-
-            with distributed_locks(db2, locks):
-                enforce_prospective_quota(
-                    db2,
-                    org=org,
-                    user_id=user_id,
-                    prospective_bytes=0,
-                    now_ts=now_ts(),
-                )
-                artifact = generate_document_artifact_isolated(
-                    input_model.model_dump(),
-                    limits=limits,
-                )
-                now = now_ts()
-                quota_before = enforce_prospective_quota(
-                    db2,
-                    org=org,
-                    user_id=user_id,
-                    prospective_bytes=len(artifact.content),
-                    now_ts=now,
-                )
-                file_id = new_id()
-                file_row = File(
-                    id=file_id,
-                    org_slug=org,
-                    thread_id=thread_id,
-                    uploader_id=user_id,
-                    uploader_name=user.get("name"),
-                    uploader_email=user.get("email"),
-                    filename=artifact.filename,
-                    original_filename=artifact.filename,
-                    origin="generated",
-                    scope_thread_id=thread_id,
-                    scope_agent_id=None,
-                    mime_type=artifact.mime_type,
-                    size_bytes=len(artifact.content),
-                    content=artifact.content,
-                    extraction_failed=False,
-                    is_institutional=False,
-                    created_at=now,
-                )
-                db2.add(file_row)
-
-                index_result = stage_text_index(
-                    db2,
-                    org=org,
-                    file_id=file_id,
-                    text_content=artifact.text_content,
-                    now_ts=now,
-                )
-                file_row.extraction_failed = not bool(index_result.get("has_extracted_text"))
-                db2.add(file_row)
-
-                download_url = f"/api/files/{file_id}/download"
-                visible_text = f"Arquivo gerado: {artifact.filename}"
-                event_payload = {
-                    "kind": "document_artifact",
-                    "type": "generated_file",
-                    "file_id": file_id,
-                    "filename": artifact.filename,
-                    "format": artifact.format,
-                    "mime": artifact.mime_type,
-                    "size": len(artifact.content),
-                    "download_url": download_url,
-                    "created_by_user_id": user_id,
-                    "created_by_user_name": user.get("name"),
-                    "requested_agent_hint": ao01_response_agent_name,
-                    "resolved_agent": ao01_response_agent_id,
-                    "execution_id": execution_id,
-                    "authorship_claim": "chat_user_requested_system_generated",
-                    "ts": now,
-                    "text": visible_text,
-                }
-                db2.add(
-                    Message(
-                        id=new_id(),
-                        org_slug=org,
-                        thread_id=thread_id,
-                        user_id=user_id,
-                        user_name=user.get("name"),
-                        role="system",
-                        agent_id=None,
-                        agent_name=None,
-                        content=visible_text + "\n\nORKIO_EVENT:" + json.dumps(event_payload, ensure_ascii=False),
-                        created_at=now,
-                    )
-                )
-                stage_audit(
-                    db2,
-                    audit_id=new_id(),
-                    org=org,
-                    user_id=user_id,
-                    action="document_artifact.generated_from_chat",
-                    request_id=str(trace_id or uuid.uuid4().hex),
-                    path="/api/chat/stream",
-                    status_code=200,
-                    latency_ms=max(0, int((_time.monotonic() - started) * 1000)),
-                    now_ts=now,
-                    meta={
-                        "file_id": file_id,
-                        "filename": artifact.filename,
-                        "format": artifact.format,
-                        "thread_id": thread_id,
-                        "size_bytes": len(artifact.content),
-                        "extracted_chars": int(index_result.get("extracted_chars") or 0),
-                        "chunks_created": int(index_result.get("chunks_created") or 0),
-                        "execution_id": execution_id,
-                        "authorship_claim": "chat_user_requested_system_generated",
-                        "quota_before": quota_before.as_dict(),
-                    },
-                )
-                db2.commit()
-
-            final_text = (
-                f"Gerei o arquivo `{artifact.filename}` com sucesso.\n\n"
-                f"Download: {download_url}"
-            )
-            persisted = _persist_assistant_message(
-                text=final_text,
-                thread_id=thread_id,
-                agent_id=ao01_response_agent_id,
-                agent_name=ao01_response_agent_name,
-            )
-            return {
-                **persisted,
-                "handled": True,
-                "ok": True,
-                "answer": final_text,
-                "message": final_text,
-                "final_text": final_text,
-                "agent_id": ao01_response_agent_id,
-                "agent_name": ao01_response_agent_name,
-                "file_id": file_id,
-                "filename": artifact.filename,
-                "format": artifact.format,
-                "mime_type": artifact.mime_type,
-                "size_bytes": len(artifact.content),
-                "download_url": download_url,
-                "runtime_hints": {
-                    "routing": {
-                        "routing_source": "docio001_4_chat_artifact_bridge_v1",
-                        "route_applied": True,
-                        "execution_lifecycle": "completed",
-                        "document_artifact_generated": True,
-                        "github_write_executed": False,
-                        "database_write_executed": True,
-                    }
-                },
-            }
-        except (
-            DocumentArtifactLimitError,
-            DocumentArtifactTimeoutError,
-            DocumentArtifactWorkerError,
-            DocumentArtifactConcurrencyError,
-            DocioAuditPersistenceError,
-            DocioCoordinationUnavailable,
-            DocioLockUnavailable,
-            DocioQuotaExceeded,
-        ) as exc:
-            try:
-                db2.rollback()
-            except Exception:
-                pass
-            final_text = (
-                "Não consegui gerar o arquivo nesta tentativa. "
-                f"O pedido foi encerrado com segurança antes de confirmar qualquer download. Detalhe: {exc}"
-            )
-            persisted = _persist_assistant_message(
-                text=final_text,
-                thread_id=thread_id or tid_seed,
-                agent_id=ao01_response_agent_id,
-                agent_name=ao01_response_agent_name,
-            )
-            return {
-                **persisted,
-                "handled": True,
-                "ok": False,
-                "answer": final_text,
-                "message": final_text,
-                "final_text": final_text,
-                "agent_id": ao01_response_agent_id,
-                "agent_name": ao01_response_agent_name,
-                "runtime_hints": {
-                    "routing": {
-                        "routing_source": "docio001_4_chat_artifact_bridge_v1",
-                        "route_applied": True,
-                        "execution_lifecycle": "error",
-                        "document_artifact_generated": False,
-                        "error_class": exc.__class__.__name__,
-                    }
-                },
-            }
-        except Exception as exc:
-            try:
-                db2.rollback()
-            except Exception:
-                pass
-            try:
-                logger.exception("DOCIO_CHAT_ARTIFACT_BRIDGE_FAILED trace_id=%s thread_id=%s", trace_id, thread_id or tid_seed)
-            except Exception:
-                pass
-            final_text = (
-                "Não consegui gerar o arquivo nesta tentativa. "
-                "A execução foi encerrada com segurança sem declarar download confirmado."
-            )
-            persisted = _persist_assistant_message(
-                text=final_text,
-                thread_id=thread_id or tid_seed,
-                agent_id=ao01_response_agent_id,
-                agent_name=ao01_response_agent_name,
-            )
-            return {
-                **persisted,
-                "handled": True,
-                "ok": False,
-                "answer": final_text,
-                "message": final_text,
-                "final_text": final_text,
-                "agent_id": ao01_response_agent_id,
-                "agent_name": ao01_response_agent_name,
-                "runtime_hints": {
-                    "routing": {
-                        "routing_source": "docio001_4_chat_artifact_bridge_v1",
-                        "route_applied": True,
-                        "execution_lifecycle": "error",
-                        "document_artifact_generated": False,
-                        "error_class": exc.__class__.__name__,
-                    }
-                },
-            }
-        finally:
-            try:
-                db2.close()
-            except Exception:
-                pass
-
-
     def _internal_warroom_governed_artifact_fastpath_in_isolated_session() -> Dict[str, Any]:
         final_text = _build_internal_warroom_governed_artifact_answer(message)
         persisted = _persist_assistant_message(
@@ -42253,6 +41858,189 @@ async def chat_stream(
                 pass
 
 
+    def _docio_run_chat_artifact_in_isolated_session(
+        docio_decision: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """DOCIO-001.4: execute a user-requested artifact outside the SSE session.
+
+        The conversational bridge reuses the same transactional command service
+        as the public DOCIO route. It preserves tenant/thread ACL, immutable turn
+        ownership, audit truth and a single commit for the generated artifact,
+        index, event and assistant acknowledgement.
+        """
+
+        db2 = SessionLocal()
+        try:
+            org2 = _resolve_org(user, x_org_slug)
+            uid2 = user.get("sub") if isinstance(user, dict) else None
+            db_user2 = db2.execute(
+                select(User).where(User.id == uid2, User.org_slug == org2)
+            ).scalar_one_or_none()
+            if not db_user2:
+                raise HTTPException(status_code=401, detail="Not authenticated")
+
+            auth_status2 = _auth_status_for_user(db_user2)
+            if db_user2.role != "admin" and auth_status2 == "pending_approval":
+                raise HTTPException(status_code=403, detail="User pending approval")
+
+            tid2 = (inp.thread_id or "").strip() or None
+            if not tid2:
+                thread2 = Thread(
+                    id=new_id(),
+                    org_slug=org2,
+                    title="Nova conversa",
+                    created_at=now_ts(),
+                )
+                db2.add(thread2)
+                db2.commit()
+                tid2 = thread2.id
+                _ensure_thread_owner(db2, org2, tid2, uid2)
+            elif user.get("role") != "admin":
+                _require_thread_member(db2, org2, tid2, uid2)
+
+            try:
+                _wallet_guard_for_chat(
+                    db2,
+                    org2,
+                    user,
+                    route="/api/chat/stream",
+                    action_key=(
+                        f"chat_stream_docio:{tid2}:"
+                        f"{getattr(inp, 'client_message_id', None) or trace_id}"
+                    ),
+                )
+            except HTTPException:
+                raise
+            except Exception:
+                logger.exception(
+                    "DOCIO0014_WALLET_GUARD_FAILED trace_id=%s thread_id=%s",
+                    trace_id,
+                    tid2,
+                )
+
+            _get_or_create_user_message(
+                db2,
+                org2,
+                tid2,
+                user,
+                inp.message,
+                getattr(inp, "client_message_id", None),
+            )
+
+            owner_slug = str(
+                getattr(ao01_agent_turn_context, "turn_owner", None)
+                or docio_decision.get("agent_slug")
+                or "orkio"
+            ).strip().lower()
+            display_hint = {
+                "orion": "Orion",
+                "orkio": "Orkio",
+            }.get(owner_slug, "Orkio")
+
+            agent2 = None
+            try:
+                agent2 = (
+                    db2.execute(
+                        select(Agent)
+                        .where(Agent.org_slug == org2)
+                        .where(Agent.name.ilike(f"%{display_hint}%"))
+                        .limit(1)
+                    )
+                    .scalars()
+                    .first()
+                )
+            except Exception:
+                db2.rollback()
+                agent2 = None
+
+            agent_id2 = (
+                str(getattr(agent2, "id", None) or "").strip()
+                or str(getattr(ao01_agent_turn_context, "agent_id", None) or "").strip()
+                or owner_slug
+            )
+            agent_name2 = (
+                str(getattr(agent2, "name", None) or "").strip()
+                or str(getattr(ao01_agent_turn_context, "display_agent", None) or "").strip()
+                or display_hint
+            )
+
+            input_payload = build_document_artifact_payload(
+                inp.message,
+                docio_decision,
+                thread_id=tid2,
+                requested_agent_hint=owner_slug,
+            )
+            input_model = DocumentArtifactGenerateIn.model_validate(input_payload)
+
+            command_result = execute_document_artifact_command(
+                db2,
+                input_model=input_model,
+                org=org2,
+                user=dict(user or {}),
+                request_id=trace_id,
+                path="/api/chat/stream",
+                deps=DocumentArtifactCommandDeps(
+                    new_id=new_id,
+                    now_ts=now_ts,
+                    logger=logger,
+                ),
+                resolved_agent_id=agent_id2,
+                resolved_agent_name=agent_name2,
+                assistant_text_builder=lambda artifact: artifact_success_message(
+                    agent_name=agent_name2,
+                    filename=str(artifact.get("filename") or "arquivo"),
+                ),
+                authorship_claim="immutable_turn_owner",
+            )
+
+            final_text2 = str(
+                command_result.get("assistant_text")
+                or artifact_success_message(
+                    agent_name=agent_name2,
+                    filename=str(command_result.get("filename") or "arquivo"),
+                )
+            ).strip()
+            return {
+                **command_result,
+                "thread_id": tid2,
+                "answer": final_text2,
+                "message": final_text2,
+                "final_text": final_text2,
+                "content": final_text2,
+                "agent_id": agent_id2,
+                "agent_name": agent_name2,
+                "final_speaker": agent_name2,
+                "assistant_persisted": bool(
+                    command_result.get("assistant_persisted")
+                ),
+                "assistant_message_id": command_result.get(
+                    "assistant_message_id"
+                ),
+                "runtime_hints": {
+                    "routing": {
+                        "routing_source": "stream_docio_conversational_bridge",
+                        "execution_lifecycle": "completed",
+                        "route_applied": True,
+                        "capability": "document_artifact_generate",
+                        "reason": docio_decision.get("reason"),
+                    },
+                    "docio": {
+                        "tools_executed": True,
+                        "write_executed": True,
+                        "write_kind": "user_requested_artifact",
+                        "human_approval_required": False,
+                        "format": command_result.get("format"),
+                        "artifact_created": True,
+                    },
+                },
+            }
+        finally:
+            try:
+                db2.close()
+            except Exception:
+                pass
+
+
     # AO-29C_CHAT_STREAM_OBSERVABILITY
     try:
         logger.warning("AO29_CHAT_STREAM_REQUEST_ENTER trace_id=%s thread_id=%s", trace_id, tid_seed)
@@ -42633,6 +42421,11 @@ async def chat_stream(
                 "assistant_message_id": assistant_message_id,
                 "final_text": final_text,
                 "citations": payload.get("citations") or [],
+                "artifact": payload.get("artifact"),
+                "artifacts": payload.get("artifacts") or [],
+                "artifact_created": bool(
+                    payload.get("artifact") or payload.get("artifacts")
+                ),
                 "voice_id": payload.get("voice_id"),
                 "avatar_url": payload.get("avatar_url"),
                 "runtime_hints": runtime_hints,
@@ -42643,31 +42436,94 @@ async def chat_stream(
                 pass
 
 
-        _docio_artifact_plan = _docio_chat_artifact_plan(message)
-        if _docio_artifact_plan:
+        # DOCIO-001.4 — Conversational Artifact Execution Bridge.
+        # Explicit creation requests must execute before stream-lite or any
+        # conversational fast-path can convert them into a text-only refusal.
+        docio_decision = classify_document_artifact_request(
+            message,
+            agent_slug=getattr(ao01_agent_turn_context, "turn_owner", None),
+        )
+        if bool(docio_decision.get("handled")):
             try:
                 logger.warning(
-                    "DOCIO_CHAT_ARTIFACT_BRIDGE_ENTER trace_id=%s thread_id=%s format=%s",
+                    "DOCIO0014_CHAT_BRIDGE_SELECTED trace_id=%s thread_id=%s "
+                    "agent=%s format=%s reason=%s",
                     trace_id,
                     tid_seed,
-                    _docio_artifact_plan.get("format"),
+                    docio_decision.get("agent_slug"),
+                    docio_decision.get("format"),
+                    docio_decision.get("reason"),
                 )
             except Exception:
                 pass
+
             yield _metatron_sse("status", {
                 **base,
-                "status": "Gerando arquivo solicitado.",
-                "phase": "docio_artifact_generation",
+                "status": "Gerando o arquivo solicitado.",
+                "phase": "document_artifact_generation",
+                "capability": "document_artifact_generate",
+                "format": docio_decision.get("format"),
             })
-            _docio_payload = await asyncio.to_thread(_docio_chat_artifact_fastpath_in_isolated_session)
-            if isinstance(_docio_payload, dict) and _docio_payload.get("handled"):
-                async for ev in _emit_result_payload(
-                    _docio_payload,
-                    routing_source="docio001_4_chat_artifact_bridge_v1",
-                ):
-                    yield ev
-                return
+            yield _metatron_sse("execution", {
+                **base,
+                "step": "document_artifact_generate",
+                "kind": "tool",
+                "label": "Gerar artefato",
+                "message": "DOCIO está criando e registrando o arquivo.",
+                "detail": "Execução transacional governada.",
+            })
 
+            try:
+                docio_payload = await asyncio.to_thread(
+                    _docio_run_chat_artifact_in_isolated_session,
+                    docio_decision,
+                )
+                async for event in _emit_result_payload(
+                    docio_payload,
+                    routing_source="stream_docio_conversational_bridge",
+                ):
+                    yield event
+            except Exception as exc:
+                try:
+                    logger.exception(
+                        "DOCIO0014_CHAT_BRIDGE_FAILED trace_id=%s thread_id=%s",
+                        trace_id,
+                        tid_seed,
+                    )
+                except Exception:
+                    pass
+                safe_error = "Não foi possível gerar o arquivo nesta execução."
+                yield _metatron_sse("error", {
+                    **base,
+                    "error": safe_error,
+                    "message": safe_error,
+                    "code": "DOCIO_ARTIFACT_GENERATION_FAILED",
+                    "capability": "document_artifact_generate",
+                })
+                yield _metatron_sse("done", {
+                    **base,
+                    "done": True,
+                    "assistant_persisted": False,
+                    "assistant_message_id": None,
+                    "final_text": safe_error,
+                    "artifact": None,
+                    "artifacts": [],
+                    "artifact_created": False,
+                    "runtime_hints": {
+                        "routing": {
+                            "routing_source": "stream_docio_conversational_bridge",
+                            "execution_lifecycle": "failed",
+                            "route_applied": True,
+                        },
+                        "docio": {
+                            "tools_executed": True,
+                            "write_executed": False,
+                            "human_approval_required": False,
+                            "error_type": exc.__class__.__name__,
+                        },
+                    },
+                })
+            return
 
         # MANUS UX R3.2 — Stream Entry Executive Precedence Gate
         # Runs immediately after the SSE-safe emitter is available and BEFORE every

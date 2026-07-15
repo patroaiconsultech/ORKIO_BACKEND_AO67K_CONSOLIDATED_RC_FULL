@@ -12,7 +12,7 @@ def test_sanitize_text_redacts_email_tokens_cookie_password_and_jwt():
         "user chrisaires07@gmail.com "
         "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456 "
         "cookie=sessionid=secret-cookie-value "
-        "password=efatah777 "
+        "password=example-secret-phrase "
         "token=super-secret-token "
         "jwt eyJabcde12345.eyJpayload67890.signature12345"
     )
@@ -22,7 +22,7 @@ def test_sanitize_text_redacts_email_tokens_cookie_password_and_jwt():
     assert "chrisaires07@gmail.com" not in sanitized
     assert "abcdefghijklmnopqrstuvwxyz123456" not in sanitized
     assert "secret-cookie-value" not in sanitized
-    assert "efatah777" not in sanitized
+    assert "example-secret-phrase" not in sanitized
     assert "super-secret-token" not in sanitized
     assert "eyJabcde12345" not in sanitized
     assert "email:" in sanitized

@@ -55,7 +55,9 @@ def _env_int(name: str, default: int) -> int:
 
 
 def mutation_authority_required() -> bool:
-    return _env_bool("EVOLUTION_MUTATION_AUTHORITY_REQUIRED", False)
+    # SEC-001: fail closed. A missing variable must never silently restore
+    # observe-only mutation authorization.
+    return _env_bool("EVOLUTION_MUTATION_AUTHORITY_REQUIRED", True)
 
 
 @dataclass(frozen=True)

@@ -2017,7 +2017,7 @@ def _is_summit_eligible_user(u: Optional[User]) -> bool:
         usage_tier.startswith("summit_")
         or usage_tier == "partner_access"
         or signup_source in {"investor", "amcham_rs_partner"}
-        or signup_code_label in {"efatah777", "amcham_rs_orkio_only"}
+        or signup_code_label in {"retired_access_code_c", "amcham_rs_orkio_only"}
         or product_scope in {"full", "orkio_only"}
     )
 
@@ -2311,7 +2311,7 @@ def _seed_default_summit_codes(db: Session, org: str = "public") -> None:
     seeds = [
         {
             "id": "seed_summit2026_public",
-            "plain_code": "SOUTHSUMMIT26",
+            "plain_code": "RETIRED_ACCESS_CODE_A",
             "label": "Participante Summit",
             "source": "summit_user",
             "max_uses": 5000,
@@ -2319,8 +2319,8 @@ def _seed_default_summit_codes(db: Session, org: str = "public") -> None:
             "created_by": "system_seed",
         },
         {
-            "id": "seed_efatah777_public",
-            "plain_code": "EFATAH777",
+            "id": "seed_retired_access_code_c_public",
+            "plain_code": "RETIRED_ACCESS_CODE_C",
             "label": "Investidor",
             "source": "investor",
             "max_uses": 200,
@@ -2330,8 +2330,8 @@ def _seed_default_summit_codes(db: Session, org: str = "public") -> None:
         {
             # ORKIO_AO58_AMCHAM_RS_PARTNER_ACCESS_V1
             # Partner access: no time expiration, Orkio-only scope, monitored by usage/cost.
-            "id": "seed_amchamrsorkio_partner",
-            "plain_code": "AMCHAMRSORKIO",
+            "id": "seed_retired_access_code_b_partner",
+            "plain_code": "RETIRED_ACCESS_CODE_B",
             "label": "amcham_rs_orkio_only",
             "source": "amcham_rs_partner",
             "max_uses": 500,
@@ -3667,7 +3667,7 @@ def get_current_user(authorization: Optional[str] = Header(default=None)) -> Dic
         summit_eligible = (
             str(payload.get("usage_tier") or "").startswith("summit_")
             or str(payload.get("signup_source") or "").lower() == "investor"
-            or str(payload.get("signup_code_label") or "").lower() == "efatah777"
+            or str(payload.get("signup_code_label") or "").lower() == "retired_access_code_c"
             or str(payload.get("product_scope") or "").lower() == "full"
         )
 
@@ -6403,21 +6403,21 @@ def _get_feature_flag(db: Session, org: str, key: str) -> Optional[str]:
 
 def _is_summit_auto_approved_code(raw_access_code: Optional[str], signup_code_label: Optional[str], signup_source: Optional[str]) -> bool:
     """
-    Summit access code EFATAH777 must auto-approve without manual admin approval.
+    Summit access code RETIRED_ACCESS_CODE_C must auto-approve without manual admin approval.
     Compatible with legacy states where the signal may live in label/source.
     """
     raw = (raw_access_code or "").strip().lower()
     label = (signup_code_label or "").strip().lower()
     source = (signup_source or "").strip().lower()
-    if raw == "efatah777":
+    if raw == "retired_access_code_c":
         return True
-    if label == "efatah777":
+    if label == "retired_access_code_c":
         return True
     if source == "investor":
         return True
 
     # ORKIO_AO58_AMCHAM_RS_PARTNER_ACCESS_V1
-    if raw == "amchamrsorkio":
+    if raw == "retired_access_code_b":
         return True
     if label == "amcham_rs_orkio_only":
         return True
@@ -6488,7 +6488,7 @@ def register(inp: RegisterIn, request: Request = None, x_org_slug: Optional[str]
             raise HTTPException(status_code=403, detail="Access code is required in Summit mode.")
 
         normalized_input_code = (inp.access_code or "").strip().lower()
-        allowed_partner_codes = {"efatah777", "amchamrsorkio"}
+        allowed_partner_codes = {"retired_access_code_c", "retired_access_code_b"}
         if normalized_input_code not in allowed_partner_codes:
             logger.warning("REGISTER_DENIED reason=unsupported_partner_code ip=%s org=%s", ip, org)
             raise HTTPException(status_code=403, detail="Access code is not enabled for this build.")
@@ -6507,9 +6507,9 @@ def register(inp: RegisterIn, request: Request = None, x_org_slug: Optional[str]
         normalized_signup_source = (sc.source or "").strip().lower()
         normalized_signup_label = (sc.label or "").strip().lower()
 
-        is_investor_access = normalized_signup_source == "investor" or normalized_signup_label == "efatah777"
+        is_investor_access = normalized_signup_source == "investor" or normalized_signup_label == "retired_access_code_c"
         is_amcham_partner_access = (
-            normalized_input_code == "amchamrsorkio"
+            normalized_input_code == "retired_access_code_b"
             or normalized_signup_source == "amcham_rs_partner"
             or normalized_signup_label == "amcham_rs_orkio_only"
         )

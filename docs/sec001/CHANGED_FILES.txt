@@ -1,0 +1,15 @@
+docs/sec001/CHANGED_FILES.txt
+docs/sec001/PACKAGE_METADATA.json
+docs/sec001/README.md
+evolution_os/governance/mutation_authority.py
+main.py
+routes/access_grants.py
+runtime/amcham_public_journey_policy.py
+runtime/platform_self_improvement.py
+runtime/public_orkio_policy.py
+schemas/access_grants.py
+scripts/verify_realtime_contract.py
+services/access_grant_service.py
+tests/mcp_auditor_readonly/test_sanitizers.py
+tests/test_sec001_access_grants.py
+tests/test_sec001_mutation_fail_closed.py

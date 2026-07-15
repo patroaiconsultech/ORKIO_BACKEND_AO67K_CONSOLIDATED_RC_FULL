@@ -214,7 +214,7 @@ def _explicit_orkio_or_public_context(
     requested = normalize_text(route.get("requested_agent") or route.get("requested") or "")
     resolved = normalize_text(route.get("resolved_agent") or route.get("final_speaker") or "")
 
-    if _contains_any(normalized, ["amcham", "efata", "efatah", "efata777", "efatah777", "orkio"]):
+    if _contains_any(normalized, ["amcham", "efata", "efatah", "orkio"]):
         return True
 
     return any(
@@ -481,7 +481,7 @@ def classify_amcham_public_journey(normalized: str) -> Optional[str]:
         return "entrepreneurship"
     if _contains_any(normalized, ("diagnostico", "diagnóstico", "avaliar uma ideia", "avaliar projeto", "avaliar empresa", "riscos", "proximos passos", "próximos passos", "plano")):
         return "business_or_project_diagnostic"
-    if _contains_any(normalized, ("amcham", "efata", "efatah", "efata777", "efatah777")):
+    if _contains_any(normalized, ("amcham", "efata", "efatah", "efata", "efatah")):
         return "platform_exploration"
 
     return None

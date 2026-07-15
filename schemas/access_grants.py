@@ -1,0 +1,34 @@
+from __future__ import annotations
+
+from typing import Literal, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+AccessGrantPurpose = Literal[
+    "platform_beta",
+    "summit_general",
+    "summit_investor",
+    "partner",
+]
+
+
+class AccessGrantValidateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=4, max_length=128)
+    purpose: AccessGrantPurpose = "platform_beta"
+
+
+class AccessGrantOut(BaseModel):
+    granted: bool = True
+    purpose: AccessGrantPurpose
+    expires_at: int
+    scope: list[str] = Field(default_factory=list)
+
+
+class AccessGrantStatusOut(BaseModel):
+    granted: bool
+    purpose: Optional[str] = None
+    expires_at: Optional[int] = None
+    scope: list[str] = Field(default_factory=list)

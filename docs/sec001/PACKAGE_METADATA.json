@@ -1,0 +1,24 @@
+{
+  "patch_id": "SEC-001",
+  "name": "Server-Side Access Gate & Environment Hardening",
+  "baseline_backend_artifact": "ORKIO_BACKEND_DOCIO001_4_FULL_REPO_ROOT_READY.zip",
+  "baseline_backend_sha256": "3224734be63adb07ef8873758fa77b04a618b1d24155e8e9868f7f8b8fd3bd61",
+  "baseline_frontend_artifact": "ORKIO_FRONTEND_DOCIO001_4_FULL_REPO_ROOT_READY.zip",
+  "baseline_frontend_sha256": "19e61c43ff16bce8d0a37311b413211acac959f320d2bbb1748f02a33a0e9055",
+  "current_github_head_proven": false,
+  "deployed_commit_proven": false,
+  "migration_included": false,
+  "production_write_executed": false,
+  "commit_executed": false,
+  "merge_executed": false,
+  "deploy_executed": false,
+  "human_approval_required": true,
+  "tests": {
+    "backend_focused": "31 passed",
+    "backend_full": "166 passed, 3 pre-existing failures",
+    "frontend_contract": "4 passed",
+    "frontend_build": "PASS",
+    "frontend_runtime_health": "PASS"
+  },
+  "repository_kind": "backend"
+}

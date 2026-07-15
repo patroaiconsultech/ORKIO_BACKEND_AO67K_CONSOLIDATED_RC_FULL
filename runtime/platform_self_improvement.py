@@ -110,7 +110,7 @@ IMPROVEMENT_ITEMS: List[Dict[str, Any]] = [
         "layer": "storage/contexto",
         "title": "Fortalecer memória factual e histórico de thread",
         "symptom": "Memória factual funciona, mas precisa virar contrato explícito com testes por thread.",
-        "validated_fact": "Orion recuperou EFATAH777 e Daniel após os patches recentes.",
+        "validated_fact": "Orion recuperou o fluxo histórico e Daniel após os patches recentes.",
         "probable_root_cause": "Seed factual, memória de thread e policy pública ainda dependem de guards manuais.",
         "minimum_patch": "Criar testes de memória factual e bypass padrão para seed/direct-answer em todas as policies.",
         "premium_patch": "Criar memory_contract.py com leitura, escrita e recuperação auditáveis por thread.",
