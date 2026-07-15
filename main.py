@@ -401,6 +401,25 @@ from .routes.document_artifacts import (
     DocumentArtifactRouterDeps,
     build_document_artifacts_router,
 )
+from .schemas.document_artifacts import DocumentArtifactGenerateIn
+from .services.document_artifact_service import (
+    DocumentArtifactConcurrencyError,
+    DocumentArtifactLimitError,
+    DocumentArtifactLimits,
+    DocumentArtifactTimeoutError,
+    DocumentArtifactWorkerError,
+    generate_document_artifact_isolated,
+)
+from .services.document_governance_service import (
+    DocioAuditPersistenceError,
+    DocioCoordinationUnavailable,
+    DocioLockUnavailable,
+    DocioQuotaExceeded,
+    distributed_locks,
+    enforce_prospective_quota,
+    stage_audit,
+    stage_text_index,
+)
 from .services.identity_service import load_active_identity
 from .services.governance_service import build_governance_health
 from .services.capability_service import load_runtime_governed_capabilities
@@ -442,6 +461,73 @@ from email.mime.multipart import MIMEMultipart
 import urllib.request as _urllib_request
 import ssl as _ssl
 import time as _time  # AO-33: global alias for AO-32 observability
+
+
+def _docio_chat_ascii_fold(value: Any) -> str:
+    raw = str(value or "")
+    return unicodedata.normalize("NFKD", raw).encode("ascii", "ignore").decode("ascii").lower()
+
+
+def _docio_chat_artifact_plan(message: str) -> Optional[Dict[str, Any]]:
+    """Return a generation plan only for explicit chat artifact requests."""
+
+    text = str(message or "").strip()
+    folded = _docio_chat_ascii_fold(text)
+    if not folded:
+        return None
+
+    action_match = re.search(
+        r"\b(ger(e|a|ar|e uma|ar uma)?|cri(e|a|ar|e uma|ar uma)?|mont(e|a|ar)|"
+        r"produz(a|ir)|export(e|a|ar)|fa(c|ca|zer)|prepar(e|a|ar)|me manda|manda)\b",
+        folded,
+    )
+    format_patterns = [
+        ("xlsx", r"\b(xlsx|excel|planilha|spreadsheet)\b"),
+        ("pptx", r"\b(pptx|powerpoint|apresentacao|slides?|deck)\b"),
+        ("pdf", r"\b(pdf)\b"),
+        ("docx", r"\b(docx|word|documento)\b"),
+        ("csv", r"\b(csv)\b"),
+        ("md", r"\b(markdown|\.md| md)\b"),
+    ]
+    detected_format = None
+    for fmt, pattern in format_patterns:
+        if re.search(pattern, folded):
+            detected_format = fmt
+            break
+    if not action_match or not detected_format:
+        return None
+
+    title_by_format = {
+        "xlsx": "Planilha de teste",
+        "csv": "Tabela de teste",
+        "pptx": "Apresentacao de teste",
+        "pdf": "Documento PDF de teste",
+        "docx": "Documento Word de teste",
+        "md": "Documento Markdown de teste",
+    }
+    if "amcham" in folded:
+        title_by_format["xlsx"] = "Analise AMCHAM"
+        title_by_format["pptx"] = "Apresentacao AMCHAM"
+
+    rows = [
+        ["Campo", "Valor"],
+        ["Status", "Teste OK"],
+        ["Origem", "Orkio"],
+        ["Formato", detected_format],
+    ]
+    content = (
+        f"{title_by_format.get(detected_format, 'Documento Orkio')}\n\n"
+        "Arquivo gerado pela plataforma Orkio a partir de um pedido explicito no chat.\n\n"
+        "- Status: Teste OK\n"
+        "- Origem: Orkio\n"
+        f"- Formato: {detected_format}\n"
+    )
+    return {
+        "format": detected_format,
+        "title": title_by_format.get(detected_format, "Documento Orkio"),
+        "content": content,
+        "rows": rows if detected_format in {"csv", "xlsx", "pptx"} else None,
+    }
 
 
 
@@ -37172,6 +37258,305 @@ async def chat_stream(
                 pass
 
 
+    def _docio_chat_artifact_fastpath_in_isolated_session() -> Dict[str, Any]:
+        plan = _docio_chat_artifact_plan(message)
+        if not plan:
+            return {"handled": False}
+
+        db2 = SessionLocal()
+        started = _time.monotonic()
+        file_id = None
+        artifact = None
+        thread_id = str(tid_seed or "").strip()
+        user_id = str(user.get("sub") or "")
+        try:
+            if not thread_id:
+                t = Thread(
+                    id=new_id(),
+                    org_slug=org,
+                    title="Nova conversa",
+                    created_at=now_ts(),
+                )
+                db2.add(t)
+                db2.commit()
+                thread_id = t.id
+                _ensure_thread_owner(db2, org, thread_id, user_id)
+            else:
+                thread = db2.execute(
+                    select(Thread).where(
+                        Thread.id == thread_id,
+                        Thread.org_slug == org,
+                    )
+                ).scalar_one_or_none()
+                if thread is None:
+                    thread = Thread(
+                        id=thread_id,
+                        org_slug=org,
+                        title="Nova conversa",
+                        created_at=now_ts(),
+                    )
+                    db2.add(thread)
+                    db2.commit()
+                elif user.get("role") != "admin":
+                    _require_thread_member(db2, org, thread_id, user_id)
+
+            _get_or_create_user_message(
+                db2,
+                org,
+                thread_id,
+                user,
+                message,
+                client_message_id,
+            )
+
+            input_model = DocumentArtifactGenerateIn.model_validate({
+                **plan,
+                "thread_id": thread_id,
+                "requested_agent_hint": ao01_response_agent_name,
+            })
+            limits = DocumentArtifactLimits.from_env()
+            execution_id = uuid.uuid4().hex
+            locks = (
+                ("docio_generation_tenant", org),
+                ("docio_generation_user", f"{org}:{user_id}"),
+            )
+
+            with distributed_locks(db2, locks):
+                enforce_prospective_quota(
+                    db2,
+                    org=org,
+                    user_id=user_id,
+                    prospective_bytes=0,
+                    now_ts=now_ts(),
+                )
+                artifact = generate_document_artifact_isolated(
+                    input_model.model_dump(),
+                    limits=limits,
+                )
+                now = now_ts()
+                quota_before = enforce_prospective_quota(
+                    db2,
+                    org=org,
+                    user_id=user_id,
+                    prospective_bytes=len(artifact.content),
+                    now_ts=now,
+                )
+                file_id = new_id()
+                file_row = File(
+                    id=file_id,
+                    org_slug=org,
+                    thread_id=thread_id,
+                    uploader_id=user_id,
+                    uploader_name=user.get("name"),
+                    uploader_email=user.get("email"),
+                    filename=artifact.filename,
+                    original_filename=artifact.filename,
+                    origin="generated",
+                    scope_thread_id=thread_id,
+                    scope_agent_id=None,
+                    mime_type=artifact.mime_type,
+                    size_bytes=len(artifact.content),
+                    content=artifact.content,
+                    extraction_failed=False,
+                    is_institutional=False,
+                    created_at=now,
+                )
+                db2.add(file_row)
+
+                index_result = stage_text_index(
+                    db2,
+                    org=org,
+                    file_id=file_id,
+                    text_content=artifact.text_content,
+                    now_ts=now,
+                )
+                file_row.extraction_failed = not bool(index_result.get("has_extracted_text"))
+                db2.add(file_row)
+
+                download_url = f"/api/files/{file_id}/download"
+                visible_text = f"Arquivo gerado: {artifact.filename}"
+                event_payload = {
+                    "kind": "document_artifact",
+                    "type": "generated_file",
+                    "file_id": file_id,
+                    "filename": artifact.filename,
+                    "format": artifact.format,
+                    "mime": artifact.mime_type,
+                    "size": len(artifact.content),
+                    "download_url": download_url,
+                    "created_by_user_id": user_id,
+                    "created_by_user_name": user.get("name"),
+                    "requested_agent_hint": ao01_response_agent_name,
+                    "resolved_agent": ao01_response_agent_id,
+                    "execution_id": execution_id,
+                    "authorship_claim": "chat_user_requested_system_generated",
+                    "ts": now,
+                    "text": visible_text,
+                }
+                db2.add(
+                    Message(
+                        id=new_id(),
+                        org_slug=org,
+                        thread_id=thread_id,
+                        user_id=user_id,
+                        user_name=user.get("name"),
+                        role="system",
+                        agent_id=None,
+                        agent_name=None,
+                        content=visible_text + "\n\nORKIO_EVENT:" + json.dumps(event_payload, ensure_ascii=False),
+                        created_at=now,
+                    )
+                )
+                stage_audit(
+                    db2,
+                    audit_id=new_id(),
+                    org=org,
+                    user_id=user_id,
+                    action="document_artifact.generated_from_chat",
+                    request_id=str(trace_id or uuid.uuid4().hex),
+                    path="/api/chat/stream",
+                    status_code=200,
+                    latency_ms=max(0, int((_time.monotonic() - started) * 1000)),
+                    now_ts=now,
+                    meta={
+                        "file_id": file_id,
+                        "filename": artifact.filename,
+                        "format": artifact.format,
+                        "thread_id": thread_id,
+                        "size_bytes": len(artifact.content),
+                        "extracted_chars": int(index_result.get("extracted_chars") or 0),
+                        "chunks_created": int(index_result.get("chunks_created") or 0),
+                        "execution_id": execution_id,
+                        "authorship_claim": "chat_user_requested_system_generated",
+                        "quota_before": quota_before.as_dict(),
+                    },
+                )
+                db2.commit()
+
+            final_text = (
+                f"Gerei o arquivo `{artifact.filename}` com sucesso.\n\n"
+                f"Download: {download_url}"
+            )
+            persisted = _persist_assistant_message(
+                text=final_text,
+                thread_id=thread_id,
+                agent_id=ao01_response_agent_id,
+                agent_name=ao01_response_agent_name,
+            )
+            return {
+                **persisted,
+                "handled": True,
+                "ok": True,
+                "answer": final_text,
+                "message": final_text,
+                "final_text": final_text,
+                "agent_id": ao01_response_agent_id,
+                "agent_name": ao01_response_agent_name,
+                "file_id": file_id,
+                "filename": artifact.filename,
+                "format": artifact.format,
+                "mime_type": artifact.mime_type,
+                "size_bytes": len(artifact.content),
+                "download_url": download_url,
+                "runtime_hints": {
+                    "routing": {
+                        "routing_source": "docio001_4_chat_artifact_bridge_v1",
+                        "route_applied": True,
+                        "execution_lifecycle": "completed",
+                        "document_artifact_generated": True,
+                        "github_write_executed": False,
+                        "database_write_executed": True,
+                    }
+                },
+            }
+        except (
+            DocumentArtifactLimitError,
+            DocumentArtifactTimeoutError,
+            DocumentArtifactWorkerError,
+            DocumentArtifactConcurrencyError,
+            DocioAuditPersistenceError,
+            DocioCoordinationUnavailable,
+            DocioLockUnavailable,
+            DocioQuotaExceeded,
+        ) as exc:
+            try:
+                db2.rollback()
+            except Exception:
+                pass
+            final_text = (
+                "Não consegui gerar o arquivo nesta tentativa. "
+                f"O pedido foi encerrado com segurança antes de confirmar qualquer download. Detalhe: {exc}"
+            )
+            persisted = _persist_assistant_message(
+                text=final_text,
+                thread_id=thread_id or tid_seed,
+                agent_id=ao01_response_agent_id,
+                agent_name=ao01_response_agent_name,
+            )
+            return {
+                **persisted,
+                "handled": True,
+                "ok": False,
+                "answer": final_text,
+                "message": final_text,
+                "final_text": final_text,
+                "agent_id": ao01_response_agent_id,
+                "agent_name": ao01_response_agent_name,
+                "runtime_hints": {
+                    "routing": {
+                        "routing_source": "docio001_4_chat_artifact_bridge_v1",
+                        "route_applied": True,
+                        "execution_lifecycle": "error",
+                        "document_artifact_generated": False,
+                        "error_class": exc.__class__.__name__,
+                    }
+                },
+            }
+        except Exception as exc:
+            try:
+                db2.rollback()
+            except Exception:
+                pass
+            try:
+                logger.exception("DOCIO_CHAT_ARTIFACT_BRIDGE_FAILED trace_id=%s thread_id=%s", trace_id, thread_id or tid_seed)
+            except Exception:
+                pass
+            final_text = (
+                "Não consegui gerar o arquivo nesta tentativa. "
+                "A execução foi encerrada com segurança sem declarar download confirmado."
+            )
+            persisted = _persist_assistant_message(
+                text=final_text,
+                thread_id=thread_id or tid_seed,
+                agent_id=ao01_response_agent_id,
+                agent_name=ao01_response_agent_name,
+            )
+            return {
+                **persisted,
+                "handled": True,
+                "ok": False,
+                "answer": final_text,
+                "message": final_text,
+                "final_text": final_text,
+                "agent_id": ao01_response_agent_id,
+                "agent_name": ao01_response_agent_name,
+                "runtime_hints": {
+                    "routing": {
+                        "routing_source": "docio001_4_chat_artifact_bridge_v1",
+                        "route_applied": True,
+                        "execution_lifecycle": "error",
+                        "document_artifact_generated": False,
+                        "error_class": exc.__class__.__name__,
+                    }
+                },
+            }
+        finally:
+            try:
+                db2.close()
+            except Exception:
+                pass
+
+
     def _internal_warroom_governed_artifact_fastpath_in_isolated_session() -> Dict[str, Any]:
         final_text = _build_internal_warroom_governed_artifact_answer(message)
         persisted = _persist_assistant_message(
@@ -42256,6 +42641,31 @@ async def chat_stream(
                 logger.info("CHAT_STREAM_DONE trace_id=%s thread_id=%s source=%s", trace_id, thread_id, routing_source)
             except Exception:
                 pass
+
+
+        _docio_artifact_plan = _docio_chat_artifact_plan(message)
+        if _docio_artifact_plan:
+            try:
+                logger.warning(
+                    "DOCIO_CHAT_ARTIFACT_BRIDGE_ENTER trace_id=%s thread_id=%s format=%s",
+                    trace_id,
+                    tid_seed,
+                    _docio_artifact_plan.get("format"),
+                )
+            except Exception:
+                pass
+            yield _metatron_sse("status", {
+                **base,
+                "status": "Gerando arquivo solicitado.",
+                "phase": "docio_artifact_generation",
+            })
+            _docio_payload = await asyncio.to_thread(_docio_chat_artifact_fastpath_in_isolated_session)
+            if isinstance(_docio_payload, dict) and _docio_payload.get("handled"):
+                await _emit_result_payload(
+                    _docio_payload,
+                    routing_source="docio001_4_chat_artifact_bridge_v1",
+                )
+                return
 
 
         # MANUS UX R3.2 — Stream Entry Executive Precedence Gate
