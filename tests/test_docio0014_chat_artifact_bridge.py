@@ -121,6 +121,14 @@ def test_chat_bridge_boot_canary_proves_governance_guard_loaded():
     )
 
 
+def test_docio002_format_precedence_boot_canary_present():
+    source = (ROOT / "main.py").read_text(encoding="utf-8-sig")
+
+    assert "DOCIO002_FORMAT_PRECEDENCE_BOOT" in source
+    assert "expected_format=pptx" in source
+    assert "DOCIO002_FORMAT_PRECEDENCE_VERSION" in source
+
+
 def test_payload_builder_uses_authorized_source_rows_for_three_names():
     message = "por favor, gere uma nova planilha com apenas 3 nomes que vc escolher da planilha anterior"
     decision = classify_document_artifact_request(message, agent_slug="orkio")
