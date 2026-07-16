@@ -129,6 +129,28 @@ def _display_agent_slug(value: Any) -> str:
 
 
 def _infer_format(low: str) -> Optional[str]:
+    explicit = re.search(
+        r"\b(?:formato|em|como|arquivo)\s*(?:\:|=|de|do|da)?\s*"
+        r"(pptx|powerpoint|slides?|xlsx|excel|csv|docx|word|pdf|md|markdown)\b",
+        low,
+        flags=re.IGNORECASE,
+    )
+    if explicit:
+        token = explicit.group(1).lower()
+        aliases = {
+            "powerpoint": "pptx",
+            "slide": "pptx",
+            "slides": "pptx",
+            "excel": "xlsx",
+            "word": "docx",
+            "markdown": "md",
+        }
+        return aliases.get(token, token)
+
+    extension_hits = re.findall(r"\.(pptx|xlsx|csv|docx|pdf|md)\b", low, flags=re.IGNORECASE)
+    if extension_hits:
+        return extension_hits[-1].lower()
+
     for fmt, hints in _FORMAT_HINTS:
         if any(hint in low for hint in hints):
             return fmt
