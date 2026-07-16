@@ -30,7 +30,7 @@ def test_generate_csv_artifact():
 
 
 def test_generate_xlsx_artifact_when_openpyxl_available():
-    pytest.importorskip("openpyxl")
+    openpyxl = pytest.importorskip("openpyxl")
 
     artifact = generate_document_artifact({
         "format": "xlsx",
@@ -41,3 +41,60 @@ def test_generate_xlsx_artifact_when_openpyxl_available():
     assert artifact.filename.endswith(".xlsx")
     assert artifact.content.startswith(b"PK")
     assert "ACME" in artifact.text_content
+
+    workbook = openpyxl.load_workbook(__import__("io").BytesIO(artifact.content))
+    assert workbook.sheetnames == ["Dados", "Metadados"]
+    assert workbook["Dados"]["A1"].value == "Associado"
+    assert workbook["Dados"]["A1"].font.bold is True
+    assert workbook["Metadados"]["A1"].value == "Campo"
+    assert workbook["Metadados"]["B4"].value == "2"
+
+
+def test_generate_pptx_artifact_uses_executive_template_when_available():
+    pptx = pytest.importorskip("pptx")
+
+    artifact = generate_document_artifact({
+        "format": "pptx",
+        "title": "Apresentacao AMCHAM",
+        "content": "Dados de origem: linhas extraidas do contexto autorizado.",
+        "rows": [
+            ["Cliente", "Nome Fantasia", "Segmento"],
+            ["A GRINGS S A", "PICCADILLY", "VAREJO"],
+            ["A PLAYERS PRESTADORA DE SERVICOS EIRELI", "A PLAYERS", "SERVICOS"],
+            ["ACADEMIA BELEZA DO FUTURO CONSULTORIA E", "BELEZA DO FUTURO", "SERVICOS"],
+        ],
+    })
+
+    deck = pptx.Presentation(__import__("io").BytesIO(artifact.content))
+    slide_text = "\n".join(
+        shape.text
+        for slide in deck.slides
+        for shape in slide.shapes
+        if hasattr(shape, "text")
+    )
+
+    assert artifact.filename.endswith(".pptx")
+    assert len(deck.slides) >= 4
+    assert "Resumo executivo" in slide_text
+    assert "Dados selecionados" in slide_text
+    assert "PICCADILLY" in slide_text
+    assert "Proximos passos" in slide_text
+
+
+def test_generate_docx_artifact_has_sections_when_available():
+    docx = pytest.importorskip("docx")
+
+    artifact = generate_document_artifact({
+        "format": "docx",
+        "title": "Documento executivo",
+        "content": "Analise gerada a partir do contexto autorizado.",
+        "rows": [["Cliente", "Segmento"], ["ACME", "Tecnologia"]],
+    })
+
+    document = docx.Document(__import__("io").BytesIO(artifact.content))
+    text = "\n".join(paragraph.text for paragraph in document.paragraphs)
+
+    assert artifact.filename.endswith(".docx")
+    assert "Resumo executivo" in text
+    assert "Fonte e governanca" in text
+    assert "Proximos passos" in text
