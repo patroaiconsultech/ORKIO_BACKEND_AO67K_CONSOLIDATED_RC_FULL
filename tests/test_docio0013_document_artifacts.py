@@ -119,6 +119,7 @@ def client(database, monkeypatch):
                 new_id=lambda: uuid.uuid4().hex,
                 now_ts=lambda: 1_720_000_000,
                 logger=route_module.logging.getLogger("docio-test"),
+                session_factory=database,
             )
         )
     )

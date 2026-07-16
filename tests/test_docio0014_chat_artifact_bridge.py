@@ -12,20 +12,37 @@ if app_alias is None:
     app_alias.__path__ = [str(ROOT / "app"), str(ROOT)]  # type: ignore[attr-defined]
     sys.modules["app"] = app_alias
 
-from app.main import _docio_chat_artifact_plan
+from app.runtime.document_artifact_intent import (
+    build_document_artifact_payload,
+    classify_document_artifact_request,
+)
 
 
 def test_chat_plan_detects_explicit_spreadsheet_generation_request():
-    plan = _docio_chat_artifact_plan("vc consegue gerar uma planilha de teste, por favor")
+    message = "vc consegue gerar uma planilha de teste, por favor"
+    decision = classify_document_artifact_request(message, agent_slug="orkio")
 
-    assert plan is not None
+    assert decision["handled"] is True
+    assert decision["format"] == "xlsx"
+
+    plan = build_document_artifact_payload(
+        message,
+        decision,
+        thread_id=None,
+        requested_agent_hint="orkio",
+    )
+
     assert plan["format"] == "xlsx"
     assert plan["title"] == "Planilha de teste"
-    assert plan["rows"][0] == ["Campo", "Valor"]
+    assert plan["rows"]
+    assert plan["rows"][0] == ["Item", "Descrição", "Status", "Observação"]
 
 
 def test_chat_plan_does_not_generate_for_readonly_spreadsheet_analysis():
-    plan = _docio_chat_artifact_plan("por favor, analise o arquivo em Excel que acabei de subir")
+    decision = classify_document_artifact_request(
+        "por favor, analise o arquivo em Excel que acabei de subir",
+        agent_slug="orkio",
+    )
 
-    assert plan is None
-
+    assert decision["handled"] is False
+    assert decision["reason"] == "no_explicit_creation_verb"
