@@ -414,6 +414,7 @@ from .services.access_grant_service import (
 from .schemas.document_artifacts import DocumentArtifactGenerateIn
 from .runtime.document_artifact_intent import (
     DOCIO0018_BRIDGE_GOVERNANCE_GUARD_VERSION,
+    DOCIO002_FORMAT_PRECEDENCE_VERSION,
     artifact_success_message,
     build_document_artifact_payload,
     classify_document_artifact_request,
@@ -5790,6 +5791,20 @@ def _startup_runtime_fingerprint():
             _safe_build_fingerprint(),
             bool(has_document_artifact_write_blocker(docio0018_probe)),
             "DOCIO0018_CHAT_BRIDGE_GOVERNANCE_BLOCKED",
+        )
+        docio002_probe = (
+            "Orkio, gere um PPTX executivo de teste com base na planilha que enviei anteriormente. "
+            "Use apenas 3 empresas da planilha. Formato: PPTX."
+        )
+        docio002_decision = classify_document_artifact_request(
+            docio002_probe,
+            agent_slug="orkio",
+        )
+        logger.info(
+            "DOCIO002_FORMAT_PRECEDENCE_BOOT version=%s probe_format=%s handled=%s expected_format=pptx",
+            DOCIO002_FORMAT_PRECEDENCE_VERSION,
+            docio002_decision.get("format"),
+            bool(docio002_decision.get("handled")),
         )
     except Exception as e:
         try:
