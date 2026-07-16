@@ -13,6 +13,7 @@ if app_alias is None:
     sys.modules["app"] = app_alias
 
 from app.runtime.document_artifact_intent import (
+    DOCIO0018_BRIDGE_GOVERNANCE_GUARD_VERSION,
     build_document_artifact_payload,
     classify_document_artifact_request,
     has_document_artifact_write_blocker,
@@ -105,6 +106,18 @@ def test_chat_bridge_main_guard_blocks_before_docio_selection():
     assert "DOCIO0018_CHAT_BRIDGE_GOVERNANCE_BLOCKED" in source
     assert has_document_artifact_write_blocker(
         "Modo observe_only e proposal_only. Nao gere artefato. Entregue somente uma proposta textual."
+    )
+
+
+def test_chat_bridge_boot_canary_proves_governance_guard_loaded():
+    source = (ROOT / "main.py").read_text(encoding="utf-8-sig")
+
+    assert DOCIO0018_BRIDGE_GOVERNANCE_GUARD_VERSION == "DOCIO0018_BRIDGE_GOVERNANCE_GUARD_V1"
+    assert "DOCIO0018_BOOT_GUARD_PRESENT" in source
+    assert "blocker_probe=%s" in source
+    assert "DOCIO0018_CHAT_BRIDGE_GOVERNANCE_BLOCKED" in source
+    assert has_document_artifact_write_blocker(
+        "Modo observe_only e proposal_only. Nao escreva arquivo, nao gere artefato."
     )
 
 
