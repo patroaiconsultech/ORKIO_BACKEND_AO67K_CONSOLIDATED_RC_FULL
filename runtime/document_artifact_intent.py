@@ -50,15 +50,19 @@ _INSTRUCTIONAL_MARKERS = (
 _ARTIFACT_NOUNS = (
     "planilha",
     "excel",
+    "xlsx",
     "csv",
     "documento",
     "arquivo",
     "word",
+    "docx",
     "apresentacao",
     "slides",
     "powerpoint",
+    "pptx",
     "pdf",
     "markdown",
+    "md",
     "relatorio",
 )
 
@@ -193,6 +197,133 @@ def _spreadsheet_rows(message: str) -> List[List[str]]:
     ]
 
 
+def _source_context_text(source_context: Any) -> str:
+    if not source_context:
+        return ""
+    if isinstance(source_context, dict):
+        pieces: List[str] = []
+        for key in ("file_context_block", "context_block", "content", "text", "excerpt"):
+            value = source_context.get(key)
+            if value:
+                pieces.append(str(value))
+        citations = source_context.get("citations")
+        if isinstance(citations, list):
+            for item in citations[:8]:
+                if not isinstance(item, dict):
+                    continue
+                for key in ("content", "text", "excerpt", "chunk_text", "summary"):
+                    value = item.get(key)
+                    if value:
+                        pieces.append(str(value))
+                        break
+        return "\n".join(pieces)
+    return str(source_context)
+
+
+def _requested_row_limit(message: str) -> Optional[int]:
+    low = _plain(message)
+    number_words = {
+        "um": 1,
+        "uma": 1,
+        "dois": 2,
+        "duas": 2,
+        "tres": 3,
+        "quatro": 4,
+        "cinco": 5,
+        "seis": 6,
+        "sete": 7,
+        "oito": 8,
+        "nove": 9,
+        "dez": 10,
+    }
+    match = re.search(
+        r"\b(?:apenas|somente|so|s[oÃ³]|com)?\s*(\d{1,2})\s+"
+        r"(?:nomes?|registros?|linhas?|itens?|empresas?|clientes?)\b",
+        low,
+    )
+    if match:
+        try:
+            return max(1, min(int(match.group(1)), 25))
+        except Exception:
+            return None
+    for word, value in number_words.items():
+        if re.search(
+            rf"\b(?:apenas|somente|so|s[oÃ³]|com)?\s*{word}\s+"
+            r"(?:nomes?|registros?|linhas?|itens?|empresas?|clientes?)\b",
+            low,
+        ):
+            return value
+    return None
+
+
+def _looks_like_header(row: List[str]) -> bool:
+    joined = _plain(" ".join(row))
+    markers = (
+        "cliente",
+        "empresa",
+        "nome",
+        "fantasia",
+        "segmento",
+        "status",
+        "descricao",
+        "descri",
+        "item",
+    )
+    return any(marker in joined for marker in markers)
+
+
+def _rows_from_source_context(
+    source_context: Any,
+    *,
+    message: str,
+    max_rows: int = 12,
+    max_columns: int = 12,
+) -> List[List[str]]:
+    text = _source_context_text(source_context)
+    if not text:
+        return []
+
+    rows: List[List[str]] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or "|" not in line:
+            continue
+        if line.startswith("[") or line.lower().startswith("fonte "):
+            continue
+        cells = [re.sub(r"\s+", " ", cell).strip() for cell in line.split("|")]
+        cells = [cell[:180] for cell in cells if cell]
+        if len(cells) < 2:
+            continue
+        rows.append(cells[:max_columns])
+        if len(rows) >= 200:
+            break
+
+    if not rows:
+        return []
+
+    header: Optional[List[str]] = None
+    data_start = 0
+    for index, row in enumerate(rows[:20]):
+        if _looks_like_header(row):
+            header = row
+            data_start = index + 1
+            break
+    if header is None:
+        header = rows[0]
+        data_start = 1
+
+    data_rows = [row for row in rows[data_start:] if row != header]
+    limit = _requested_row_limit(message)
+    if limit is not None:
+        data_rows = data_rows[:limit]
+    else:
+        data_rows = data_rows[: max(1, max_rows - 1)]
+
+    if not data_rows:
+        return []
+    return [header] + data_rows[: max(1, max_rows - 1)]
+
+
 def _title_for_format(fmt: str, message: str) -> str:
     low = _plain(message)
     if "teste" in low:
@@ -221,6 +352,7 @@ def build_document_artifact_payload(
     *,
     thread_id: Optional[str],
     requested_agent_hint: Optional[str],
+    source_context: Any = None,
 ) -> Dict[str, Any]:
     """Build a deterministic, bounded payload for the DOCIO generator."""
 
@@ -230,14 +362,20 @@ def build_document_artifact_payload(
         raise ValueError(f"unsupported_document_format:{fmt}")
 
     title = _title_for_format(fmt, raw)
-    rows: Optional[List[List[str]]] = None
-    if fmt in {"xlsx", "csv"}:
+    source_rows = _rows_from_source_context(source_context, message=raw)
+    rows: Optional[List[List[str]]] = source_rows or None
+    if rows is None and fmt in {"xlsx", "csv"}:
         rows = _spreadsheet_rows(raw)
 
     content = (
         "Artefato criado a partir de uma solicitação explícita do usuário.\n\n"
         f"Solicitação original: {raw[:4_000]}"
     )
+    if source_rows:
+        content += (
+            "\n\nDados de origem: linhas extraidas do contexto de arquivo autorizado "
+            "vinculado a esta conversa."
+        )
     if fmt in {"docx", "pptx", "pdf", "md"}:
         content += (
             "\n\nConteúdo inicial gerado de forma determinística e auditável. "

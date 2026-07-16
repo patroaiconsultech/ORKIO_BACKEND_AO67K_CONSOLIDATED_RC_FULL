@@ -46,3 +46,97 @@ def test_chat_plan_does_not_generate_for_readonly_spreadsheet_analysis():
 
     assert decision["handled"] is False
     assert decision["reason"] == "no_explicit_creation_verb"
+
+
+def test_chat_plan_detects_direct_pptx_extension_generation_request():
+    decision = classify_document_artifact_request(
+        "Por favor, agora gere um pptx com as mesmas informacoes",
+        agent_slug="orkio",
+    )
+
+    assert decision["handled"] is True
+    assert decision["format"] == "pptx"
+
+
+def test_chat_plan_detects_direct_docx_and_pdf_extension_generation_requests():
+    docx = classify_document_artifact_request(
+        "gere um docx executivo, por favor",
+        agent_slug="orion",
+    )
+    pdf = classify_document_artifact_request(
+        "gere um pdf executivo, por favor",
+        agent_slug="orion",
+    )
+
+    assert docx["handled"] is True
+    assert docx["format"] == "docx"
+    assert pdf["handled"] is True
+    assert pdf["format"] == "pdf"
+
+
+def test_payload_builder_uses_authorized_source_rows_for_three_names():
+    message = "por favor, gere uma nova planilha com apenas 3 nomes que vc escolher da planilha anterior"
+    decision = classify_document_artifact_request(message, agent_slug="orkio")
+    source_context = {
+        "file_context_block": "\n".join(
+            [
+                "DOCUMENTOS ANEXADOS A THREAD - CONTEXTO AUTORIZADO:",
+                "[Arquivo: Base de Associados - Amcham RS. 2026.xlsx]",
+                "Sheet: 1. BASE DE SOCIOS GERAL CONS...",
+                "Cliente | Nome Fantasia | Segmento",
+                "A GRINGS S A | PICCADILLY | VAREJO",
+                "A PLAYERS PRESTADORA DE SERVICOS EIRELI | A PLAYERS | SERVICOS",
+                "ACADEMIA BELEZA DO FUTURO CONSULTORIA E | BELEZA DO FUTURO | SERVICOS",
+                "ACADEMICUM AI | ACADEMICUM AI | SERVICOS",
+            ]
+        )
+    }
+
+    plan = build_document_artifact_payload(
+        message,
+        decision,
+        thread_id="thread-a",
+        requested_agent_hint="orkio",
+        source_context=source_context,
+    )
+
+    assert plan["format"] == "xlsx"
+    assert plan["rows"] == [
+        ["Cliente", "Nome Fantasia", "Segmento"],
+        ["A GRINGS S A", "PICCADILLY", "VAREJO"],
+        ["A PLAYERS PRESTADORA DE SERVICOS EIRELI", "A PLAYERS", "SERVICOS"],
+        ["ACADEMIA BELEZA DO FUTURO CONSULTORIA E", "BELEZA DO FUTURO", "SERVICOS"],
+    ]
+    assert "Registro de teste A" not in str(plan["rows"])
+
+
+def test_payload_builder_uses_authorized_source_rows_for_pptx_followup():
+    message = "Por favor, agora gere um pptx com as mesmas informacoes"
+    decision = classify_document_artifact_request(message, agent_slug="orkio")
+    source_context = {
+        "citations": [
+            {
+                "content": "\n".join(
+                    [
+                        "Cliente | Nome Fantasia | Segmento",
+                        "A GRINGS S A | PICCADILLY | VAREJO",
+                        "A PLAYERS PRESTADORA DE SERVICOS EIRELI | A PLAYERS | SERVICOS",
+                        "ACADEMIA BELEZA DO FUTURO CONSULTORIA E | BELEZA DO FUTURO | SERVICOS",
+                    ]
+                )
+            }
+        ]
+    }
+
+    plan = build_document_artifact_payload(
+        message,
+        decision,
+        thread_id="thread-a",
+        requested_agent_hint="orkio",
+        source_context=source_context,
+    )
+
+    assert plan["format"] == "pptx"
+    assert plan["rows"][0] == ["Cliente", "Nome Fantasia", "Segmento"]
+    assert plan["rows"][1][0] == "A GRINGS S A"
+    assert "Dados de origem" in plan["content"]

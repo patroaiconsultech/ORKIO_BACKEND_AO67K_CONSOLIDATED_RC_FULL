@@ -1,4 +1,4 @@
-# EFATA 777 V10 AO68D HF1 ADMIN ORCH + REALTIME COMPAT COMPLETE
+﻿# EFATA 777 V10 AO68D HF1 ADMIN ORCH + REALTIME COMPAT COMPLETE
 # Consolidated package for governed capability answers + analytical readonly + registry alignment + realtime self-heal hardening.
 
 from __future__ import annotations
@@ -41964,11 +41964,32 @@ async def chat_stream(
                 or display_hint
             )
 
+            source_context = {}
+            try:
+                source_context = svc_build_thread_document_context(
+                    db2,
+                    org=org2,
+                    thread_id=tid2,
+                    query=str(inp.message or ""),
+                    top_k=8,
+                )
+            except Exception:
+                try:
+                    db2.rollback()
+                except Exception:
+                    pass
+                logger.exception(
+                    "DOCIO0015_SOURCE_CONTEXT_LOAD_FAILED trace_id=%s thread_id=%s",
+                    trace_id,
+                    tid2,
+                )
+
             input_payload = build_document_artifact_payload(
                 inp.message,
                 docio_decision,
                 thread_id=tid2,
                 requested_agent_hint=owner_slug,
+                source_context=source_context,
             )
             input_model = DocumentArtifactGenerateIn.model_validate(input_payload)
 
