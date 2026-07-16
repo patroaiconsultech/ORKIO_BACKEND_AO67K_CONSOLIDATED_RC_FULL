@@ -189,6 +189,24 @@ def test_payload_builder_uses_authorized_source_rows_for_pptx_followup():
     assert "Dados de origem" in plan["content"]
 
 
+def test_explicit_pptx_format_wins_over_spreadsheet_source_words():
+    message = """Orkio, gere um PPTX executivo de teste com base na planilha que enviei anteriormente.
+
+Use apenas 3 empresas da planilha.
+A apresentação deve conter:
+1. capa;
+2. resumo executivo;
+3. tabela com as 3 empresas escolhidas;
+4. próximos passos recomendados.
+
+Formato: PPTX."""
+
+    decision = classify_document_artifact_request(message, agent_slug="orkio")
+
+    assert decision["handled"] is True
+    assert decision["format"] == "pptx"
+
+
 def test_payload_builder_respects_exact_row_limit_without_visible_header():
     message = "por favor, gere uma nova planilha com apenas 3 nomes que vc escolher da planilha anterior"
     decision = classify_document_artifact_request(message, agent_slug="orkio")
