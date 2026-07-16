@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 SUPPORTED_ARTIFACT_FORMATS = ("md", "csv", "xlsx", "docx", "pptx", "pdf")
 DOCIO0018_BRIDGE_GOVERNANCE_GUARD_VERSION = "DOCIO0018_BRIDGE_GOVERNANCE_GUARD_V1"
 DOCIO002_FORMAT_PRECEDENCE_VERSION = "DOCIO002_FORMAT_PRECEDENCE_V1"
+DOCIO003_SOURCE_BINDING_VERSION = "DOCIO003_SOURCE_BINDING_V1"
 
 _FORMAT_HINTS = (
     ("xlsx", ("planilha", "excel", ".xlsx", " xlsx")),
@@ -280,6 +281,47 @@ def _spreadsheet_rows(message: str) -> List[List[str]]:
     ]
 
 
+def _requires_bound_source_rows(message: str) -> bool:
+    low = _plain(message)
+    markers = (
+        "planilha anterior",
+        "arquivo anterior",
+        "documento anterior",
+        "anexo anterior",
+        "planilha enviada",
+        "arquivo enviado",
+        "documento enviado",
+        "anexo enviado",
+        "planilha que enviei",
+        "arquivo que enviei",
+        "documento que enviei",
+        "anexo que enviei",
+        "planilha que subi",
+        "arquivo que subi",
+        "com base na planilha",
+        "com base no arquivo",
+        "com base no documento",
+        "baseado na planilha",
+        "baseado no arquivo",
+        "mesmas informacoes",
+        "mesmos dados",
+        "da planilha",
+        "do arquivo",
+    )
+    return any(marker in low for marker in markers)
+
+
+def source_binding_unavailable_message(fmt: str) -> str:
+    requested = str(fmt or "arquivo").strip().lower() or "arquivo"
+    return (
+        f"Nao gerei o {requested}, porque o pedido exige dados reais de uma "
+        "planilha/arquivo anterior e nao consegui vincular linhas tabulares "
+        "autorizadas a esta conversa. Para evitar dados incorretos, reenvie o "
+        "arquivo nesta thread ou peca explicitamente um artefato de teste com "
+        "dados ficticios."
+    )
+
+
 def _source_context_text(source_context: Any) -> str:
     if not source_context:
         return ""
@@ -448,6 +490,9 @@ def build_document_artifact_payload(
 
     title = _title_for_format(fmt, raw)
     source_rows = _rows_from_source_context(source_context, message=raw)
+    if _requires_bound_source_rows(raw) and not source_rows:
+        raise ValueError("document_source_rows_required")
+
     rows: Optional[List[List[str]]] = source_rows or None
     if rows is None and fmt in {"xlsx", "csv"}:
         rows = _spreadsheet_rows(raw)

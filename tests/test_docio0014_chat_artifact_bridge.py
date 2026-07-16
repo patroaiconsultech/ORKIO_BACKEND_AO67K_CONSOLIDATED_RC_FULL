@@ -14,9 +14,11 @@ if app_alias is None:
 
 from app.runtime.document_artifact_intent import (
     DOCIO0018_BRIDGE_GOVERNANCE_GUARD_VERSION,
+    DOCIO003_SOURCE_BINDING_VERSION,
     build_document_artifact_payload,
     classify_document_artifact_request,
     has_document_artifact_write_blocker,
+    source_binding_unavailable_message,
 )
 
 
@@ -213,6 +215,70 @@ Formato: PPTX."""
 
     assert decision["handled"] is True
     assert decision["format"] == "pptx"
+
+
+def test_source_bound_pptx_without_source_rows_refuses_fallback_data():
+    message = """Orkio, gere um PPTX executivo de teste com base na planilha que enviei anteriormente.
+
+Use apenas 3 empresas da planilha.
+Formato: PPTX."""
+
+    decision = classify_document_artifact_request(message, agent_slug="orkio")
+
+    assert DOCIO003_SOURCE_BINDING_VERSION == "DOCIO003_SOURCE_BINDING_V1"
+    assert decision["handled"] is True
+    assert decision["format"] == "pptx"
+    try:
+        build_document_artifact_payload(
+            message,
+            decision,
+            thread_id="thread-a",
+            requested_agent_hint="orkio",
+            source_context={},
+        )
+    except ValueError as e:
+        assert str(e) == "document_source_rows_required"
+    else:
+        raise AssertionError("source-bound artifact generation must not use fallback rows")
+
+    assert "Nao gerei o pptx" in source_binding_unavailable_message("pptx")
+
+
+def test_source_bound_pptx_with_source_rows_preserves_real_company_names():
+    message = """Orkio, gere um PPTX executivo de teste com base na planilha que enviei anteriormente.
+
+Use apenas 3 empresas da planilha.
+Formato: PPTX."""
+    decision = classify_document_artifact_request(message, agent_slug="orkio")
+    source_context = {
+        "file_context_block": "\n".join(
+            [
+                "DOCUMENTOS ANEXADOS A THREAD - CONTEXTO AUTORIZADO:",
+                "[Arquivo: Base de Associados - Amcham RS. 2026.xlsx]",
+                "Cliente | Nome Fantasia | Segmento",
+                "A GRINGS S A | PICCADILLY | VAREJO",
+                "A PLAYERS PRESTADORA DE SERVICOS EIRELI | A PLAYERS | SERVICOS",
+                "ACADEMIA BELEZA DO FUTURO CONSULTORIA E | BELEZA DO FUTURO | SERVICOS",
+            ]
+        )
+    }
+
+    plan = build_document_artifact_payload(
+        message,
+        decision,
+        thread_id="thread-a",
+        requested_agent_hint="orkio",
+        source_context=source_context,
+    )
+
+    assert plan["format"] == "pptx"
+    assert plan["rows"] == [
+        ["Cliente", "Nome Fantasia", "Segmento"],
+        ["A GRINGS S A", "PICCADILLY", "VAREJO"],
+        ["A PLAYERS PRESTADORA DE SERVICOS EIRELI", "A PLAYERS", "SERVICOS"],
+        ["ACADEMIA BELEZA DO FUTURO CONSULTORIA E", "BELEZA DO FUTURO", "SERVICOS"],
+    ]
+    assert "Registro de teste A" not in str(plan["rows"])
 
 
 def test_payload_builder_respects_exact_row_limit_without_visible_header():
