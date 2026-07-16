@@ -6,6 +6,7 @@ import types
 import uuid
 from pathlib import Path
 
+import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -103,6 +104,8 @@ def test_payload_builder_produces_bounded_xlsx_rows():
 
 
 def test_command_service_persists_artifact_event_assistant_and_audit_atomically():
+    pytest.importorskip("openpyxl")
+
     engine, factory = _database()
     try:
         with factory() as db:
