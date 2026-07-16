@@ -140,6 +140,10 @@ def _has_governance_write_blocker(low: str) -> bool:
     return any(marker in low for marker in _GOVERNANCE_WRITE_BLOCKERS)
 
 
+def has_document_artifact_write_blocker(message: Any) -> bool:
+    return _has_governance_write_blocker(_plain(message))
+
+
 def classify_document_artifact_request(
     message: Any,
     *,

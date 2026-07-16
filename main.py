@@ -416,6 +416,7 @@ from .runtime.document_artifact_intent import (
     artifact_success_message,
     build_document_artifact_payload,
     classify_document_artifact_request,
+    has_document_artifact_write_blocker,
 )
 from .services.document_artifact_command_service import (
     DocumentArtifactCommandDeps,
@@ -42460,10 +42461,23 @@ async def chat_stream(
         # DOCIO-001.4 — Conversational Artifact Execution Bridge.
         # Explicit creation requests must execute before stream-lite or any
         # conversational fast-path can convert them into a text-only refusal.
-        docio_decision = classify_document_artifact_request(
-            message,
-            agent_slug=getattr(ao01_agent_turn_context, "turn_owner", None),
-        )
+        if has_document_artifact_write_blocker(message):
+            try:
+                logger.warning(
+                    "DOCIO0018_CHAT_BRIDGE_GOVERNANCE_BLOCKED trace_id=%s thread_id=%s "
+                    "agent=%s",
+                    trace_id,
+                    tid_seed,
+                    getattr(ao01_agent_turn_context, "turn_owner", None),
+                )
+            except Exception:
+                pass
+            docio_decision = {"handled": False, "reason": "governance_write_blocked"}
+        else:
+            docio_decision = classify_document_artifact_request(
+                message,
+                agent_slug=getattr(ao01_agent_turn_context, "turn_owner", None),
+            )
         if bool(docio_decision.get("handled")):
             try:
                 logger.warning(

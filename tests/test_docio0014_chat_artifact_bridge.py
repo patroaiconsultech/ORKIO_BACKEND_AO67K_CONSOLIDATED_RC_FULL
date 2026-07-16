@@ -15,6 +15,7 @@ if app_alias is None:
 from app.runtime.document_artifact_intent import (
     build_document_artifact_payload,
     classify_document_artifact_request,
+    has_document_artifact_write_blocker,
 )
 
 
@@ -92,6 +93,19 @@ def test_chat_plan_blocks_artifact_generation_under_explicit_governance_guards()
     assert decision["proposal_only"] is True
     assert decision["observe_only"] is True
     assert "capability" not in decision
+
+
+def test_chat_bridge_main_guard_blocks_before_docio_selection():
+    source = (ROOT / "main.py").read_text(encoding="utf-8-sig")
+
+    guard_at = source.index("has_document_artifact_write_blocker(message)")
+    selected_at = source.index("DOCIO0014_CHAT_BRIDGE_SELECTED")
+
+    assert guard_at < selected_at
+    assert "DOCIO0018_CHAT_BRIDGE_GOVERNANCE_BLOCKED" in source
+    assert has_document_artifact_write_blocker(
+        "Modo observe_only e proposal_only. Nao gere artefato. Entregue somente uma proposta textual."
+    )
 
 
 def test_payload_builder_uses_authorized_source_rows_for_three_names():
