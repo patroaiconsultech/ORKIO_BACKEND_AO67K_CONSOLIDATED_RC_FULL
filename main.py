@@ -413,6 +413,7 @@ from .services.access_grant_service import (
 )
 from .schemas.document_artifacts import DocumentArtifactGenerateIn
 from .runtime.document_artifact_intent import (
+    DOCIO0018_BRIDGE_GOVERNANCE_GUARD_VERSION,
     artifact_success_message,
     build_document_artifact_payload,
     classify_document_artifact_request,
@@ -5777,6 +5778,18 @@ def _startup_runtime_fingerprint():
             _route_methods_for("/api/audio/transcriptions"),
             _route_methods_for("/api/realtime/start"),
             _route_methods_for("/api/realtime/end"),
+        )
+        docio0018_probe = (
+            "Modo observe_only e proposal_only. "
+            "Não escreva arquivo, não gere artefato, não faça commit, não faça deploy. "
+            "Entregue somente uma proposta textual."
+        )
+        logger.info(
+            "DOCIO0018_BOOT_GUARD_PRESENT version=%s main_sha12=%s blocker_probe=%s bridge_marker=%s",
+            DOCIO0018_BRIDGE_GOVERNANCE_GUARD_VERSION,
+            _safe_build_fingerprint(),
+            bool(has_document_artifact_write_blocker(docio0018_probe)),
+            "DOCIO0018_CHAT_BRIDGE_GOVERNANCE_BLOCKED",
         )
     except Exception as e:
         try:

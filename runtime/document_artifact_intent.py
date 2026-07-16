@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 
 SUPPORTED_ARTIFACT_FORMATS = ("md", "csv", "xlsx", "docx", "pptx", "pdf")
+DOCIO0018_BRIDGE_GOVERNANCE_GUARD_VERSION = "DOCIO0018_BRIDGE_GOVERNANCE_GUARD_V1"
 
 _FORMAT_HINTS = (
     ("xlsx", ("planilha", "excel", ".xlsx", " xlsx")),
