@@ -74,6 +74,26 @@ def test_chat_plan_detects_direct_docx_and_pdf_extension_generation_requests():
     assert pdf["format"] == "pdf"
 
 
+def test_chat_plan_blocks_artifact_generation_under_explicit_governance_guards():
+    message = (
+        "Orion, ajuste o Orkio e suas respostas. "
+        "Modo observe_only e proposal_only. "
+        "Nao escreva arquivo, nao gere artefato, nao crie branch, "
+        "nao faca commit, nao faca deploy. "
+        "Entregue somente uma proposta textual."
+    )
+
+    decision = classify_document_artifact_request(message, agent_slug="orion")
+
+    assert decision["handled"] is False
+    assert decision["reason"] == "governance_write_blocked"
+    assert decision["write_executed"] is False
+    assert decision["artifact_created"] is False
+    assert decision["proposal_only"] is True
+    assert decision["observe_only"] is True
+    assert "capability" not in decision
+
+
 def test_payload_builder_uses_authorized_source_rows_for_three_names():
     message = "por favor, gere uma nova planilha com apenas 3 nomes que vc escolher da planilha anterior"
     decision = classify_document_artifact_request(message, agent_slug="orkio")

@@ -47,6 +47,47 @@ _INSTRUCTIONAL_MARKERS = (
     "passo a passo",
 )
 
+_GOVERNANCE_WRITE_BLOCKERS = (
+    "observe_only",
+    "observe only",
+    "proposal_only",
+    "proposal only",
+    "somente proposta",
+    "apenas proposta",
+    "somente uma proposta textual",
+    "apenas uma proposta textual",
+    "entregue somente uma proposta textual",
+    "entregue apenas uma proposta textual",
+    "nao escreva",
+    "nao escrever",
+    "sem escrita",
+    "write_executed=false",
+    "write executed false",
+    "nao gere artefato",
+    "nao gerar artefato",
+    "nao crie artefato",
+    "nao criar artefato",
+    "sem artefato",
+    "nao gere arquivo",
+    "nao gerar arquivo",
+    "nao crie arquivo",
+    "nao criar arquivo",
+    "sem arquivo",
+    "nao crie branch",
+    "nao criar branch",
+    "sem branch",
+    "nao faca commit",
+    "nao fazer commit",
+    "nao crie commit",
+    "nao criar commit",
+    "sem commit",
+    "nao faca deploy",
+    "nao fazer deploy",
+    "nao execute deploy",
+    "nao executar deploy",
+    "sem deploy",
+)
+
 _ARTIFACT_NOUNS = (
     "planilha",
     "excel",
@@ -95,6 +136,10 @@ def _infer_format(low: str) -> Optional[str]:
     return None
 
 
+def _has_governance_write_blocker(low: str) -> bool:
+    return any(marker in low for marker in _GOVERNANCE_WRITE_BLOCKERS)
+
+
 def classify_document_artifact_request(
     message: Any,
     *,
@@ -111,6 +156,16 @@ def classify_document_artifact_request(
     low = _plain(raw)
     if not raw:
         return {"handled": False, "reason": "empty_message"}
+
+    if _has_governance_write_blocker(low):
+        return {
+            "handled": False,
+            "reason": "governance_write_blocked",
+            "write_executed": False,
+            "artifact_created": False,
+            "proposal_only": ("proposal_only" in low or "proposal only" in low),
+            "observe_only": ("observe_only" in low or "observe only" in low),
+        }
 
     if any(marker in low for marker in _INSTRUCTIONAL_MARKERS):
         return {"handled": False, "reason": "instructional_request"}
