@@ -140,3 +140,33 @@ def test_payload_builder_uses_authorized_source_rows_for_pptx_followup():
     assert plan["rows"][0] == ["Cliente", "Nome Fantasia", "Segmento"]
     assert plan["rows"][1][0] == "A GRINGS S A"
     assert "Dados de origem" in plan["content"]
+
+
+def test_payload_builder_respects_exact_row_limit_without_visible_header():
+    message = "por favor, gere uma nova planilha com apenas 3 nomes que vc escolher da planilha anterior"
+    decision = classify_document_artifact_request(message, agent_slug="orkio")
+    source_context = {
+        "file_context_block": "\n".join(
+            [
+                "CHOICEST PSICOLOGIA ORGANIZACIONAL EIREL | CHOICEST | SERVICOS",
+                "CIA ULTRAGAZ S/A | ULTRAGAZ | SERVICOS",
+                "CIX CONSULTING LTDA | CIX CONSULTING | SERVICOS",
+                "CLARO S A PORTO ALEGRE | CLARO | SERVICOS",
+            ]
+        )
+    }
+
+    plan = build_document_artifact_payload(
+        message,
+        decision,
+        thread_id="thread-a",
+        requested_agent_hint="orkio",
+        source_context=source_context,
+    )
+
+    assert plan["rows"] == [
+        ["CHOICEST PSICOLOGIA ORGANIZACIONAL EIREL", "CHOICEST", "SERVICOS"],
+        ["CIA ULTRAGAZ S/A", "ULTRAGAZ", "SERVICOS"],
+        ["CIX CONSULTING LTDA", "CIX CONSULTING", "SERVICOS"],
+    ]
+    assert len(plan["rows"]) == 3

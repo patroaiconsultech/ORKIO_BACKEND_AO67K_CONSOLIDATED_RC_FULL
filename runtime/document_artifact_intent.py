@@ -308,12 +308,14 @@ def _rows_from_source_context(
             header = row
             data_start = index + 1
             break
+    limit = _requested_row_limit(message)
     if header is None:
+        if limit is not None:
+            return rows[:limit]
         header = rows[0]
         data_start = 1
 
     data_rows = [row for row in rows[data_start:] if row != header]
-    limit = _requested_row_limit(message)
     if limit is not None:
         data_rows = data_rows[:limit]
     else:
