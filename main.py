@@ -415,10 +415,12 @@ from .schemas.document_artifacts import DocumentArtifactGenerateIn
 from .runtime.document_artifact_intent import (
     DOCIO0018_BRIDGE_GOVERNANCE_GUARD_VERSION,
     DOCIO002_FORMAT_PRECEDENCE_VERSION,
+    DOCIO003_SOURCE_BINDING_VERSION,
     artifact_success_message,
     build_document_artifact_payload,
     classify_document_artifact_request,
     has_document_artifact_write_blocker,
+    source_binding_unavailable_message,
 )
 from .services.document_artifact_command_service import (
     DocumentArtifactCommandDeps,
@@ -5805,6 +5807,22 @@ def _startup_runtime_fingerprint():
             DOCIO002_FORMAT_PRECEDENCE_VERSION,
             docio002_decision.get("format"),
             bool(docio002_decision.get("handled")),
+        )
+        docio003_source_blocked = False
+        try:
+            build_document_artifact_payload(
+                docio002_probe,
+                docio002_decision,
+                thread_id="boot",
+                requested_agent_hint="orkio",
+                source_context={},
+            )
+        except ValueError as e:
+            docio003_source_blocked = str(e) == "document_source_rows_required"
+        logger.info(
+            "DOCIO003_SOURCE_BINDING_BOOT version=%s source_required_blocked=%s expected_blocked=true",
+            DOCIO003_SOURCE_BINDING_VERSION,
+            docio003_source_blocked,
         )
     except Exception as e:
         try:
@@ -42013,13 +42031,52 @@ async def chat_stream(
                     tid2,
                 )
 
-            input_payload = build_document_artifact_payload(
-                inp.message,
-                docio_decision,
-                thread_id=tid2,
-                requested_agent_hint=owner_slug,
-                source_context=source_context,
-            )
+            try:
+                input_payload = build_document_artifact_payload(
+                    inp.message,
+                    docio_decision,
+                    thread_id=tid2,
+                    requested_agent_hint=owner_slug,
+                    source_context=source_context,
+                )
+            except ValueError as e:
+                if str(e) != "document_source_rows_required":
+                    raise
+                final_text2 = source_binding_unavailable_message(
+                    str(docio_decision.get("format") or "arquivo")
+                )
+                logger.warning(
+                    "DOCIO003_SOURCE_BINDING_BLOCKED trace_id=%s thread_id=%s "
+                    "format=%s context_available=%s context_chars=%s",
+                    trace_id,
+                    tid2,
+                    docio_decision.get("format"),
+                    bool(source_context.get("context_available") if isinstance(source_context, dict) else False),
+                    int(source_context.get("context_chars") or 0) if isinstance(source_context, dict) else 0,
+                )
+                return {
+                    "ok": True,
+                    "thread_id": tid2,
+                    "answer": final_text2,
+                    "message": final_text2,
+                    "final_text": final_text2,
+                    "content": final_text2,
+                    "agent_id": agent_id2,
+                    "agent_name": agent_name2,
+                    "final_speaker": agent_name2,
+                    "assistant_persisted": False,
+                    "write_executed": False,
+                    "artifact_created": False,
+                    "source_binding_blocked": True,
+                    "reason": "document_source_rows_required",
+                    "runtime_hints": {
+                        "routing": {
+                            "capability": "document_artifact_generate",
+                            "blocked": True,
+                            "block_reason": "document_source_rows_required",
+                        }
+                    },
+                }
             input_model = DocumentArtifactGenerateIn.model_validate(input_payload)
 
             command_result = execute_document_artifact_command(
