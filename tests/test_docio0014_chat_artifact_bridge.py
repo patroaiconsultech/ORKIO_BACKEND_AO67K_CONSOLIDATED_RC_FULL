@@ -17,6 +17,7 @@ from app.runtime.document_artifact_intent import (
     DOCIO003_SOURCE_BINDING_VERSION,
     DOCIO004_PPTX_SOURCE_QUALITY_VERSION,
     DOCIO005_PREMIUM_SOURCE_CONTRACT_VERSION,
+    DOCIO006_PREMIUM_ARTIFACT_QUALITY_VERSION,
     build_document_artifact_payload,
     classify_document_artifact_request,
     has_document_artifact_write_blocker,
@@ -386,6 +387,13 @@ def test_docio005_boot_canary_present():
     assert "DOCIO005_PREMIUM_SOURCE_CONTRACT_BOOT" in source
     assert "attached_without_rows_blocked=%s" in source
     assert "DOCIO005_PREMIUM_SOURCE_CONTRACT_VERSION" in source
+
+
+def test_docio006_premium_artifact_quality_boot_canary_present():
+    source = (ROOT / "main.py").read_text(encoding="utf-8-sig")
+    assert DOCIO006_PREMIUM_ARTIFACT_QUALITY_VERSION == "DOCIO006_PREMIUM_ARTIFACT_QUALITY_V1"
+    assert "DOCIO006_PREMIUM_ARTIFACT_QUALITY_BOOT" in source
+    assert "executive_dark_16x9" in source
 
 
 def test_payload_builder_respects_exact_row_limit_without_visible_header():

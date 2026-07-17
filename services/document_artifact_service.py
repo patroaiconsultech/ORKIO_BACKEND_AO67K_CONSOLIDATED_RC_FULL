@@ -330,6 +330,32 @@ def _next_steps(rows: List[List[str]]) -> List[str]:
     ]
 
 
+def _shorten(value: Any, limit: int = 160) -> str:
+    text = re.sub(r"\s+", " ", _text(value)).strip()
+    if len(text) <= limit:
+        return text
+    return text[: max(1, limit - 1)].rstrip() + "..."
+
+
+def _premium_takeaway(title: str, body: str, rows: List[List[str]], slides: Optional[List[Dict[str, Any]]] = None) -> str:
+    if slides:
+        return f"{title}: narrativa preservada a partir de {len(slides)} slide(s) fonte."
+    if rows:
+        return f"{title}: amostra executiva com {_row_count(rows)} registro(s) e {_column_count(rows)} campo(s)."
+    for paragraph in _body_paragraphs(body, max_items=1):
+        return _shorten(paragraph, 120)
+    return f"{title}: artefato executivo gerado com governanca."
+
+
+def _source_quality_note_for(rows: List[List[str]], slides: Optional[List[Dict[str, Any]]] = None) -> str:
+    if slides:
+        return (
+            "Fonte: outline extraido de PPTX autorizado vinculado a esta conversa. "
+            "Revise identidade visual e imagens antes de uso externo."
+        )
+    return _source_quality_note(rows)
+
+
 def _markdown(title: str, body: str, rows: List[List[str]]) -> str:
     parts = [
         f"# {title}".strip(),
@@ -483,11 +509,45 @@ def _generate_docx(
 ) -> GeneratedDocumentArtifact:
     try:
         from docx import Document  # type: ignore
+        from docx.enum.text import WD_ALIGN_PARAGRAPH  # type: ignore
+        from docx.shared import Inches, Pt, RGBColor  # type: ignore
     except Exception as exc:
         raise RuntimeError("python_docx_unavailable") from exc
 
     doc = Document()
-    doc.add_heading(title, level=1)
+    section = doc.sections[0]
+    section.top_margin = Inches(0.65)
+    section.bottom_margin = Inches(0.65)
+    section.left_margin = Inches(0.75)
+    section.right_margin = Inches(0.75)
+
+    styles = doc.styles
+    styles["Normal"].font.name = "Arial"
+    styles["Normal"].font.size = Pt(10)
+    for style_name, size, color in (
+        ("Title", 24, RGBColor(14, 17, 22)),
+        ("Heading 1", 18, RGBColor(14, 17, 22)),
+        ("Heading 2", 13, RGBColor(31, 78, 121)),
+    ):
+        style = styles[style_name]
+        style.font.name = "Arial"
+        style.font.size = Pt(size)
+        style.font.color.rgb = color
+        style.font.bold = True
+
+    cover = doc.add_paragraph()
+    cover.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = cover.add_run(title)
+    run.bold = True
+    run.font.size = Pt(24)
+    run.font.color.rgb = RGBColor(14, 17, 22)
+
+    subtitle = doc.add_paragraph()
+    subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    subtitle_run = subtitle.add_run(_premium_takeaway(title, body, rows))
+    subtitle_run.font.size = Pt(11)
+    subtitle_run.font.color.rgb = RGBColor(89, 89, 89)
+
     doc.add_heading("Resumo executivo", level=2)
     for item in _executive_summary(title, body, rows):
         doc.add_paragraph(item, style="List Bullet")
@@ -507,9 +567,16 @@ def _generate_docx(
             cells = table.add_row().cells
             for index, value in enumerate(row):
                 cells[index].text = value
+        for cell in table.rows[0].cells:
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    run.bold = True
     doc.add_heading("Proximos passos", level=2)
     for item in _next_steps(rows):
         doc.add_paragraph(item, style="List Number")
+    footer = section.footer.paragraphs[0]
+    footer.text = "ORKIO | Artefato executivo gerado com governanca e fonte auditavel"
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     stream = io.BytesIO()
     doc.save(stream)
@@ -533,99 +600,156 @@ def _generate_pptx(
     try:
         from pptx import Presentation  # type: ignore
         from pptx.dml.color import RGBColor  # type: ignore
+        from pptx.enum.shapes import MSO_SHAPE  # type: ignore
         from pptx.enum.text import PP_ALIGN  # type: ignore
         from pptx.util import Inches, Pt  # type: ignore
     except Exception as exc:
         raise RuntimeError("python_pptx_unavailable") from exc
 
     deck = Presentation()
-    title_slide = deck.slides.add_slide(deck.slide_layouts[0])
-    title_slide.shapes.title.text = title
-    subtitle = title_slide.placeholders[1] if len(title_slide.placeholders) > 1 else None
-    if subtitle is not None:
-        subtitle.text = (
-            "Fonte: PPTX autorizado vinculado a esta conversa."
-            if slides
-            else _source_quality_note(rows)
-        )
+    deck.slide_width = Inches(13.333)
+    deck.slide_height = Inches(7.5)
 
-    summary_slide = deck.slides.add_slide(deck.slide_layouts[1])
-    summary_slide.shapes.title.text = "Resumo executivo"
-    body_box = summary_slide.placeholders[1]
-    body_box.text = ""
-    frame = body_box.text_frame
+    bg = RGBColor(14, 17, 22)
+    panel = RGBColor(28, 34, 45)
+    accent = RGBColor(44, 123, 229)
+    gold = RGBColor(235, 184, 78)
+    white = RGBColor(245, 247, 250)
+    muted = RGBColor(189, 197, 209)
+
+    def _blank_slide() -> Any:
+        slide = deck.slides.add_slide(deck.slide_layouts[6])
+        background = slide.background.fill
+        background.solid()
+        background.fore_color.rgb = bg
+        return slide
+
+    def _textbox(slide: Any, text: str, left: float, top: float, width: float, height: float, *, size: int = 24, bold: bool = False, color: Any = None) -> Any:
+        shape = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(height))
+        frame = shape.text_frame
+        frame.clear()
+        paragraph = frame.paragraphs[0]
+        paragraph.text = _shorten(text, 420)
+        paragraph.font.name = "Arial"
+        paragraph.font.size = Pt(size)
+        paragraph.font.bold = bold
+        paragraph.font.color.rgb = color or white
+        return shape
+
+    def _footer(slide: Any, index: int) -> None:
+        line = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(7.08), Inches(13.333), Inches(0.05))
+        line.fill.solid()
+        line.fill.fore_color.rgb = accent
+        line.line.fill.background()
+        footer = _textbox(slide, f"ORKIO | Fonte auditavel | {index}", 0.55, 7.16, 8.0, 0.22, size=8, color=muted)
+        footer.text_frame.paragraphs[0].font.bold = False
+
+    def _bullet_panel(slide: Any, items: List[str], left: float, top: float, width: float, height: float, *, font_size: int = 19) -> None:
+        box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(height))
+        box.fill.solid()
+        box.fill.fore_color.rgb = panel
+        box.line.color.rgb = RGBColor(52, 63, 82)
+        tf = box.text_frame
+        tf.clear()
+        tf.margin_left = Inches(0.22)
+        tf.margin_right = Inches(0.18)
+        tf.margin_top = Inches(0.12)
+        for index, item in enumerate(items[:7]):
+            paragraph = tf.paragraphs[0] if index == 0 else tf.add_paragraph()
+            paragraph.text = _shorten(item, 145)
+            paragraph.level = 0
+            paragraph.font.name = "Arial"
+            paragraph.font.size = Pt(font_size)
+            paragraph.font.color.rgb = white if index == 0 else muted
+            paragraph.font.bold = index == 0
+
+    slide_no = 1
+    title_slide = _blank_slide()
+    side_bar = title_slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(0.16), Inches(7.5))
+    side_bar.fill.solid()
+    side_bar.fill.fore_color.rgb = accent
+    side_bar.line.fill.background()
+    _textbox(title_slide, "ORKIO", 0.58, 0.45, 2.1, 0.32, size=15, bold=True, color=gold)
+    _textbox(title_slide, _shorten(title, 92), 0.58, 1.35, 8.2, 1.25, size=40, bold=True, color=white)
+    _textbox(title_slide, _premium_takeaway(title, body, rows, slides), 0.62, 2.75, 8.9, 0.6, size=18, color=muted)
+    _bullet_panel(
+        title_slide,
+        [
+            "Contrato premium: fonte real ou bloqueio transparente",
+            "Entrega executiva com trilha de governanca",
+            _source_quality_note_for(rows, slides),
+        ],
+        9.05,
+        1.05,
+        3.45,
+        4.75,
+        font_size=15,
+    )
+    _footer(title_slide, slide_no)
+
+    slide_no += 1
+    summary_slide = _blank_slide()
+    _textbox(summary_slide, "Resumo executivo", 0.58, 0.48, 7.6, 0.5, size=30, bold=True, color=white)
     summary_items = _executive_summary(title, body, rows)
     if slides:
         summary_items = [
-            f"Apresentacao reorganizada a partir de {len(slides)} slide(s) do PPTX fonte.",
-            "A narrativa, os temas e os pontos centrais foram preservados a partir do material enviado.",
-            "Revise identidade visual, imagens e eventuais ajustes finos antes de uso externo.",
+            f"{len(slides)} slide(s) fonte foram convertidos em narrativa executiva auditavel.",
+            "A tese, os temas e os pontos centrais foram preservados como outline estruturado.",
+            "A camada visual foi elevada, mas imagens/layout original ainda exigem validacao humana.",
         ]
-    for index, item in enumerate(summary_items):
-        paragraph = frame.paragraphs[0] if index == 0 else frame.add_paragraph()
-        paragraph.text = item
-        paragraph.level = 0
-        paragraph.font.size = Pt(20)
+    _bullet_panel(summary_slide, summary_items, 0.7, 1.35, 11.8, 4.85, font_size=21)
+    _footer(summary_slide, slide_no)
 
     if slides:
         for item in slides[:10]:
-            slide = deck.slides.add_slide(deck.slide_layouts[1])
-            slide.shapes.title.text = str(item.get("title") or "Slide")
-            body_box = slide.placeholders[1]
-            body_box.text = ""
-            frame = body_box.text_frame
-            bullets = list(item.get("bullets") or [])[:8]
-            if not bullets:
-                bullets = ["Conteudo preservado a partir do slide fonte."]
-            for index, bullet in enumerate(bullets):
-                paragraph = frame.paragraphs[0] if index == 0 else frame.add_paragraph()
-                paragraph.text = str(bullet)
-                paragraph.level = 0
-                paragraph.font.size = Pt(18)
+            slide_no += 1
+            slide = _blank_slide()
+            source_slide = item.get("source_slide") or slide_no - 2
+            _textbox(slide, f"Slide fonte {source_slide}", 0.58, 0.45, 2.5, 0.26, size=12, bold=True, color=gold)
+            _textbox(slide, str(item.get("title") or "Slide"), 0.58, 0.9, 9.8, 0.85, size=30, bold=True, color=white)
+            bullets = list(item.get("bullets") or [])[:7] or ["Conteudo preservado a partir do slide fonte."]
+            _bullet_panel(slide, bullets, 0.7, 2.0, 11.75, 4.35, font_size=18)
+            _footer(slide, slide_no)
     elif rows:
-        slide = deck.slides.add_slide(deck.slide_layouts[5])
-        slide.shapes.title.text = "Dados selecionados"
+        slide_no += 1
+        slide = _blank_slide()
+        _textbox(slide, "Dados selecionados da fonte", 0.58, 0.48, 8.8, 0.5, size=30, bold=True, color=white)
         table_rows = rows[: min(len(rows), 8)]
         table_cols = max(len(row) for row in table_rows)
         table = slide.shapes.add_table(
             len(table_rows),
             table_cols,
-            Inches(0.7),
-            Inches(1.4),
-            Inches(8.6),
-            Inches(4.8),
+            Inches(0.55),
+            Inches(1.35),
+            Inches(12.25),
+            Inches(4.95),
         ).table
         for row_index, row in enumerate(table_rows):
             for column_index, value in enumerate(row):
                 cell = table.cell(row_index, column_index)
-                cell.text = value
+                cell.text = _shorten(value, 95)
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = accent if row_index == 0 else panel
                 for paragraph in cell.text_frame.paragraphs:
-                    paragraph.font.size = Pt(11 if row_index else 12)
+                    paragraph.font.name = "Arial"
+                    paragraph.font.size = Pt(10 if row_index else 11)
                     paragraph.alignment = PP_ALIGN.CENTER if row_index == 0 else PP_ALIGN.LEFT
                     paragraph.font.bold = row_index == 0
-                    if row_index == 0:
-                        paragraph.font.color.rgb = RGBColor(255, 255, 255)
-                if row_index == 0:
-                    cell.fill.solid()
-                    cell.fill.fore_color.rgb = RGBColor(31, 78, 121)
+                    paragraph.font.color.rgb = white
+        _footer(slide, slide_no)
 
-    next_slide = deck.slides.add_slide(deck.slide_layouts[1])
-    next_slide.shapes.title.text = "Proximos passos"
-    next_box = next_slide.placeholders[1]
-    next_box.text = ""
-    next_frame = next_box.text_frame
+    slide_no += 1
+    next_slide = _blank_slide()
+    _textbox(next_slide, "Proximos passos recomendados", 0.58, 0.48, 9.5, 0.5, size=30, bold=True, color=white)
     next_items = _next_steps(rows)
     if slides:
         next_items = [
             "Validar se a nova versao preserva a tese central do PPTX fonte.",
             "Aplicar identidade visual, imagens e layout final antes de apresentacao externa.",
-            "Ajustar a profundidade conforme publico-alvo e tempo disponivel.",
+            "Ajustar profundidade conforme publico-alvo, tempo disponivel e objetivo comercial.",
         ]
-    for index, item in enumerate(next_items):
-        paragraph = next_frame.paragraphs[0] if index == 0 else next_frame.add_paragraph()
-        paragraph.text = item
-        paragraph.level = 0
-        paragraph.font.size = Pt(20)
+    _bullet_panel(next_slide, next_items, 0.7, 1.35, 11.8, 4.85, font_size=22)
+    _footer(next_slide, slide_no)
 
     stream = io.BytesIO()
     deck.save(stream)
@@ -657,7 +781,7 @@ def _generate_pdf(
     width, height = A4
     left = 72
     right = width - 72
-    y = height - 72
+    y = height - 96
 
     def draw_wrapped(value: str, *, font: str, size: int, leading: int) -> None:
         nonlocal y
@@ -689,8 +813,18 @@ def _generate_pdf(
                 pdf.drawString(left, y, current)
                 y -= leading
 
-    draw_wrapped(title, font="Helvetica-Bold", size=18, leading=24)
-    y -= 6
+    pdf.setFillColorRGB(0.055, 0.067, 0.086)
+    pdf.rect(0, height - 74, width, 74, stroke=0, fill=1)
+    pdf.setFillColorRGB(0.173, 0.482, 0.898)
+    pdf.rect(0, height - 74, 12, 74, stroke=0, fill=1)
+    pdf.setFillColorRGB(1, 1, 1)
+    pdf.setFont("Helvetica-Bold", 18)
+    pdf.drawString(left, height - 42, _shorten(title, 72))
+    pdf.setFont("Helvetica", 8)
+    pdf.setFillColorRGB(0.74, 0.77, 0.82)
+    pdf.drawString(left, height - 58, "ORKIO | Artefato executivo com governanca e fonte auditavel")
+    pdf.setFillColorRGB(0, 0, 0)
+
     draw_wrapped("Resumo executivo", font="Helvetica-Bold", size=13, leading=18)
     for item in _executive_summary(title, body, rows):
         draw_wrapped(f"- {item}", font="Helvetica", size=10, leading=15)
@@ -711,6 +845,9 @@ def _generate_pdf(
     draw_wrapped("Proximos passos", font="Helvetica-Bold", size=13, leading=18)
     for item in _next_steps(rows):
         draw_wrapped(f"- {item}", font="Helvetica", size=10, leading=15)
+    pdf.setFont("Helvetica", 8)
+    pdf.setFillColorRGB(0.45, 0.45, 0.45)
+    pdf.drawCentredString(width / 2, 36, "ORKIO | Validar dados sensiveis antes de uso externo")
     pdf.save()
 
     text = _markdown(title, body, rows)
