@@ -225,6 +225,41 @@ def _normalize_rows(
     return out
 
 
+def _normalize_slides(
+    slides: Optional[Iterable[Any]],
+    limits: DocumentArtifactLimits,
+) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    if slides is None:
+        return out
+    if isinstance(slides, (str, bytes, bytearray, Mapping)):
+        raise DocumentArtifactLimitError("slides_must_be_an_array")
+
+    for slide_index, slide in enumerate(slides):
+        if slide_index >= 20:
+            raise DocumentArtifactLimitError("max_slides_exceeded")
+        if not isinstance(slide, Mapping):
+            continue
+        title = _text(slide.get("title"))[:120]
+        raw_bullets = slide.get("bullets") or []
+        if isinstance(raw_bullets, (str, bytes, bytearray, Mapping)):
+            raw_bullets = [raw_bullets]
+        bullets: List[str] = []
+        for bullet in list(raw_bullets)[:10]:
+            text = _text(bullet)[:320]
+            if text and text not in bullets:
+                bullets.append(text)
+        if title or bullets:
+            out.append(
+                {
+                    "source_slide": slide.get("source_slide") or slide_index + 1,
+                    "title": title or f"Slide {slide_index + 1}",
+                    "bullets": bullets,
+                }
+            )
+    return out
+
+
 def _plain_table(rows: List[List[str]]) -> str:
     return "\n".join(
         " | ".join(cell for cell in row)
@@ -314,6 +349,24 @@ def _markdown(title: str, body: str, rows: List[List[str]]) -> str:
         parts.extend(["", "## Dados", "", _plain_table(rows)])
     parts.extend(["", "## Proximos passos", "", "\n".join(f"- {item}" for item in _next_steps(rows))])
     return "\n".join(part for part in parts if part is not None).strip() + "\n"
+
+
+def _slides_markdown(title: str, slides: List[Dict[str, Any]]) -> str:
+    parts = [f"# {title}".strip(), "", "## Resumo executivo", ""]
+    parts.append(f"- Apresentacao reorganizada a partir de {len(slides)} slide(s) do PPTX fonte.")
+    parts.append("- Conteudo preservado a partir do contexto autorizado da conversa.")
+    for index, slide in enumerate(slides, start=1):
+        parts.extend(["", f"## {index}. {slide.get('title') or 'Slide'}", ""])
+        bullets = list(slide.get("bullets") or [])
+        if bullets:
+            parts.extend(f"- {bullet}" for bullet in bullets)
+    parts.extend([
+        "",
+        "## Proximos passos",
+        "",
+        "- Validar narrativa, identidade visual e imagens antes de uso externo.",
+    ])
+    return "\n".join(str(part) for part in parts).strip() + "\n"
 
 
 def _generate_md(
@@ -475,6 +528,7 @@ def _generate_pptx(
     body: str,
     rows: List[List[str]],
     basename: str,
+    slides: Optional[List[Dict[str, Any]]] = None,
 ) -> GeneratedDocumentArtifact:
     try:
         from pptx import Presentation  # type: ignore
@@ -489,20 +543,46 @@ def _generate_pptx(
     title_slide.shapes.title.text = title
     subtitle = title_slide.placeholders[1] if len(title_slide.placeholders) > 1 else None
     if subtitle is not None:
-        subtitle.text = _source_quality_note(rows)
+        subtitle.text = (
+            "Fonte: PPTX autorizado vinculado a esta conversa."
+            if slides
+            else _source_quality_note(rows)
+        )
 
     summary_slide = deck.slides.add_slide(deck.slide_layouts[1])
     summary_slide.shapes.title.text = "Resumo executivo"
     body_box = summary_slide.placeholders[1]
     body_box.text = ""
     frame = body_box.text_frame
-    for index, item in enumerate(_executive_summary(title, body, rows)):
+    summary_items = _executive_summary(title, body, rows)
+    if slides:
+        summary_items = [
+            f"Apresentacao reorganizada a partir de {len(slides)} slide(s) do PPTX fonte.",
+            "A narrativa, os temas e os pontos centrais foram preservados a partir do material enviado.",
+            "Revise identidade visual, imagens e eventuais ajustes finos antes de uso externo.",
+        ]
+    for index, item in enumerate(summary_items):
         paragraph = frame.paragraphs[0] if index == 0 else frame.add_paragraph()
         paragraph.text = item
         paragraph.level = 0
         paragraph.font.size = Pt(20)
 
-    if rows:
+    if slides:
+        for item in slides[:10]:
+            slide = deck.slides.add_slide(deck.slide_layouts[1])
+            slide.shapes.title.text = str(item.get("title") or "Slide")
+            body_box = slide.placeholders[1]
+            body_box.text = ""
+            frame = body_box.text_frame
+            bullets = list(item.get("bullets") or [])[:8]
+            if not bullets:
+                bullets = ["Conteudo preservado a partir do slide fonte."]
+            for index, bullet in enumerate(bullets):
+                paragraph = frame.paragraphs[0] if index == 0 else frame.add_paragraph()
+                paragraph.text = str(bullet)
+                paragraph.level = 0
+                paragraph.font.size = Pt(18)
+    elif rows:
         slide = deck.slides.add_slide(deck.slide_layouts[5])
         slide.shapes.title.text = "Dados selecionados"
         table_rows = rows[: min(len(rows), 8)]
@@ -534,7 +614,14 @@ def _generate_pptx(
     next_box = next_slide.placeholders[1]
     next_box.text = ""
     next_frame = next_box.text_frame
-    for index, item in enumerate(_next_steps(rows)):
+    next_items = _next_steps(rows)
+    if slides:
+        next_items = [
+            "Validar se a nova versao preserva a tese central do PPTX fonte.",
+            "Aplicar identidade visual, imagens e layout final antes de apresentacao externa.",
+            "Ajustar a profundidade conforme publico-alvo e tempo disponivel.",
+        ]
+    for index, item in enumerate(next_items):
         paragraph = next_frame.paragraphs[0] if index == 0 else next_frame.add_paragraph()
         paragraph.text = item
         paragraph.level = 0
@@ -542,7 +629,7 @@ def _generate_pptx(
 
     stream = io.BytesIO()
     deck.save(stream)
-    text = _markdown(title, body, rows)
+    text = _slides_markdown(title, slides) if slides else _markdown(title, body, rows)
     return GeneratedDocumentArtifact(
         filename=f"{basename}.pptx",
         content=stream.getvalue(),
@@ -654,6 +741,7 @@ def generate_document_artifact(
     title = _text(payload.get("title")) or "Documento Orkio"
     body = _text(payload.get("content") or payload.get("body") or payload.get("markdown"))
     rows = _normalize_rows(payload.get("rows") or payload.get("table_rows"), trusted)
+    slides = _normalize_slides(payload.get("slides"), trusted)
     basename = _safe_name(payload.get("filename") or title)
 
     if len(title) > 180:
@@ -673,7 +761,10 @@ def generate_document_artifact(
     if generator is None:
         raise ValueError(f"unsupported_document_format:{fmt}")
 
-    artifact = generator(title, body, rows, basename)
+    if fmt == "pptx":
+        artifact = _generate_pptx(title, body, rows, basename, slides=slides)
+    else:
+        artifact = generator(title, body, rows, basename)
     if len(artifact.content) > trusted.max_artifact_bytes:
         raise DocumentArtifactLimitError("max_artifact_bytes_exceeded")
     return artifact

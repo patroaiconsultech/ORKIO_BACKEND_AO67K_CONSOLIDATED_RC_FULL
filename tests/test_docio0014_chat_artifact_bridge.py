@@ -15,6 +15,7 @@ if app_alias is None:
 from app.runtime.document_artifact_intent import (
     DOCIO0018_BRIDGE_GOVERNANCE_GUARD_VERSION,
     DOCIO003_SOURCE_BINDING_VERSION,
+    DOCIO004_PPTX_SOURCE_QUALITY_VERSION,
     build_document_artifact_payload,
     classify_document_artifact_request,
     has_document_artifact_write_blocker,
@@ -279,6 +280,47 @@ Formato: PPTX."""
         ["ACADEMIA BELEZA DO FUTURO CONSULTORIA E", "BELEZA DO FUTURO", "SERVICOS"],
     ]
     assert "Registro de teste A" not in str(plan["rows"])
+
+
+def test_source_bound_pptx_uses_source_slide_outline_instead_of_table_fallback():
+    message = "Orkio, crie uma apresentacao melhor com base no PPT que enviei. Formato: PPTX."
+    decision = classify_document_artifact_request(message, agent_slug="orkio")
+    source_context = {
+        "file_context_block": "\n".join(
+            [
+                "DOCUMENTOS ANEXADOS A THREAD - CONTEXTO AUTORIZADO:",
+                "[Arquivo: Inteligencia-Artificial-para-Decisoes-Estrategicas.pptx]",
+                "Slide 1",
+                "Inteligência Artificial para Decisões Estratégicas",
+                "A transformação digital é um desafio crítico para PMEs e empresas familiares.",
+                "Slide 2",
+                "O Problema",
+                "Decisões sem Dados",
+                "Baixa Eficiência",
+                "Dependência do CEO",
+                "Slide 3",
+                "Solução PATROAI",
+                "Agentes para CEOs",
+                "Automações Especializadas",
+            ]
+        )
+    }
+
+    plan = build_document_artifact_payload(
+        message,
+        decision,
+        thread_id="thread-a",
+        requested_agent_hint="orkio",
+        source_context=source_context,
+    )
+
+    assert DOCIO004_PPTX_SOURCE_QUALITY_VERSION == "DOCIO004_PPTX_SOURCE_QUALITY_V1"
+    assert plan["format"] == "pptx"
+    assert plan["slides"][0]["title"] == "Inteligência Artificial para Decisões Estratégicas"
+    assert plan["slides"][1]["title"] == "O Problema"
+    assert plan["slides"][2]["title"] == "Solução PATROAI"
+    assert plan["rows"] is None
+    assert "Registro de teste A" not in str(plan)
 
 
 def test_payload_builder_respects_exact_row_limit_without_visible_header():

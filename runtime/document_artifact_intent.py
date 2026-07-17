@@ -9,6 +9,7 @@ SUPPORTED_ARTIFACT_FORMATS = ("md", "csv", "xlsx", "docx", "pptx", "pdf")
 DOCIO0018_BRIDGE_GOVERNANCE_GUARD_VERSION = "DOCIO0018_BRIDGE_GOVERNANCE_GUARD_V1"
 DOCIO002_FORMAT_PRECEDENCE_VERSION = "DOCIO002_FORMAT_PRECEDENCE_V1"
 DOCIO003_SOURCE_BINDING_VERSION = "DOCIO003_SOURCE_BINDING_V1"
+DOCIO004_PPTX_SOURCE_QUALITY_VERSION = "DOCIO004_PPTX_SOURCE_QUALITY_V1"
 
 _FORMAT_HINTS = (
     ("xlsx", ("planilha", "excel", ".xlsx", " xlsx")),
@@ -311,6 +312,39 @@ def _requires_bound_source_rows(message: str) -> bool:
     return any(marker in low for marker in markers)
 
 
+def _requires_bound_source_content(message: str) -> bool:
+    low = _plain(message)
+    markers = (
+        "ppt anterior",
+        "pptx anterior",
+        "powerpoint anterior",
+        "apresentacao anterior",
+        "apresentação anterior",
+        "ppt enviado",
+        "pptx enviado",
+        "powerpoint enviado",
+        "apresentacao enviada",
+        "apresentação enviada",
+        "ppt que enviei",
+        "pptx que enviei",
+        "powerpoint que enviei",
+        "apresentacao que enviei",
+        "apresentação que enviei",
+        "ppt que subi",
+        "pptx que subi",
+        "com base no ppt",
+        "com base no pptx",
+        "com base no powerpoint",
+        "com base na apresentacao",
+        "com base na apresentação",
+        "a partir do ppt",
+        "a partir do pptx",
+        "a partir da apresentacao",
+        "a partir da apresentação",
+    )
+    return _requires_bound_source_rows(message) or any(marker in low for marker in markers)
+
+
 def source_binding_unavailable_message(fmt: str) -> str:
     requested = str(fmt or "arquivo").strip().lower() or "arquivo"
     return (
@@ -320,6 +354,70 @@ def source_binding_unavailable_message(fmt: str) -> str:
         "arquivo nesta thread ou peca explicitamente um artefato de teste com "
         "dados ficticios."
     )
+
+
+def _clean_source_line(value: Any) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not text:
+        return ""
+    low = _plain(text)
+    if low.startswith("documentos anexados"):
+        return ""
+    if low.startswith("instrucoes:") or low.startswith("instruções:"):
+        return ""
+    if low.startswith("fonte tecnica:") or low.startswith("fonte técnica:"):
+        return ""
+    if text.startswith("[") and text.endswith("]"):
+        return ""
+    if text in {"'", ".", '"'}:
+        return ""
+    return text[:220]
+
+
+def _slides_from_source_context(
+    source_context: Any,
+    *,
+    max_slides: int = 10,
+    max_bullets: int = 8,
+) -> List[Dict[str, Any]]:
+    text = _source_context_text(source_context)
+    if not text or not re.search(r"(?im)^\s*slide\s+\d+\b", text):
+        return []
+
+    chunks = re.split(r"(?im)^\s*slide\s+(\d+)\s*$", text)
+    slides: List[Dict[str, Any]] = []
+    for index in range(1, len(chunks), 2):
+        number = chunks[index]
+        body = chunks[index + 1] if index + 1 < len(chunks) else ""
+        lines = [_clean_source_line(line) for line in body.splitlines()]
+        lines = [line for line in lines if line]
+        if not lines:
+            continue
+
+        title = lines[0]
+        bullets: List[str] = []
+        pending_number = ""
+        for line in lines[1:]:
+            if re.fullmatch(r"\d{1,2}", line):
+                pending_number = line
+                continue
+            clean = f"{pending_number}. {line}" if pending_number else line
+            pending_number = ""
+            if clean not in bullets:
+                bullets.append(clean)
+            if len(bullets) >= max_bullets:
+                break
+
+        slides.append(
+            {
+                "source_slide": int(number) if str(number).isdigit() else len(slides) + 1,
+                "title": title,
+                "bullets": bullets,
+            }
+        )
+        if len(slides) >= max_slides:
+            break
+    return slides
 
 
 def _source_context_text(source_context: Any) -> str:
@@ -490,7 +588,8 @@ def build_document_artifact_payload(
 
     title = _title_for_format(fmt, raw)
     source_rows = _rows_from_source_context(source_context, message=raw)
-    if _requires_bound_source_rows(raw) and not source_rows:
+    source_slides = _slides_from_source_context(source_context) if fmt == "pptx" else []
+    if _requires_bound_source_content(raw) and not source_rows and not source_slides:
         raise ValueError("document_source_rows_required")
 
     rows: Optional[List[List[str]]] = source_rows or None
@@ -501,9 +600,15 @@ def build_document_artifact_payload(
         "Artefato criado a partir de uma solicitação explícita do usuário.\n\n"
         f"Solicitação original: {raw[:4_000]}"
     )
+    content = "Artefato criado a partir de uma solicitacao explicita do usuario."
     if source_rows:
         content += (
             "\n\nDados de origem: linhas extraidas do contexto de arquivo autorizado "
+            "vinculado a esta conversa."
+        )
+    if source_slides:
+        content += (
+            "\n\nDados de origem: estrutura de slides extraida do PPTX autorizado "
             "vinculado a esta conversa."
         )
     if fmt in {"docx", "pptx", "pdf", "md"}:
@@ -518,6 +623,7 @@ def build_document_artifact_payload(
         "content": content,
         "filename": title,
         "rows": rows,
+        "slides": source_slides or None,
         "thread_id": str(thread_id or "").strip() or None,
         "requested_agent_hint": str(requested_agent_hint or "").strip() or None,
     }

@@ -81,6 +81,57 @@ def test_generate_pptx_artifact_uses_executive_template_when_available():
     assert "Proximos passos" in slide_text
 
 
+def test_generate_pptx_artifact_from_source_slides_preserves_titles():
+    pptx = pytest.importorskip("pptx")
+
+    artifact = generate_document_artifact({
+        "format": "pptx",
+        "title": "Inteligencia Artificial para Decisoes Estrategicas",
+        "content": "Dados de origem: estrutura de slides extraida do PPTX autorizado.",
+        "slides": [
+            {
+                "source_slide": 1,
+                "title": "Inteligência Artificial para Decisões Estratégicas",
+                "bullets": [
+                    "A transformação digital é um desafio crítico para PMEs e empresas familiares.",
+                ],
+            },
+            {
+                "source_slide": 2,
+                "title": "O Problema",
+                "bullets": [
+                    "Decisões sem Dados",
+                    "Baixa Eficiência",
+                    "Dependência do CEO",
+                ],
+            },
+            {
+                "source_slide": 3,
+                "title": "Solução PATROAI",
+                "bullets": [
+                    "Agentes para CEOs",
+                    "Automações Especializadas",
+                ],
+            },
+        ],
+    })
+
+    deck = pptx.Presentation(__import__("io").BytesIO(artifact.content))
+    slide_text = "\n".join(
+        shape.text
+        for slide in deck.slides
+        for shape in slide.shapes
+        if hasattr(shape, "text")
+    )
+
+    assert artifact.filename.endswith(".pptx")
+    assert len(deck.slides) >= 6
+    assert "Inteligência Artificial para Decisões Estratégicas" in slide_text
+    assert "O Problema" in slide_text
+    assert "Solução PATROAI" in slide_text
+    assert "Registro de teste A" not in slide_text
+
+
 def test_generate_docx_artifact_has_sections_when_available():
     docx = pytest.importorskip("docx")
 
