@@ -416,6 +416,7 @@ from .runtime.document_artifact_intent import (
     DOCIO0018_BRIDGE_GOVERNANCE_GUARD_VERSION,
     DOCIO002_FORMAT_PRECEDENCE_VERSION,
     DOCIO003_SOURCE_BINDING_VERSION,
+    DOCIO004_PPTX_SOURCE_QUALITY_VERSION,
     artifact_success_message,
     build_document_artifact_payload,
     classify_document_artifact_request,
@@ -5823,6 +5824,22 @@ def _startup_runtime_fingerprint():
             "DOCIO003_SOURCE_BINDING_BOOT version=%s source_required_blocked=%s expected_blocked=true",
             DOCIO003_SOURCE_BINDING_VERSION,
             docio003_source_blocked,
+        )
+        docio004_probe_context = {
+            "file_context_block": "Slide 1\nTitulo fonte\nPonto central\nSlide 2\nProblema\nDecisao sem dados"
+        }
+        docio004_payload = build_document_artifact_payload(
+            "gere uma apresentacao com base no PPT que enviei. Formato: PPTX",
+            docio002_decision,
+            thread_id="boot",
+            requested_agent_hint="orkio",
+            source_context=docio004_probe_context,
+        )
+        logger.info(
+            "DOCIO004_PPTX_SOURCE_QUALITY_BOOT version=%s slides=%s first_title=%s",
+            DOCIO004_PPTX_SOURCE_QUALITY_VERSION,
+            len(docio004_payload.get("slides") or []),
+            ((docio004_payload.get("slides") or [{}])[0].get("title") if docio004_payload.get("slides") else ""),
         )
     except Exception as e:
         try:

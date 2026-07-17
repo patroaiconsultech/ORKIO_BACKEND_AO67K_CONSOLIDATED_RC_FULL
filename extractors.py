@@ -152,15 +152,43 @@ def _extract_xlsx_text(content: bytes) -> str:
 
 
 def _extract_pptx_text(content: bytes) -> str:
+    def _openxml_fallback() -> str:
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as zf:
+                slide_names = sorted(
+                    [
+                        name
+                        for name in zf.namelist()
+                        if re.match(r"ppt/slides/slide\d+\.xml$", name)
+                    ],
+                    key=lambda value: int(re.search(r"(\d+)", value).group(1)),
+                )
+                slides: list[str] = []
+                for idx, slide_name in enumerate(slide_names, start=1):
+                    try:
+                        root = ET.fromstring(zf.read(slide_name))
+                    except Exception:
+                        continue
+                    parts = [
+                        "".join(node.itertext()).strip()
+                        for node in root.findall(".//{*}t")
+                        if "".join(node.itertext()).strip()
+                    ]
+                    if parts:
+                        slides.append(f"Slide {idx}\n" + "\n".join(parts))
+                return _trim("\n\n".join(slides))
+        except Exception:
+            return ""
+
     try:
         from pptx import Presentation  # type: ignore
     except Exception:
-        return ""
+        return _openxml_fallback()
 
     try:
         deck = Presentation(io.BytesIO(content))
     except Exception:
-        return ""
+        return _openxml_fallback()
 
     slides: list[str] = []
     for idx, slide in enumerate(deck.slides, start=1):
@@ -179,7 +207,8 @@ def _extract_pptx_text(content: bytes) -> str:
                 continue
         if parts:
             slides.append(f"Slide {idx}\n" + "\n".join(parts))
-    return _trim("\n\n".join(slides))
+    text = _trim("\n\n".join(slides))
+    return text or _openxml_fallback()
 
 
 def extract_text(filename: str, content: bytes) -> Tuple[str, int]:

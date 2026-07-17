@@ -22,6 +22,7 @@ class DocumentArtifactGenerateIn(BaseModel):
     content: Optional[str] = Field(default=None, max_length=200_000)
     filename: Optional[str] = Field(default=None, max_length=180)
     rows: Optional[List[Any]] = None
+    slides: Optional[List[Any]] = None
     thread_id: Optional[str] = Field(default=None, max_length=128)
     requested_agent_hint: Optional[str] = Field(default=None, max_length=80)
 
