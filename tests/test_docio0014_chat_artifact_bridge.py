@@ -16,6 +16,7 @@ from app.runtime.document_artifact_intent import (
     DOCIO0018_BRIDGE_GOVERNANCE_GUARD_VERSION,
     DOCIO003_SOURCE_BINDING_VERSION,
     DOCIO004_PPTX_SOURCE_QUALITY_VERSION,
+    DOCIO005_PREMIUM_SOURCE_CONTRACT_VERSION,
     build_document_artifact_payload,
     classify_document_artifact_request,
     has_document_artifact_write_blocker,
@@ -245,6 +246,63 @@ Formato: PPTX."""
     assert "Nao gerei o pptx" in source_binding_unavailable_message("pptx")
 
 
+def test_docio005_real_xlsx_with_attached_file_but_no_rows_refuses_synthetic_fallback():
+    message = (
+        "Orkio, gere uma nova planilha XLSX com apenas 3 registros reais "
+        "da planilha que enviei anteriormente. Formato: XLSX."
+    )
+    decision = classify_document_artifact_request(message, agent_slug="orkio")
+
+    assert DOCIO005_PREMIUM_SOURCE_CONTRACT_VERSION == "DOCIO005_PREMIUM_SOURCE_CONTRACT_V1"
+    assert decision["handled"] is True
+    assert decision["format"] == "xlsx"
+
+    try:
+        build_document_artifact_payload(
+            message,
+            decision,
+            thread_id="thread-a",
+            requested_agent_hint="orkio",
+            source_context={"thread_file_ids": ["file-a"], "file_context_block": ""},
+        )
+    except ValueError as e:
+        assert str(e) == "document_source_rows_required"
+    else:
+        raise AssertionError("real source-bound XLSX must not fall back to synthetic rows")
+
+
+def test_docio005_docx_can_bind_to_pptx_source_outline():
+    message = "Orkio, gere um DOCX executivo com base no PPT que enviei. Formato: DOCX."
+    decision = classify_document_artifact_request(message, agent_slug="orkio")
+    source_context = {
+        "file_context_block": "\n".join(
+            [
+                "[Arquivo: Inteligencia-Artificial-para-Decisoes-Estrategicas.pptx]",
+                "Slide 1",
+                "Inteligência Artificial para Decisões Estratégicas",
+                "A transformação digital é um desafio crítico.",
+                "Slide 2",
+                "O Problema",
+                "Decisões sem Dados",
+                "Baixa Eficiência",
+            ]
+        )
+    }
+
+    plan = build_document_artifact_payload(
+        message,
+        decision,
+        thread_id="thread-a",
+        requested_agent_hint="orkio",
+        source_context=source_context,
+    )
+
+    assert plan["format"] == "docx"
+    assert plan["slides"][0]["title"] == "Inteligência Artificial para Decisões Estratégicas"
+    assert "O Problema" in plan["content"]
+    assert "Registro de teste A" not in str(plan)
+
+
 def test_source_bound_pptx_with_source_rows_preserves_real_company_names():
     message = """Orkio, gere um PPTX executivo de teste com base na planilha que enviei anteriormente.
 
@@ -321,6 +379,13 @@ def test_source_bound_pptx_uses_source_slide_outline_instead_of_table_fallback()
     assert plan["slides"][2]["title"] == "Solução PATROAI"
     assert plan["rows"] is None
     assert "Registro de teste A" not in str(plan)
+
+
+def test_docio005_boot_canary_present():
+    source = (ROOT / "main.py").read_text(encoding="utf-8-sig")
+    assert "DOCIO005_PREMIUM_SOURCE_CONTRACT_BOOT" in source
+    assert "attached_without_rows_blocked=%s" in source
+    assert "DOCIO005_PREMIUM_SOURCE_CONTRACT_VERSION" in source
 
 
 def test_payload_builder_respects_exact_row_limit_without_visible_header():

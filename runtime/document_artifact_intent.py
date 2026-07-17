@@ -10,6 +10,7 @@ DOCIO0018_BRIDGE_GOVERNANCE_GUARD_VERSION = "DOCIO0018_BRIDGE_GOVERNANCE_GUARD_V
 DOCIO002_FORMAT_PRECEDENCE_VERSION = "DOCIO002_FORMAT_PRECEDENCE_V1"
 DOCIO003_SOURCE_BINDING_VERSION = "DOCIO003_SOURCE_BINDING_V1"
 DOCIO004_PPTX_SOURCE_QUALITY_VERSION = "DOCIO004_PPTX_SOURCE_QUALITY_V1"
+DOCIO005_PREMIUM_SOURCE_CONTRACT_VERSION = "DOCIO005_PREMIUM_SOURCE_CONTRACT_V1"
 
 _FORMAT_HINTS = (
     ("xlsx", ("planilha", "excel", ".xlsx", " xlsx")),
@@ -315,6 +316,22 @@ def _requires_bound_source_rows(message: str) -> bool:
 def _requires_bound_source_content(message: str) -> bool:
     low = _plain(message)
     markers = (
+        "registro real",
+        "registros reais",
+        "dado real",
+        "dados reais",
+        "fonte real",
+        "conteudo real",
+        "conteudo do arquivo",
+        "conteudo da planilha",
+        "conteudo do ppt",
+        "conteudo do pptx",
+        "preserve a tese",
+        "preservar a tese",
+        "preserve os problemas",
+        "preserve a solucao",
+        "preserve a soluÃ§Ã£o",
+        "preserve os diferenciais",
         "ppt anterior",
         "pptx anterior",
         "powerpoint anterior",
@@ -343,6 +360,46 @@ def _requires_bound_source_content(message: str) -> bool:
         "a partir da apresentação",
     )
     return _requires_bound_source_rows(message) or any(marker in low for marker in markers)
+
+
+def _source_context_has_attachment_signal(source_context: Any) -> bool:
+    if not isinstance(source_context, dict):
+        return bool(_source_context_text(source_context))
+    for key in (
+        "file_ids",
+        "thread_file_ids",
+        "files_used",
+        "citations",
+    ):
+        value = source_context.get(key)
+        if isinstance(value, list) and value:
+            return True
+    if source_context.get("preferred_file_id"):
+        return True
+    diagnostic = source_context.get("diagnostic")
+    if isinstance(diagnostic, dict):
+        try:
+            if int(diagnostic.get("file_count") or 0) > 0:
+                return True
+            if int(diagnostic.get("thread_file_count") or 0) > 0:
+                return True
+        except Exception:
+            pass
+    return bool(_source_context_text(source_context))
+
+
+def _source_slide_summary_text(slides: List[Dict[str, Any]]) -> str:
+    if not slides:
+        return ""
+    parts: List[str] = []
+    for slide in slides[:12]:
+        title = str(slide.get("title") or "Slide").strip()
+        parts.append(title)
+        for bullet in list(slide.get("bullets") or [])[:8]:
+            clean = str(bullet or "").strip()
+            if clean:
+                parts.append(f"- {clean}")
+    return "\n".join(parts).strip()
 
 
 def source_binding_unavailable_message(fmt: str) -> str:
@@ -588,12 +645,14 @@ def build_document_artifact_payload(
 
     title = _title_for_format(fmt, raw)
     source_rows = _rows_from_source_context(source_context, message=raw)
-    source_slides = _slides_from_source_context(source_context) if fmt == "pptx" else []
-    if _requires_bound_source_content(raw) and not source_rows and not source_slides:
+    source_slides = _slides_from_source_context(source_context) if fmt in {"pptx", "docx", "pdf", "md"} else []
+    source_required = _requires_bound_source_content(raw)
+    has_source_signal = _source_context_has_attachment_signal(source_context)
+    if source_required and not source_rows and not source_slides:
         raise ValueError("document_source_rows_required")
 
     rows: Optional[List[List[str]]] = source_rows or None
-    if rows is None and fmt in {"xlsx", "csv"}:
+    if rows is None and fmt in {"xlsx", "csv"} and not source_required and not has_source_signal:
         rows = _spreadsheet_rows(raw)
 
     content = (
@@ -611,6 +670,8 @@ def build_document_artifact_payload(
             "\n\nDados de origem: estrutura de slides extraida do PPTX autorizado "
             "vinculado a esta conversa."
         )
+        if fmt in {"docx", "pdf", "md"}:
+            content += "\n\n" + _source_slide_summary_text(source_slides)
     if fmt in {"docx", "pptx", "pdf", "md"}:
         content += (
             "\n\nConteúdo inicial gerado de forma determinística e auditável. "

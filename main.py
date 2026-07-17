@@ -417,6 +417,7 @@ from .runtime.document_artifact_intent import (
     DOCIO002_FORMAT_PRECEDENCE_VERSION,
     DOCIO003_SOURCE_BINDING_VERSION,
     DOCIO004_PPTX_SOURCE_QUALITY_VERSION,
+    DOCIO005_PREMIUM_SOURCE_CONTRACT_VERSION,
     artifact_success_message,
     build_document_artifact_payload,
     classify_document_artifact_request,
@@ -5840,6 +5841,27 @@ def _startup_runtime_fingerprint():
             DOCIO004_PPTX_SOURCE_QUALITY_VERSION,
             len(docio004_payload.get("slides") or []),
             ((docio004_payload.get("slides") or [{}])[0].get("title") if docio004_payload.get("slides") else ""),
+        )
+        docio005_probe = "Orkio, gere uma planilha XLSX com 3 registros reais da planilha que enviei anteriormente. Formato: XLSX."
+        docio005_decision = classify_document_artifact_request(
+            docio005_probe,
+            agent_slug="orkio",
+        )
+        docio005_blocked = False
+        try:
+            build_document_artifact_payload(
+                docio005_probe,
+                docio005_decision,
+                thread_id="boot",
+                requested_agent_hint="orkio",
+                source_context={"thread_file_ids": ["boot-file"], "file_context_block": ""},
+            )
+        except ValueError as e:
+            docio005_blocked = str(e) == "document_source_rows_required"
+        logger.info(
+            "DOCIO005_PREMIUM_SOURCE_CONTRACT_BOOT version=%s attached_without_rows_blocked=%s expected_blocked=true",
+            DOCIO005_PREMIUM_SOURCE_CONTRACT_VERSION,
+            docio005_blocked,
         )
     except Exception as e:
         try:
