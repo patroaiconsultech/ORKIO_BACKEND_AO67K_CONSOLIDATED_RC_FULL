@@ -419,6 +419,7 @@ from .runtime.document_artifact_intent import (
     DOCIO004_PPTX_SOURCE_QUALITY_VERSION,
     DOCIO005_PREMIUM_SOURCE_CONTRACT_VERSION,
     DOCIO006_PREMIUM_ARTIFACT_QUALITY_VERSION,
+    DOCIO007_PPTX_SOURCE_PLAN_VERSION,
     artifact_success_message,
     build_document_artifact_payload,
     classify_document_artifact_request,
@@ -5869,6 +5870,37 @@ def _startup_runtime_fingerprint():
             DOCIO006_PREMIUM_ARTIFACT_QUALITY_VERSION,
             "executive_dark_16x9",
             "structured_executive",
+        )
+        docio007_decision = classify_document_artifact_request(
+            "Orkio, gere um PPTX executivo com base no PPT que enviei anteriormente. Formato: PPTX.",
+            agent_slug="orkio",
+        )
+        docio007_payload = build_document_artifact_payload(
+            "Orkio, gere um PPTX executivo com base no PPT que enviei anteriormente. Formato: PPTX.",
+            docio007_decision,
+            thread_id="boot",
+            requested_agent_hint="orkio",
+            source_context={
+                "preferred_file_id": "boot-pptx",
+                "file_context_block": "\n".join(
+                    [
+                        "Inteligencia Artificial para Decisoes Estrategicas",
+                        "O Problema",
+                        "Decisoes sem dados reduzem velocidade executiva.",
+                        "Solucao PATROAI",
+                        "Agentes para CEOs conectam analise e governanca.",
+                    ]
+                ),
+            },
+        )
+        docio007_source_plan = docio007_payload.get("source_plan") or {}
+        logger.info(
+            "DOCIO007_PPTX_SOURCE_PLAN_BOOT version=%s planned_slide_count=%s minimum_slide_count=%s coverage_ratio=%s source_refs=%s",
+            DOCIO007_PPTX_SOURCE_PLAN_VERSION,
+            docio007_source_plan.get("planned_slide_count"),
+            docio007_source_plan.get("minimum_slide_count"),
+            docio007_source_plan.get("coverage_ratio"),
+            len(docio007_source_plan.get("slides") or []),
         )
     except Exception as e:
         try:

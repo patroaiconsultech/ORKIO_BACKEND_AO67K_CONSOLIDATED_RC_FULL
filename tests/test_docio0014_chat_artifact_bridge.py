@@ -18,6 +18,7 @@ from app.runtime.document_artifact_intent import (
     DOCIO004_PPTX_SOURCE_QUALITY_VERSION,
     DOCIO005_PREMIUM_SOURCE_CONTRACT_VERSION,
     DOCIO006_PREMIUM_ARTIFACT_QUALITY_VERSION,
+    DOCIO007_PPTX_SOURCE_PLAN_VERSION,
     build_document_artifact_payload,
     classify_document_artifact_request,
     has_document_artifact_write_blocker,
@@ -394,6 +395,9 @@ def test_docio006_premium_artifact_quality_boot_canary_present():
     assert DOCIO006_PREMIUM_ARTIFACT_QUALITY_VERSION == "DOCIO006_PREMIUM_ARTIFACT_QUALITY_V1"
     assert "DOCIO006_PREMIUM_ARTIFACT_QUALITY_BOOT" in source
     assert "executive_dark_16x9" in source
+    assert DOCIO007_PPTX_SOURCE_PLAN_VERSION == "PPTX_SOURCE_PLAN_V1"
+    assert "DOCIO007_PPTX_SOURCE_PLAN_BOOT" in source
+    assert "planned_slide_count=%s" in source
 
 
 def test_payload_builder_respects_exact_row_limit_without_visible_header():
@@ -424,3 +428,46 @@ def test_payload_builder_respects_exact_row_limit_without_visible_header():
         ["CIX CONSULTING LTDA", "CIX CONSULTING", "SERVICOS"],
     ]
     assert len(plan["rows"]) == 3
+
+
+def test_docio007_ppt_prompt_from_unstructured_source_builds_source_plan():
+    message = (
+        "Orkio, gere uma apresentacao executiva premium em PPTX com base no PPT que enviei anteriormente. "
+        "Preserve a tese, os problemas, a solucao PATROAI e os diferenciais. Formato: PPTX."
+    )
+    decision = classify_document_artifact_request(message, agent_slug="orkio")
+    source_context = {
+        "preferred_file_id": "file-pptx-1",
+        "file_context_block": "\n".join(
+            [
+                "[Arquivo: Inteligencia-Artificial-para-Decisoes-Estrategicas.pptx]",
+                "Inteligencia Artificial para Decisoes Estrategicas",
+                "A transformacao digital e um desafio critico para PMEs e empresas familiares.",
+                "O Problema",
+                "Decisoes sem dados reduzem velocidade e qualidade executiva.",
+                "Baixa eficiencia operacional consome tempo do CEO.",
+                "Solucao PATROAI",
+                "Agentes para CEOs conectam analise, automacao e governanca.",
+                "Diferenciais",
+                "Contexto proprietario, execucao governada e experiencia premium.",
+            ]
+        ),
+    }
+
+    plan = build_document_artifact_payload(
+        message,
+        decision,
+        thread_id="thread-pptx",
+        requested_agent_hint="orkio",
+        source_context=source_context,
+    )
+
+    assert decision["format"] == "pptx"
+    assert plan["slides"]
+    assert len(plan["slides"]) >= 2
+    assert plan["source_plan"]["contract"] == DOCIO007_PPTX_SOURCE_PLAN_VERSION
+    assert plan["source_plan"]["source_file_ids"] == ["file-pptx-1"]
+    assert plan["source_plan"]["minimum_slide_count"] == 6
+    assert plan["source_plan"]["planned_slide_count"] >= 6
+    assert "PPTX_SOURCE_PLAN_V1" in plan["content"]
+    assert "O Problema" in str(plan["slides"])

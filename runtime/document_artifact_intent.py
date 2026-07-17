@@ -12,6 +12,7 @@ DOCIO003_SOURCE_BINDING_VERSION = "DOCIO003_SOURCE_BINDING_V1"
 DOCIO004_PPTX_SOURCE_QUALITY_VERSION = "DOCIO004_PPTX_SOURCE_QUALITY_V1"
 DOCIO005_PREMIUM_SOURCE_CONTRACT_VERSION = "DOCIO005_PREMIUM_SOURCE_CONTRACT_V1"
 DOCIO006_PREMIUM_ARTIFACT_QUALITY_VERSION = "DOCIO006_PREMIUM_ARTIFACT_QUALITY_V1"
+DOCIO007_PPTX_SOURCE_PLAN_VERSION = "PPTX_SOURCE_PLAN_V1"
 
 _FORMAT_HINTS = (
     ("xlsx", ("planilha", "excel", ".xlsx", " xlsx")),
@@ -478,6 +479,121 @@ def _slides_from_source_context(
     return slides
 
 
+def _source_outline_slides_from_text(
+    text: str,
+    *,
+    max_slides: int = 8,
+    max_bullets: int = 5,
+) -> List[Dict[str, Any]]:
+    clean_lines: List[str] = []
+    for raw_line in str(text or "").splitlines():
+        line = _clean_source_line(raw_line)
+        if not line:
+            continue
+        low = _plain(line)
+        if low.startswith(("arquivo:", "upload:", "fonte:", "chunk:", "pagina:", "page:")):
+            continue
+        if len(line) < 4 and not re.search(r"\d", line):
+            continue
+        if line not in clean_lines:
+            clean_lines.append(line)
+
+    if not clean_lines:
+        return []
+
+    groups: List[List[str]] = []
+    current: List[str] = []
+    for line in clean_lines:
+        is_heading = (
+            len(line) <= 90
+            and not line.endswith(".")
+            and (
+                line.isupper()
+                or re.match(r"^\d{1,2}[.)\s-]+", line)
+                or (current and len(line.split()) <= 5)
+                or len(current) >= max_bullets + 1
+            )
+        )
+        if current and is_heading:
+            groups.append(current)
+            current = [line]
+        else:
+            current.append(line)
+        if len(current) >= max_bullets + 1:
+            groups.append(current)
+            current = []
+        if len(groups) >= max_slides:
+            break
+    if current and len(groups) < max_slides:
+        groups.append(current)
+
+    slides: List[Dict[str, Any]] = []
+    for index, group in enumerate(groups[:max_slides], start=1):
+        title = group[0]
+        bullets = [item for item in group[1 : max_bullets + 1] if item != title]
+        if not bullets and len(title) > 110:
+            bullets = [title]
+            title = f"Ponto-chave da fonte {index}"
+        slides.append(
+            {
+                "source_slide": index,
+                "title": title[:120],
+                "bullets": [bullet[:320] for bullet in bullets[:max_bullets]],
+            }
+        )
+    return slides
+
+
+def _pptx_source_plan(
+    *,
+    source_context: Any,
+    source_slides: List[Dict[str, Any]],
+    source_required: bool,
+    has_source_signal: bool,
+) -> Optional[Dict[str, Any]]:
+    if not (source_required or has_source_signal or source_slides):
+        return None
+
+    text = _source_context_text(source_context)
+    source_file_ids: List[str] = []
+    if isinstance(source_context, dict):
+        for key in ("preferred_file_id", "file_id"):
+            value = source_context.get(key)
+            if value:
+                source_file_ids.append(str(value))
+        for key in ("thread_file_ids", "file_ids"):
+            value = source_context.get(key)
+            if isinstance(value, list):
+                source_file_ids.extend(str(item) for item in value[:8] if item)
+
+    planned_source = len(source_slides)
+    minimum = 6 if source_required else 4
+    coverage = 0.0 if minimum <= 0 else min(1.0, planned_source / float(minimum))
+    planned_deck = max(minimum, planned_source + 3) if text else planned_source + 3
+    return {
+        "contract": DOCIO007_PPTX_SOURCE_PLAN_VERSION,
+        "source_file_ids": list(dict.fromkeys(source_file_ids)),
+        "source_hashes": [],
+        "source_slide_count": planned_source,
+        "extracted_chars": len(text),
+        "extracted_chunks": len([part for part in re.split(r"\n\s*\n", text) if part.strip()]),
+        "minimum_slide_count": minimum,
+        "planned_slide_count": planned_deck,
+        "coverage_ratio": round(coverage, 2),
+        "slides": [
+            {
+                "index": index,
+                "purpose": str(slide.get("title") or f"Slide fonte {index}")[:120],
+                "required_points": list(slide.get("bullets") or [])[:5],
+                "source_refs": [f"source_slide:{slide.get('source_slide') or index}"],
+            }
+            for index, slide in enumerate(source_slides[:12], start=1)
+        ],
+        "unsupported_claims": [],
+        "premium_label_allowed": bool(text and planned_deck >= minimum),
+    }
+
+
 def _source_context_text(source_context: Any) -> str:
     if not source_context:
         return ""
@@ -649,8 +765,20 @@ def build_document_artifact_payload(
     source_slides = _slides_from_source_context(source_context) if fmt in {"pptx", "docx", "pdf", "md"} else []
     source_required = _requires_bound_source_content(raw)
     has_source_signal = _source_context_has_attachment_signal(source_context)
+    if fmt == "pptx" and not source_slides and (source_required or has_source_signal):
+        source_slides = _source_outline_slides_from_text(_source_context_text(source_context))
     if source_required and not source_rows and not source_slides:
         raise ValueError("document_source_rows_required")
+    source_plan = (
+        _pptx_source_plan(
+            source_context=source_context,
+            source_slides=source_slides,
+            source_required=source_required,
+            has_source_signal=has_source_signal,
+        )
+        if fmt == "pptx"
+        else None
+    )
 
     rows: Optional[List[List[str]]] = source_rows or None
     if rows is None and fmt in {"xlsx", "csv"} and not source_required and not has_source_signal:
@@ -671,8 +799,15 @@ def build_document_artifact_payload(
             "\n\nDados de origem: estrutura de slides extraida do PPTX autorizado "
             "vinculado a esta conversa."
         )
-        if fmt in {"docx", "pdf", "md"}:
+        if fmt in {"docx", "pptx", "pdf", "md"}:
             content += "\n\n" + _source_slide_summary_text(source_slides)
+    if source_plan:
+        content += (
+            f"\n\n{DOCIO007_PPTX_SOURCE_PLAN_VERSION}: "
+            f"planned_slide_count={source_plan.get('planned_slide_count')} "
+            f"minimum_slide_count={source_plan.get('minimum_slide_count')} "
+            f"coverage_ratio={source_plan.get('coverage_ratio')}"
+        )
     if fmt in {"docx", "pptx", "pdf", "md"}:
         content += (
             "\n\nConteúdo inicial gerado de forma determinística e auditável. "
@@ -686,6 +821,7 @@ def build_document_artifact_payload(
         "filename": title,
         "rows": rows,
         "slides": source_slides or None,
+        "source_plan": source_plan,
         "thread_id": str(thread_id or "").strip() or None,
         "requested_agent_hint": str(requested_agent_hint or "").strip() or None,
     }
