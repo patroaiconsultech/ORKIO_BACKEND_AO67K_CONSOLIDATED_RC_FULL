@@ -418,6 +418,7 @@ from .runtime.document_artifact_intent import (
     DOCIO003_SOURCE_BINDING_VERSION,
     DOCIO004_PPTX_SOURCE_QUALITY_VERSION,
     DOCIO005_PREMIUM_SOURCE_CONTRACT_VERSION,
+    DOCIO006_PREMIUM_ARTIFACT_QUALITY_VERSION,
     artifact_success_message,
     build_document_artifact_payload,
     classify_document_artifact_request,
@@ -5862,6 +5863,12 @@ def _startup_runtime_fingerprint():
             "DOCIO005_PREMIUM_SOURCE_CONTRACT_BOOT version=%s attached_without_rows_blocked=%s expected_blocked=true",
             DOCIO005_PREMIUM_SOURCE_CONTRACT_VERSION,
             docio005_blocked,
+        )
+        logger.info(
+            "DOCIO006_PREMIUM_ARTIFACT_QUALITY_BOOT version=%s pptx_theme=%s docx_pdf_quality=%s",
+            DOCIO006_PREMIUM_ARTIFACT_QUALITY_VERSION,
+            "executive_dark_16x9",
+            "structured_executive",
         )
     except Exception as e:
         try:

@@ -1,5 +1,6 @@
 import pytest
 
+from runtime.document_artifact_intent import DOCIO006_PREMIUM_ARTIFACT_QUALITY_VERSION
 from services.document_artifact_service import generate_document_artifact
 
 
@@ -75,6 +76,8 @@ def test_generate_pptx_artifact_uses_executive_template_when_available():
 
     assert artifact.filename.endswith(".pptx")
     assert len(deck.slides) >= 4
+    assert deck.slide_width > deck.slide_height
+    assert "ORKIO" in slide_text
     assert "Resumo executivo" in slide_text
     assert "Dados selecionados" in slide_text
     assert "PICCADILLY" in slide_text
@@ -125,7 +128,11 @@ def test_generate_pptx_artifact_from_source_slides_preserves_titles():
     )
 
     assert artifact.filename.endswith(".pptx")
+    assert DOCIO006_PREMIUM_ARTIFACT_QUALITY_VERSION == "DOCIO006_PREMIUM_ARTIFACT_QUALITY_V1"
+    assert deck.slide_width > deck.slide_height
     assert len(deck.slides) >= 6
+    assert "Slide fonte 1" in slide_text
+    assert "ORKIO" in slide_text
     assert "Inteligência Artificial para Decisões Estratégicas" in slide_text
     assert "O Problema" in slide_text
     assert "Solução PATROAI" in slide_text
@@ -144,8 +151,31 @@ def test_generate_docx_artifact_has_sections_when_available():
 
     document = docx.Document(__import__("io").BytesIO(artifact.content))
     text = "\n".join(paragraph.text for paragraph in document.paragraphs)
+    footer_text = "\n".join(
+        paragraph.text
+        for section in document.sections
+        for paragraph in section.footer.paragraphs
+    )
 
     assert artifact.filename.endswith(".docx")
     assert "Resumo executivo" in text
     assert "Fonte e governanca" in text
     assert "Proximos passos" in text
+    assert "ORKIO" in footer_text
+
+
+def test_generate_pdf_artifact_has_executive_governance_header_when_available():
+    reportlab = pytest.importorskip("reportlab")
+
+    artifact = generate_document_artifact({
+        "format": "pdf",
+        "title": "Relatorio executivo",
+        "content": "Analise gerada a partir do contexto autorizado.",
+        "rows": [["Cliente", "Segmento"], ["ACME", "Tecnologia"]],
+    })
+
+    assert reportlab is not None
+    assert artifact.filename.endswith(".pdf")
+    assert artifact.content.startswith(b"%PDF")
+    assert b"ORKIO" in artifact.content
+    assert "ACME" in artifact.text_content
