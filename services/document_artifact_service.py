@@ -260,6 +260,46 @@ def _normalize_slides(
     return out
 
 
+def _normalize_source_plan(plan: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(plan, Mapping):
+        return None
+    contract = _text(plan.get("contract")) or "PPTX_SOURCE_PLAN_V1"
+    slides_payload = plan.get("slides") or []
+    slides: List[Dict[str, Any]] = []
+    if isinstance(slides_payload, list):
+        for index, item in enumerate(slides_payload[:12], start=1):
+            if not isinstance(item, Mapping):
+                continue
+            points = item.get("required_points") or []
+            refs = item.get("source_refs") or []
+            if isinstance(points, (str, bytes, bytearray, Mapping)):
+                points = [points]
+            if isinstance(refs, (str, bytes, bytearray, Mapping)):
+                refs = [refs]
+            slides.append(
+                {
+                    "index": int(item.get("index") or index),
+                    "purpose": _shorten(item.get("purpose") or f"Slide {index}", 140),
+                    "required_points": [_shorten(point, 180) for point in list(points)[:6]],
+                    "source_refs": [_shorten(ref, 80) for ref in list(refs)[:6]],
+                }
+            )
+    return {
+        "contract": contract,
+        "source_file_ids": [_shorten(value, 80) for value in list(plan.get("source_file_ids") or [])[:8]],
+        "source_hashes": [_shorten(value, 80) for value in list(plan.get("source_hashes") or [])[:8]],
+        "source_slide_count": int(plan.get("source_slide_count") or 0),
+        "extracted_chars": int(plan.get("extracted_chars") or 0),
+        "extracted_chunks": int(plan.get("extracted_chunks") or 0),
+        "minimum_slide_count": int(plan.get("minimum_slide_count") or 0),
+        "planned_slide_count": int(plan.get("planned_slide_count") or 0),
+        "coverage_ratio": float(plan.get("coverage_ratio") or 0),
+        "slides": slides,
+        "unsupported_claims": [_shorten(value, 160) for value in list(plan.get("unsupported_claims") or [])[:8]],
+        "premium_label_allowed": bool(plan.get("premium_label_allowed")),
+    }
+
+
 def _plain_table(rows: List[List[str]]) -> str:
     return "\n".join(
         " | ".join(cell for cell in row)
@@ -596,6 +636,7 @@ def _generate_pptx(
     rows: List[List[str]],
     basename: str,
     slides: Optional[List[Dict[str, Any]]] = None,
+    source_plan: Optional[Dict[str, Any]] = None,
 ) -> GeneratedDocumentArtifact:
     try:
         from pptx import Presentation  # type: ignore
@@ -697,8 +738,36 @@ def _generate_pptx(
             "A tese, os temas e os pontos centrais foram preservados como outline estruturado.",
             "A camada visual foi elevada, mas imagens/layout original ainda exigem validacao humana.",
         ]
+    if source_plan:
+        summary_items.append(
+            "Contrato de fonte: "
+            f"{source_plan.get('contract')} | "
+            f"cobertura={source_plan.get('coverage_ratio')} | "
+            f"slides planejados={source_plan.get('planned_slide_count')}."
+        )
     _bullet_panel(summary_slide, summary_items, 0.7, 1.35, 11.8, 4.85, font_size=21)
     _footer(summary_slide, slide_no)
+
+    if source_plan:
+        slide_no += 1
+        plan_slide = _blank_slide()
+        _textbox(plan_slide, "Contrato de fonte e cobertura", 0.58, 0.48, 8.9, 0.5, size=30, bold=True, color=white)
+        plan_items = [
+            f"Contrato: {source_plan.get('contract')}",
+            f"Fonte: {source_plan.get('source_slide_count')} bloco(s) | {source_plan.get('extracted_chars')} caractere(s) | {source_plan.get('extracted_chunks')} chunk(s)",
+            f"Plano: minimo={source_plan.get('minimum_slide_count')} | planejado={source_plan.get('planned_slide_count')} | cobertura={source_plan.get('coverage_ratio')}",
+            f"Premium label allowed: {str(bool(source_plan.get('premium_label_allowed'))).lower()}",
+        ]
+        file_ids = list(source_plan.get("source_file_ids") or [])
+        if file_ids:
+            plan_items.append("Source file IDs: " + ", ".join(file_ids[:3]))
+        _bullet_panel(plan_slide, plan_items, 0.7, 1.25, 11.8, 2.25, font_size=17)
+        refs = []
+        for item in list(source_plan.get("slides") or [])[:5]:
+            ref = ", ".join(item.get("source_refs") or []) or "source_ref:missing"
+            refs.append(f"{item.get('index')}. {item.get('purpose')} | {ref}")
+        _bullet_panel(plan_slide, refs or ["Sem source_refs suficientes para rotulo premium."], 0.7, 3.75, 11.8, 2.5, font_size=14)
+        _footer(plan_slide, slide_no)
 
     if slides:
         for item in slides[:10]:
@@ -754,6 +823,19 @@ def _generate_pptx(
     stream = io.BytesIO()
     deck.save(stream)
     text = _slides_markdown(title, slides) if slides else _markdown(title, body, rows)
+    if source_plan:
+        text += (
+            "\n\n## PPTX_SOURCE_PLAN_V1\n\n"
+            f"- contract: {source_plan.get('contract')}\n"
+            f"- source_file_ids: {', '.join(source_plan.get('source_file_ids') or [])}\n"
+            f"- source_slide_count: {source_plan.get('source_slide_count')}\n"
+            f"- extracted_chars: {source_plan.get('extracted_chars')}\n"
+            f"- extracted_chunks: {source_plan.get('extracted_chunks')}\n"
+            f"- minimum_slide_count: {source_plan.get('minimum_slide_count')}\n"
+            f"- planned_slide_count: {source_plan.get('planned_slide_count')}\n"
+            f"- coverage_ratio: {source_plan.get('coverage_ratio')}\n"
+            f"- premium_label_allowed: {str(bool(source_plan.get('premium_label_allowed'))).lower()}\n"
+        )
     return GeneratedDocumentArtifact(
         filename=f"{basename}.pptx",
         content=stream.getvalue(),
@@ -879,6 +961,7 @@ def generate_document_artifact(
     body = _text(payload.get("content") or payload.get("body") or payload.get("markdown"))
     rows = _normalize_rows(payload.get("rows") or payload.get("table_rows"), trusted)
     slides = _normalize_slides(payload.get("slides"), trusted)
+    source_plan = _normalize_source_plan(payload.get("source_plan"))
     basename = _safe_name(payload.get("filename") or title)
 
     if len(title) > 180:
@@ -899,7 +982,7 @@ def generate_document_artifact(
         raise ValueError(f"unsupported_document_format:{fmt}")
 
     if fmt == "pptx":
-        artifact = _generate_pptx(title, body, rows, basename, slides=slides)
+        artifact = _generate_pptx(title, body, rows, basename, slides=slides, source_plan=source_plan)
     else:
         artifact = generator(title, body, rows, basename)
     if len(artifact.content) > trusted.max_artifact_bytes:

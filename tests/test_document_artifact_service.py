@@ -139,6 +139,69 @@ def test_generate_pptx_artifact_from_source_slides_preserves_titles():
     assert "Registro de teste A" not in slide_text
 
 
+def test_generate_pptx_artifact_renders_source_plan_contract():
+    pptx = pytest.importorskip("pptx")
+
+    artifact = generate_document_artifact({
+        "format": "pptx",
+        "title": "Inteligencia Artificial para Decisoes Estrategicas",
+        "content": "PPTX_SOURCE_PLAN_V1: planned_slide_count=6 minimum_slide_count=6 coverage_ratio=0.5",
+        "slides": [
+            {
+                "source_slide": 1,
+                "title": "O Problema",
+                "bullets": ["Decisoes sem dados", "Baixa eficiencia operacional"],
+            },
+            {
+                "source_slide": 2,
+                "title": "Solucao PATROAI",
+                "bullets": ["Agentes para CEOs", "Governanca e automacao"],
+            },
+            {
+                "source_slide": 3,
+                "title": "Diferenciais",
+                "bullets": ["Contexto proprietario", "Execucao governada"],
+            },
+        ],
+        "source_plan": {
+            "contract": "PPTX_SOURCE_PLAN_V1",
+            "source_file_ids": ["file-pptx-1"],
+            "source_slide_count": 3,
+            "extracted_chars": 2320,
+            "extracted_chunks": 3,
+            "minimum_slide_count": 6,
+            "planned_slide_count": 6,
+            "coverage_ratio": 0.5,
+            "slides": [
+                {
+                    "index": 1,
+                    "purpose": "O Problema",
+                    "required_points": ["Decisoes sem dados"],
+                    "source_refs": ["source_slide:1"],
+                }
+            ],
+            "unsupported_claims": [],
+            "premium_label_allowed": True,
+        },
+    })
+
+    deck = pptx.Presentation(__import__("io").BytesIO(artifact.content))
+    slide_text = "\n".join(
+        shape.text
+        for slide in deck.slides
+        for shape in slide.shapes
+        if hasattr(shape, "text")
+    )
+
+    assert len(deck.slides) >= 7
+    assert "Contrato de fonte e cobertura" in slide_text
+    assert "PPTX_SOURCE_PLAN_V1" in slide_text
+    assert "source_slide:1" in slide_text
+    assert "file-pptx-1" in slide_text
+    assert "PPTX_SOURCE_PLAN_V1" in artifact.text_content
+    assert "coverage_ratio: 0.5" in artifact.text_content
+
+
 def test_generate_docx_artifact_has_sections_when_available():
     docx = pytest.importorskip("docx")
 
