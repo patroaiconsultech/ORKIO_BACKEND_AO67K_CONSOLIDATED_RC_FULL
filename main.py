@@ -5067,6 +5067,8 @@ def _admin_evolution_public_row(row: Dict[str, Any]) -> Dict[str, Any]:
         safe["next_state"] = "dry_run_ready_real_execution_blocked"
     elif status_norm == "rejected":
         safe["next_state"] = "decision_final_rejected"
+    elif status_norm == "archived":
+        safe["next_state"] = "archived_marco_zero"
     else:
         safe["next_state"] = "readonly"
     return safe
@@ -5229,7 +5231,7 @@ def _admin_evolution_get_proposal(proposal_id: str) -> Optional[Dict[str, Any]]:
 
 
 
-def _admin_evolution_list_proposals(*, status: Optional[str] = None, org_slug: Optional[str] = None) -> List[Dict[str, Any]]:
+def _admin_evolution_list_proposals(*, status: Optional[str] = None, org_slug: Optional[str] = None, include_archived: bool = False) -> List[Dict[str, Any]]:
     status_norm = str(status or "").strip().lower()
     org_norm = str(org_slug or "").strip()
     if _admin_evolution_bootstrap_db_schema():
@@ -5240,6 +5242,8 @@ def _admin_evolution_list_proposals(*, status: Optional[str] = None, org_slug: O
             if status_norm:
                 where.append("LOWER(status) = :status")
                 params["status"] = status_norm
+            elif not include_archived:
+                where.append("LOWER(status) <> 'archived'")
             if org_norm:
                 where.append("org_slug = :org_slug")
                 params["org_slug"] = org_norm
@@ -5271,6 +5275,8 @@ def _admin_evolution_list_proposals(*, status: Optional[str] = None, org_slug: O
     out: List[Dict[str, Any]] = []
     for row in rows:
         if status_norm and str(row.get("status") or "").lower() != status_norm:
+            continue
+        if (not status_norm) and (not include_archived) and str(row.get("status") or "").lower() == "archived":
             continue
         if org_norm and str(row.get("org_slug") or "") != org_norm:
             continue
@@ -5381,6 +5387,106 @@ def _admin_evolution_update_status(proposal_id: str, *, status: str, actor: str)
     except Exception:
         pass
     return _admin_evolution_public_row(row)
+
+
+def _admin_evolution_archive_baseline(*, org_slug: str, actor: str, dry_run: bool = True) -> Dict[str, Any]:
+    """
+    Marco zero for governed self-evolution.
+
+    This is a soft reset: proposals are archived, not deleted. The default list
+    hides archived rows, while status=archived/include_archived=true preserves
+    auditability and rollback visibility.
+    """
+    org_norm = str(org_slug or "public").strip() or "public"
+    actor_norm = str(actor or "admin").strip() or "admin"
+    now = _admin_evolution_now()
+
+    if _admin_evolution_bootstrap_db_schema():
+        db = SessionLocal()
+        try:
+            rows = db.execute(text("""
+                SELECT proposal_id, status, updated_at
+                FROM admin_evolution_proposals
+                WHERE org_slug = :org_slug
+                  AND LOWER(status) <> 'archived'
+                ORDER BY updated_at DESC
+                LIMIT 500
+            """), {"org_slug": org_norm}).mappings().all()
+            proposal_ids = [str(row.get("proposal_id") or "") for row in rows if row.get("proposal_id")]
+            if not dry_run and proposal_ids:
+                db.execute(text("""
+                    UPDATE admin_evolution_proposals
+                    SET status = 'archived',
+                        updated_at = :updated_at,
+                        rejected_at = COALESCE(rejected_at, :updated_at),
+                        rejected_by = :actor,
+                        execution_allowed = FALSE
+                    WHERE org_slug = :org_slug
+                      AND LOWER(status) <> 'archived'
+                """), {"org_slug": org_norm, "updated_at": now, "actor": actor_norm})
+                db.commit()
+            return {
+                "ok": True,
+                "org_slug": org_norm,
+                "dry_run": bool(dry_run),
+                "archived_count": 0 if dry_run else len(proposal_ids),
+                "candidate_count": len(proposal_ids),
+                "proposal_ids_preview": proposal_ids[:50],
+                "baseline_marker": f"marco_zero_{now}",
+                "delete_executed": False,
+                "execution_enabled": False,
+                "can_execute_real": False,
+            }
+        except SQLAlchemyTimeoutError as e:
+            try:
+                logger.exception("ADMIN_EVOLUTION_ARCHIVE_BASELINE_TIMEOUT org=%s error=%s", org_norm, str(e)[:200])
+            except Exception:
+                pass
+            raise HTTPException(status_code=503, detail="evolution_db_unavailable")
+        except Exception as e:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            try:
+                logger.exception("ADMIN_EVOLUTION_ARCHIVE_BASELINE_FAILED org=%s error=%s", org_norm, str(e)[:200])
+            except Exception:
+                pass
+            raise HTTPException(status_code=503, detail="evolution_archive_baseline_failed")
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+
+    with _ADMIN_EVOLUTION_PROPOSAL_LOCK:
+        candidates = [
+            key for key, row in _ADMIN_EVOLUTION_PROPOSALS.items()
+            if isinstance(row, dict)
+            and str(row.get("org_slug") or "public") == org_norm
+            and str(row.get("status") or "").lower() != "archived"
+        ]
+        if not dry_run:
+            for key in candidates:
+                row = dict(_ADMIN_EVOLUTION_PROPOSALS.get(key) or {})
+                row["status"] = "archived"
+                row["updated_at"] = now
+                row["rejected_at"] = row.get("rejected_at") or now
+                row["rejected_by"] = actor_norm
+                row["execution_allowed"] = False
+                _ADMIN_EVOLUTION_PROPOSALS[key] = row
+    return {
+        "ok": True,
+        "org_slug": org_norm,
+        "dry_run": bool(dry_run),
+        "archived_count": 0 if dry_run else len(candidates),
+        "candidate_count": len(candidates),
+        "proposal_ids_preview": candidates[:50],
+        "baseline_marker": f"marco_zero_{now}",
+        "delete_executed": False,
+        "execution_enabled": False,
+        "can_execute_real": False,
+    }
 
 
 def _admin_evolution_list_executions(*, proposal_id: Optional[str] = None, status: Optional[str] = None, org_slug: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -28420,6 +28526,7 @@ def admin_overview(_admin=Depends(require_admin_access), db: Session = Depends(g
 @app.get("/api/admin/evolution/proposals")
 def admin_evolution_proposals(
     status: Optional[str] = None,
+    include_archived: bool = False,
     x_org_slug: Optional[str] = Header(default=None),
     _admin=Depends(require_admin_access),
 ):
@@ -28428,7 +28535,7 @@ def admin_evolution_proposals(
     This endpoint is read-only and does not execute proposals.
     """
     org = get_org(x_org_slug)
-    rows = _admin_evolution_list_proposals(status=status, org_slug=org)
+    rows = _admin_evolution_list_proposals(status=status, org_slug=org, include_archived=include_archived)
     return {
         "ok": True,
         "mode": "proposal_only_with_controlled_dry_run",
@@ -28437,6 +28544,35 @@ def admin_evolution_proposals(
         "dry_run_endpoint": "/api/admin/evolution/proposals/{proposal_id}/dry-run",
         "count": len(rows),
         "proposals": rows,
+    }
+
+
+@app.post("/api/admin/evolution/proposals/archive-baseline")
+def admin_evolution_proposals_archive_baseline(
+    confirm: str = "",
+    dry_run: bool = True,
+    x_org_slug: Optional[str] = Header(default=None),
+    _admin=Depends(require_admin_access),
+):
+    """
+    Admin marco zero for governed self-evolution proposals.
+
+    This does not delete proposals. It archives old rows so the default dashboard
+    starts clean while audit history remains available through status=archived.
+    """
+    if str(confirm or "").strip() != "EFATA777_MARCO_ZERO":
+        raise HTTPException(status_code=400, detail="marco_zero_confirmation_required")
+    org = get_org(x_org_slug)
+    actor = ""
+    if isinstance(_admin, dict):
+        actor = str(_admin.get("email") or _admin.get("sub") or "")
+    receipt = _admin_evolution_archive_baseline(org_slug=org, actor=actor, dry_run=dry_run)
+    return {
+        **receipt,
+        "mode": "governed_marco_zero_archive",
+        "delete_executed": False,
+        "database_write_executed": bool(not dry_run),
+        "message": "Marco zero aplicado por arquivamento logico. Historico preservado; lista padrao reiniciada.",
     }
 
 
