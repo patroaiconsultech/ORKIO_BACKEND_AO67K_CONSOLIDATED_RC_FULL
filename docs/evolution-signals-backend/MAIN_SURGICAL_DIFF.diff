@@ -1,0 +1,32 @@
+--- main.py.production_41
++++ main.py.evolution_signals_surgical
+@@ -404,6 +404,10 @@
+ from .routes.access_grants import (
+     AccessGrantRouterDeps,
+     build_access_grants_router,
++)
++from .routes.evolution_signals import (
++    EvolutionSignalsRouterDeps,
++    build_evolution_signals_router,
+ )
+ from .services.access_grant_service import (
+     access_gate_auth_required,
+@@ -6237,6 +6241,18 @@
+     )
+ )
+ app.include_router(
++    build_evolution_signals_router(
++        EvolutionSignalsRouterDeps(
++            get_db=get_db,
++            require_admin_access=require_admin_access,
++            get_request_org=get_request_org,
++            new_id=new_id,
++            now_ts=now_ts,
++            logger=logger,
++        )
++    )
++)
++app.include_router(
+     build_document_artifacts_router(
+         DocumentArtifactRouterDeps(
+             get_current_user=get_current_user,
