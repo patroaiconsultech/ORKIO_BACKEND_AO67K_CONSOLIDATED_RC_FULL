@@ -5389,104 +5389,163 @@ def _admin_evolution_update_status(proposal_id: str, *, status: str, actor: str)
     return _admin_evolution_public_row(row)
 
 
-def _admin_evolution_archive_baseline(*, org_slug: str, actor: str, dry_run: bool = True) -> Dict[str, Any]:
-    """
-    Marco zero for governed self-evolution.
+def _admin_evolution_archive_baseline(
+    *,
+    org_slug: str,
+    actor: str,
+    dry_run: bool = True,
+    cutoff_at: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Return a tenant-bound, database-backed preview for the proposal baseline.
 
-    This is a soft reset: proposals are archived, not deleted. The default list
-    hides archived rows, while status=archived/include_archived=true preserves
-    auditability and rollback visibility.
+    MZ-001-R1 is intentionally preview-only. It never mutates proposal rows,
+    never falls back to process memory and never bootstraps schema from the
+    request path. Real archival is reserved for the separately governed R2
+    contract with persistent inventory, idempotency and rollback.
     """
-    org_norm = str(org_slug or "public").strip() or "public"
+    if not dry_run:
+        raise HTTPException(status_code=403, detail="EVOLUTION_MARCO_ZERO_WRITE_DISABLED")
+
+    org_norm = str(org_slug or "").strip()
+    if not org_norm:
+        raise HTTPException(status_code=403, detail="TENANT_REQUIRED")
+
     actor_norm = str(actor or "admin").strip() or "admin"
-    now = _admin_evolution_now()
+    generated_at = _admin_evolution_now()
+    cutoff = int(cutoff_at if cutoff_at is not None else generated_at)
+    if cutoff <= 0:
+        raise HTTPException(status_code=422, detail="EVOLUTION_MARCO_ZERO_INVALID_CUTOFF")
 
-    if _admin_evolution_bootstrap_db_schema():
+    preview_limit = 50
+    try:
         db = SessionLocal()
+    except Exception as exc:
         try:
-            rows = db.execute(text("""
+            logger.exception(
+                "EVOLUTION_MARCO_ZERO_PREVIEW_DB_SESSION_FAILED version=MZ-001-R1 org=%s error=%s",
+                org_norm,
+                str(exc)[:200],
+            )
+        except Exception:
+            pass
+        raise HTTPException(status_code=503, detail="EVOLUTION_MARCO_ZERO_DB_UNAVAILABLE")
+
+    try:
+        summary = db.execute(
+            text(
+                """
+                SELECT
+                    COUNT(*) AS candidate_count,
+                    MAX(updated_at) AS latest_candidate_updated_at
+                FROM admin_evolution_proposals
+                WHERE org_slug = :org_slug
+                  AND LOWER(status) <> 'archived'
+                  AND updated_at <= :cutoff_at
+                """
+            ),
+            {"org_slug": org_norm, "cutoff_at": cutoff},
+        ).mappings().one()
+
+        archived_summary = db.execute(
+            text(
+                """
+                SELECT COUNT(*) AS already_archived_count
+                FROM admin_evolution_proposals
+                WHERE org_slug = :org_slug
+                  AND LOWER(status) = 'archived'
+                """
+            ),
+            {"org_slug": org_norm},
+        ).mappings().one()
+
+        preview_rows = db.execute(
+            text(
+                """
                 SELECT proposal_id, status, updated_at
                 FROM admin_evolution_proposals
                 WHERE org_slug = :org_slug
                   AND LOWER(status) <> 'archived'
-                ORDER BY updated_at DESC
-                LIMIT 500
-            """), {"org_slug": org_norm}).mappings().all()
-            proposal_ids = [str(row.get("proposal_id") or "") for row in rows if row.get("proposal_id")]
-            if not dry_run and proposal_ids:
-                db.execute(text("""
-                    UPDATE admin_evolution_proposals
-                    SET status = 'archived',
-                        updated_at = :updated_at,
-                        rejected_at = COALESCE(rejected_at, :updated_at),
-                        rejected_by = :actor,
-                        execution_allowed = FALSE
-                    WHERE org_slug = :org_slug
-                      AND LOWER(status) <> 'archived'
-                """), {"org_slug": org_norm, "updated_at": now, "actor": actor_norm})
-                db.commit()
-            return {
-                "ok": True,
-                "org_slug": org_norm,
-                "dry_run": bool(dry_run),
-                "archived_count": 0 if dry_run else len(proposal_ids),
-                "candidate_count": len(proposal_ids),
-                "proposal_ids_preview": proposal_ids[:50],
-                "baseline_marker": f"marco_zero_{now}",
-                "delete_executed": False,
-                "execution_enabled": False,
-                "can_execute_real": False,
-            }
-        except SQLAlchemyTimeoutError as e:
-            try:
-                logger.exception("ADMIN_EVOLUTION_ARCHIVE_BASELINE_TIMEOUT org=%s error=%s", org_norm, str(e)[:200])
-            except Exception:
-                pass
-            raise HTTPException(status_code=503, detail="evolution_db_unavailable")
-        except Exception as e:
-            try:
-                db.rollback()
-            except Exception:
-                pass
-            try:
-                logger.exception("ADMIN_EVOLUTION_ARCHIVE_BASELINE_FAILED org=%s error=%s", org_norm, str(e)[:200])
-            except Exception:
-                pass
-            raise HTTPException(status_code=503, detail="evolution_archive_baseline_failed")
-        finally:
-            try:
-                db.close()
-            except Exception:
-                pass
+                  AND updated_at <= :cutoff_at
+                ORDER BY updated_at DESC, proposal_id ASC
+                LIMIT 50
+                """
+            ),
+            {"org_slug": org_norm, "cutoff_at": cutoff},
+        ).mappings().all()
 
-    with _ADMIN_EVOLUTION_PROPOSAL_LOCK:
-        candidates = [
-            key for key, row in _ADMIN_EVOLUTION_PROPOSALS.items()
-            if isinstance(row, dict)
-            and str(row.get("org_slug") or "public") == org_norm
-            and str(row.get("status") or "").lower() != "archived"
+        candidate_count = int(summary.get("candidate_count") or 0)
+        already_archived_count = int(archived_summary.get("already_archived_count") or 0)
+        proposal_ids_preview = [
+            str(row.get("proposal_id") or "")
+            for row in preview_rows
+            if row.get("proposal_id")
         ]
-        if not dry_run:
-            for key in candidates:
-                row = dict(_ADMIN_EVOLUTION_PROPOSALS.get(key) or {})
-                row["status"] = "archived"
-                row["updated_at"] = now
-                row["rejected_at"] = row.get("rejected_at") or now
-                row["rejected_by"] = actor_norm
-                row["execution_allowed"] = False
-                _ADMIN_EVOLUTION_PROPOSALS[key] = row
-    return {
-        "ok": True,
-        "org_slug": org_norm,
-        "dry_run": bool(dry_run),
-        "archived_count": 0 if dry_run else len(candidates),
-        "candidate_count": len(candidates),
-        "proposal_ids_preview": candidates[:50],
-        "baseline_marker": f"marco_zero_{now}",
-        "delete_executed": False,
-        "execution_enabled": False,
-        "can_execute_real": False,
-    }
+
+        receipt = {
+            "ok": True,
+            "version": "MZ-001-R1",
+            "mode": "governed_marco_zero_preview_only",
+            "org_slug": org_norm,
+            "dry_run": True,
+            "preview_only": True,
+            "write_enabled": False,
+            "write_executed": False,
+            "database_write_executed": False,
+            "delete_executed": False,
+            "execution_enabled": False,
+            "can_execute_real": False,
+            "human_approval_required": True,
+            "schema_bootstrap_executed": False,
+            "memory_fallback_used": False,
+            "source": "postgresql",
+            "candidate_count": candidate_count,
+            "already_archived_count": already_archived_count,
+            "proposal_ids_preview": proposal_ids_preview,
+            "preview_limit": preview_limit,
+            "preview_truncated": candidate_count > len(proposal_ids_preview),
+            "cutoff_at": cutoff,
+            "generated_at": generated_at,
+            "latest_candidate_updated_at": summary.get("latest_candidate_updated_at"),
+            "next_required_stage": "MZ-001-R2 governed apply with persistent inventory and rollback",
+        }
+        try:
+            logger.info(
+                "EVOLUTION_MARCO_ZERO_PREVIEW_OK version=MZ-001-R1 org=%s actor=%s candidates=%s cutoff_at=%s write_executed=false",
+                org_norm,
+                actor_norm,
+                candidate_count,
+                cutoff,
+            )
+        except Exception:
+            pass
+        return receipt
+    except HTTPException:
+        raise
+    except SQLAlchemyTimeoutError as exc:
+        try:
+            logger.exception(
+                "EVOLUTION_MARCO_ZERO_PREVIEW_TIMEOUT version=MZ-001-R1 org=%s error=%s",
+                org_norm,
+                str(exc)[:200],
+            )
+        except Exception:
+            pass
+        raise HTTPException(status_code=503, detail="EVOLUTION_MARCO_ZERO_DB_UNAVAILABLE")
+    except Exception as exc:
+        try:
+            logger.exception(
+                "EVOLUTION_MARCO_ZERO_PREVIEW_FAILED version=MZ-001-R1 org=%s error=%s",
+                org_norm,
+                str(exc)[:200],
+            )
+        except Exception:
+            pass
+        raise HTTPException(status_code=503, detail="EVOLUTION_MARCO_ZERO_PREVIEW_FAILED")
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
 
 
 def _admin_evolution_list_executions(*, proposal_id: Optional[str] = None, status: Optional[str] = None, org_slug: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -28552,33 +28611,47 @@ def admin_evolution_proposals(
 def admin_evolution_proposals_archive_baseline(
     confirm: str = "",
     dry_run: bool = True,
+    cutoff_at: Optional[int] = None,
     x_org_slug: Optional[str] = Header(default=None),
     _admin=Depends(require_admin_access),
 ):
-    """
-    Admin marco zero for governed self-evolution proposals.
+    """Return the MZ-001-R1 preview for the canonical tenant.
 
-    This does not delete proposals. It archives old rows so the default dashboard
-    starts clean while audit history remains available through status=archived.
+    The ``confirm`` query parameter is accepted only for backward compatibility
+    with older frontend builds. It is not an authorization factor and is never
+    used to enable writes.
     """
-    if str(confirm or "").strip() != "EFATA777_MARCO_ZERO":
-        raise HTTPException(status_code=400, detail="marco_zero_confirmation_required")
-    org = get_org(x_org_slug)
+    _ = confirm
+    if not _env_flag("EVOLUTION_MARCO_ZERO_PREVIEW_ENABLED", default=False):
+        raise HTTPException(status_code=403, detail="EVOLUTION_MARCO_ZERO_PREVIEW_DISABLED")
+    if not dry_run:
+        raise HTTPException(status_code=403, detail="EVOLUTION_MARCO_ZERO_WRITE_DISABLED")
+
+    org = get_request_org(_admin, x_org_slug)
     actor = ""
     if isinstance(_admin, dict):
         actor = str(_admin.get("email") or _admin.get("sub") or "")
-    receipt = _admin_evolution_archive_baseline(org_slug=org, actor=actor, dry_run=dry_run)
+
+    receipt = _admin_evolution_archive_baseline(
+        org_slug=org,
+        actor=actor,
+        dry_run=True,
+        cutoff_at=cutoff_at,
+    )
     return {
         **receipt,
-        "mode": "governed_marco_zero_archive",
-        "delete_executed": False,
-        "database_write_executed": bool(not dry_run),
-        "message": "Marco zero aplicado por arquivamento logico. Historico preservado; lista padrao reiniciada.",
+        "message": "Preview do marco zero concluido. Nenhuma escrita foi executada.",
     }
 
 
 try:
-    logger.info("EVOLUTION_MARCO_ZERO_ROUTE_ALIAS_BOOT_OK canonical=/api/admin/evolution/archive-baseline legacy=/api/admin/evolution/proposals/archive-baseline")
+    logger.info(
+        "EVOLUTION_MARCO_ZERO_ROUTE_ALIAS_BOOT_OK version=MZ-001-R1 "
+        "canonical=/api/admin/evolution/archive-baseline "
+        "legacy=/api/admin/evolution/proposals/archive-baseline "
+        "mode=preview_only write_enabled=false preview_default=false "
+        "tenant_guard=get_request_org db_required=true"
+    )
 except Exception:
     pass
 
