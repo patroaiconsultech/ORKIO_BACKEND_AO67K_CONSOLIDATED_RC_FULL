@@ -405,6 +405,10 @@ from .routes.access_grants import (
     AccessGrantRouterDeps,
     build_access_grants_router,
 )
+from .routes.evolution_signals import (
+    EvolutionSignalsRouterDeps,
+    build_evolution_signals_router,
+)
 from .services.access_grant_service import (
     access_gate_auth_required,
     find_signup_code_by_id,
@@ -6230,6 +6234,18 @@ app.include_router(
         AccessGrantRouterDeps(
             get_db=get_db,
             get_org=get_org,
+            new_id=new_id,
+            now_ts=now_ts,
+            logger=logger,
+        )
+    )
+)
+app.include_router(
+    build_evolution_signals_router(
+        EvolutionSignalsRouterDeps(
+            get_db=get_db,
+            require_admin_access=require_admin_access,
+            get_request_org=get_request_org,
             new_id=new_id,
             now_ts=now_ts,
             logger=logger,

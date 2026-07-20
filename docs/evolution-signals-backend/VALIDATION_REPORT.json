@@ -1,0 +1,44 @@
+{
+  "package": "ORKIO_BACKEND_EVOLUTION_SIGNALS_V1_PROD41_SURGICAL_GITHUB_READY",
+  "artifact_source": "ORKIO_BACKEND_AO67K_CONSOLIDATED_RC_FULL-main (41).zip",
+  "artifact_source_sha256": "855b0fe8c0b862f02727bd1a9c909195ea47c92b5f9f5c91d2ff6b1f45957ba6",
+  "artifact_integrity": "PASS",
+  "artifact_entries": 1050,
+  "main_before_sha256": "35daf4bef0765b197f3c6def1633fd890da476fe5c0fe237a65537dd92485ea5",
+  "main_after_sha256": "d9eb8b8c11f5b673808d6f01c3df48252e64b5f612b4675770c9fd7d6253177d",
+  "main_added_lines": 16,
+  "main_removed_lines": 0,
+  "py_compile": "PASS",
+  "focused_tests": "16 passed",
+  "runtime_import": "PASS",
+  "runtime_route_count": 249,
+  "route_delta": 4,
+  "alembic_head": "0037_patch_evolution_signals_metrics",
+  "baseline_full_suite": {
+    "passed": 186,
+    "failed": 8,
+    "deselected": 1
+  },
+  "candidate_full_suite": {
+    "passed": 195,
+    "failed": 8,
+    "deselected": 1
+  },
+  "new_regressions": false,
+  "preexisting_failure_set": [
+    "tests/test_ao01_route_decision_diagnostic.py::test_route_diagnostics_are_attached_for_handled_decision",
+    "tests/test_ao01_route_decision_diagnostic.py::test_route_diagnostics_are_attached_for_fail_open_decision",
+    "tests/test_ao01_single_route_authority.py::test_complex_prompts_create_binding_full_runtime_decision",
+    "tests/test_docio0013_document_artifacts.py::test_formula_injection_and_zero_false_are_preserved",
+    "tests/test_docio0014_conversational_bridge.py::test_payload_builder_produces_bounded_xlsx_rows",
+    "tests/test_docio0014_conversational_bridge.py::test_command_service_persists_artifact_event_assistant_and_audit_atomically",
+    "tests/test_document_artifact_service.py::test_generate_pptx_artifact_uses_executive_template_when_available",
+    "tests/test_document_artifact_service.py::test_generate_pdf_artifact_has_executive_governance_header_when_available"
+  ],
+  "migration_executed": false,
+  "deploy_executed": false,
+  "commit_executed": false,
+  "merge_executed": false,
+  "write_flags_default": false,
+  "human_approval_required": true
+}
