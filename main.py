@@ -6263,6 +6263,23 @@ app.include_router(
         )
     )
 )
+try:
+    _evolution_signals_module = sys.modules.get(build_evolution_signals_router.__module__)
+    logger.info(
+        "EVOLUTION_SIGNALS_ROUTER_IMPORT_OK module=%s module_file=%s current=%s history=%s capture=%s agent_evaluations=%s route_count=%s",
+        build_evolution_signals_router.__module__,
+        getattr(_evolution_signals_module, "__file__", "unknown"),
+        _route_methods_for("/api/admin/evolution/signals/current"),
+        _route_methods_for("/api/admin/evolution/signals/history"),
+        _route_methods_for("/api/admin/evolution/signals/snapshots/capture"),
+        _route_methods_for("/api/admin/evolution/agent-evaluations"),
+        len(getattr(app, "routes", []) or []),
+    )
+except Exception as _evolution_signals_import_probe_error:
+    try:
+        logger.exception("EVOLUTION_SIGNALS_ROUTER_IMPORT_FAILED error=%s", _evolution_signals_import_probe_error)
+    except Exception:
+        pass
 app.include_router(
     build_document_artifacts_router(
         DocumentArtifactRouterDeps(
