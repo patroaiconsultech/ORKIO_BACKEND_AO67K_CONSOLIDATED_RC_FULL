@@ -28547,6 +28547,7 @@ def admin_evolution_proposals(
     }
 
 
+@app.post("/api/admin/evolution/archive-baseline")
 @app.post("/api/admin/evolution/proposals/archive-baseline")
 def admin_evolution_proposals_archive_baseline(
     confirm: str = "",
@@ -28574,6 +28575,12 @@ def admin_evolution_proposals_archive_baseline(
         "database_write_executed": bool(not dry_run),
         "message": "Marco zero aplicado por arquivamento logico. Historico preservado; lista padrao reiniciada.",
     }
+
+
+try:
+    logger.info("EVOLUTION_MARCO_ZERO_ROUTE_ALIAS_BOOT_OK canonical=/api/admin/evolution/archive-baseline legacy=/api/admin/evolution/proposals/archive-baseline")
+except Exception:
+    pass
 
 
 @app.get("/api/admin/evolution/proposals/{proposal_id}")
