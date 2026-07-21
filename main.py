@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import sys
 import types
+from pathlib import Path
 
 if __package__ in (None, ""):
     _AO01_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -49,6 +50,12 @@ import jwt
 import unicodedata
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
+
+from app.runtime.release_identity import (
+    actor_reference,
+    build_release_identity,
+    emit_boot_identity,
+)
 
 from app.runtime.agent_turn_context import (
     resolve_agent_turn_context,
@@ -4860,6 +4867,19 @@ async def _auth_rate_limit(request: Request) -> None:
 app = FastAPI(title="Patroai API", version=APP_VERSION)
 
 
+@app.on_event("startup")
+def _startup_release_identity_r11():
+    """Emit sanitized code and database release identity after import."""
+    emit_boot_identity(
+        logger,
+        app,
+        app_version=APP_VERSION,
+        repo_root=Path(__file__).resolve().parent,
+        runtime_main_path=Path(__file__).resolve(),
+        database=ENGINE,
+    )
+
+
 
 
 # AO-13_PTE_ADMIN_EVOLUTION_PERSISTENCE
@@ -5193,202 +5213,277 @@ def _admin_evolution_create_proposal(
     return _admin_evolution_memory_put(row)
 
 
-def _admin_evolution_get_proposal(proposal_id: str) -> Optional[Dict[str, Any]]:
+def _admin_evolution_get_proposal(
+    proposal_id: str,
+    *,
+    org_slug: str,
+) -> Optional[Dict[str, Any]]:
+    """Return one proposal only from the canonical tenant.
+
+    Admin Evolution reads are PostgreSQL-only. A database failure must not
+    silently fall back to process memory because that can diverge across
+    replicas and bypass the canonical tenant boundary.
+    """
     pid = str(proposal_id or "").strip()
+    org_norm = str(org_slug or "").strip()
     if not pid:
         return None
-    if _admin_evolution_bootstrap_db_schema():
-        db = SessionLocal()
+    if not org_norm:
+        raise HTTPException(status_code=400, detail="org_slug_required")
+    if not _admin_evolution_bootstrap_db_schema():
+        raise HTTPException(status_code=503, detail="evolution_schema_unavailable")
+
+    db = SessionLocal()
+    try:
+        res = db.execute(text("""
+            SELECT * FROM admin_evolution_proposals
+            WHERE proposal_id = :proposal_id
+              AND org_slug = :org_slug
+            LIMIT 1
+        """), {
+            "proposal_id": pid,
+            "org_slug": org_norm,
+        }).mappings().first()
+        if not res:
+            return None
+        return _admin_evolution_mapping_to_public(res)
+    except HTTPException:
+        raise
+    except SQLAlchemyTimeoutError as e:
         try:
-            res = db.execute(text("""
-                SELECT * FROM admin_evolution_proposals
-                WHERE proposal_id = :proposal_id
-                LIMIT 1
-            """), {"proposal_id": pid}).mappings().first()
-            if res:
-                return _admin_evolution_mapping_to_public(res)
-        except SQLAlchemyTimeoutError as e:
-            try:
-                logger.exception(
-                    "ADMIN_EVOLUTION_PROPOSAL_DB_TIMEOUT proposal_id=%s error=%s",
-                    pid,
-                    str(e)[:200],
-                )
-            except Exception:
-                pass
-            raise HTTPException(status_code=503, detail="evolution_db_unavailable")
-        except Exception as e:
-            try:
-                logger.exception("ADMIN_EVOLUTION_PROPOSAL_DB_GET_FAILED proposal_id=%s error=%s", pid, str(e)[:200])
-            except Exception:
-                pass
-        finally:
-            try:
-                db.close()
-            except Exception:
-                pass
-    with _ADMIN_EVOLUTION_PROPOSAL_LOCK:
-        row = _ADMIN_EVOLUTION_PROPOSALS.get(pid)
-        return _admin_evolution_public_row(row) if isinstance(row, dict) else None
+            logger.exception(
+                "ADMIN_EVOLUTION_PROPOSAL_DB_TIMEOUT proposal_id=%s org=%s error=%s",
+                pid,
+                org_norm,
+                str(e)[:200],
+            )
+        except Exception:
+            pass
+        raise HTTPException(status_code=503, detail="evolution_db_unavailable")
+    except Exception as e:
+        try:
+            logger.exception(
+                "ADMIN_EVOLUTION_PROPOSAL_DB_GET_FAILED proposal_id=%s org=%s error=%s",
+                pid,
+                org_norm,
+                str(e)[:200],
+            )
+        except Exception:
+            pass
+        raise HTTPException(status_code=503, detail="evolution_db_unavailable")
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
 
 
 
-def _admin_evolution_list_proposals(*, status: Optional[str] = None, org_slug: Optional[str] = None, include_archived: bool = False) -> List[Dict[str, Any]]:
+def _admin_evolution_list_proposals(
+    *,
+    org_slug: str,
+    status: Optional[str] = None,
+    include_archived: bool = False,
+) -> List[Dict[str, Any]]:
+    """List proposals for exactly one canonical tenant, fail-closed."""
     status_norm = str(status or "").strip().lower()
     org_norm = str(org_slug or "").strip()
-    if _admin_evolution_bootstrap_db_schema():
-        db = SessionLocal()
+    if not org_norm:
+        raise HTTPException(status_code=400, detail="org_slug_required")
+    if not _admin_evolution_bootstrap_db_schema():
+        raise HTTPException(status_code=503, detail="evolution_schema_unavailable")
+
+    db = SessionLocal()
+    try:
+        where = ["org_slug = :org_slug"]
+        params: Dict[str, Any] = {"org_slug": org_norm}
+        if status_norm:
+            where.append("LOWER(status) = :status")
+            params["status"] = status_norm
+        elif not include_archived:
+            where.append("LOWER(status) <> 'archived'")
+
+        sql = "SELECT * FROM admin_evolution_proposals WHERE " + " AND ".join(where)
+        sql += " ORDER BY updated_at DESC LIMIT 200"
+        rows = db.execute(text(sql), params).mappings().all()
+        return [_admin_evolution_mapping_to_public(x) for x in rows]
+    except HTTPException:
+        raise
+    except SQLAlchemyTimeoutError as e:
         try:
-            where = []
-            params: Dict[str, Any] = {}
-            if status_norm:
-                where.append("LOWER(status) = :status")
-                params["status"] = status_norm
-            elif not include_archived:
-                where.append("LOWER(status) <> 'archived'")
-            if org_norm:
-                where.append("org_slug = :org_slug")
-                params["org_slug"] = org_norm
-            sql = "SELECT * FROM admin_evolution_proposals"
-            if where:
-                sql += " WHERE " + " AND ".join(where)
-            sql += " ORDER BY updated_at DESC LIMIT 200"
-            rows = db.execute(text(sql), params).mappings().all()
-            return [_admin_evolution_mapping_to_public(x) for x in rows]
-        except SQLAlchemyTimeoutError as e:
-            try:
-                logger.exception("ADMIN_EVOLUTION_PROPOSAL_DB_LIST_TIMEOUT error=%s", str(e)[:200])
-            except Exception:
-                pass
-            raise HTTPException(status_code=503, detail="evolution_db_unavailable")
-        except Exception as e:
-            try:
-                logger.exception("ADMIN_EVOLUTION_PROPOSAL_DB_LIST_FAILED error=%s", str(e)[:200])
-            except Exception:
-                pass
-        finally:
-            try:
-                db.close()
-            except Exception:
-                pass
-
-    with _ADMIN_EVOLUTION_PROPOSAL_LOCK:
-        rows = list(_ADMIN_EVOLUTION_PROPOSALS.values())
-    out: List[Dict[str, Any]] = []
-    for row in rows:
-        if status_norm and str(row.get("status") or "").lower() != status_norm:
-            continue
-        if (not status_norm) and (not include_archived) and str(row.get("status") or "").lower() == "archived":
-            continue
-        if org_norm and str(row.get("org_slug") or "") != org_norm:
-            continue
-        out.append(_admin_evolution_public_row(row))
-    out.sort(key=lambda x: int(x.get("updated_at") or 0), reverse=True)
-    return out
+            logger.exception(
+                "ADMIN_EVOLUTION_PROPOSAL_DB_LIST_TIMEOUT org=%s error=%s",
+                org_norm,
+                str(e)[:200],
+            )
+        except Exception:
+            pass
+        raise HTTPException(status_code=503, detail="evolution_db_unavailable")
+    except Exception as e:
+        try:
+            logger.exception(
+                "ADMIN_EVOLUTION_PROPOSAL_DB_LIST_FAILED org=%s error=%s",
+                org_norm,
+                str(e)[:200],
+            )
+        except Exception:
+            pass
+        raise HTTPException(status_code=503, detail="evolution_db_unavailable")
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
 
 
 
-def _admin_evolution_update_status(proposal_id: str, *, status: str, actor: str) -> Dict[str, Any]:
+def _admin_evolution_update_status(
+    proposal_id: str,
+    *,
+    status: str,
+    actor: str,
+    org_slug: str,
+) -> Dict[str, Any]:
+    """Approve/reject one proposal inside the canonical tenant only."""
     pid = str(proposal_id or "").strip()
+    org_norm = str(org_slug or "").strip()
     if not pid:
         raise HTTPException(status_code=400, detail="proposal_id_required")
+    if not org_norm:
+        raise HTTPException(status_code=400, detail="org_slug_required")
+
     status_norm = str(status or "").strip().lower()
     if status_norm not in {"approved", "rejected"}:
         raise HTTPException(status_code=400, detail="invalid_status")
+    if not _admin_evolution_bootstrap_db_schema():
+        raise HTTPException(status_code=503, detail="evolution_schema_unavailable")
+
     now = _admin_evolution_now()
-
-    if _admin_evolution_bootstrap_db_schema():
-        db = SessionLocal()
-        try:
-            row = db.execute(text("""
-                SELECT * FROM admin_evolution_proposals
-                WHERE proposal_id = :proposal_id
-                LIMIT 1
-            """), {"proposal_id": pid}).mappings().first()
-            if not row:
-                raise HTTPException(status_code=404, detail="proposal_not_found")
-            public = _admin_evolution_mapping_to_public(row)
-            if str(public.get("status") or "") not in {"pending_approval", "draft"}:
-                raise HTTPException(status_code=409, detail="proposal_not_pending")
-
-            if status_norm == "approved":
-                db.execute(text("""
-                    UPDATE admin_evolution_proposals
-                    SET status = 'approved',
-                        updated_at = :updated_at,
-                        approved_at = :approved_at,
-                        approved_by = :actor,
-                        execution_allowed = FALSE,
-                        execution_status = 'not_started'
-                    WHERE proposal_id = :proposal_id
-                """), {"proposal_id": pid, "updated_at": now, "approved_at": now, "actor": str(actor or "")})
-            else:
-                db.execute(text("""
-                    UPDATE admin_evolution_proposals
-                    SET status = 'rejected',
-                        updated_at = :updated_at,
-                        rejected_at = :rejected_at,
-                        rejected_by = :actor,
-                        execution_allowed = FALSE,
-                        execution_status = 'not_started'
-                    WHERE proposal_id = :proposal_id
-                """), {"proposal_id": pid, "updated_at": now, "rejected_at": now, "actor": str(actor or "")})
-            db.commit()
-            fresh = db.execute(text("""
-                SELECT * FROM admin_evolution_proposals
-                WHERE proposal_id = :proposal_id
-                LIMIT 1
-            """), {"proposal_id": pid}).mappings().first()
-            try:
-                logger.info(
-                    "ADMIN_EVOLUTION_PROPOSAL_%s proposal_id=%s actor=%s persistence=db execution_enabled=false",
-                    status_norm.upper(),
-                    pid,
-                    actor,
-                )
-            except Exception:
-                pass
-            return _admin_evolution_mapping_to_public(fresh)
-        except HTTPException:
-            raise
-        except Exception as e:
-            try:
-                db.rollback()
-            except Exception:
-                pass
-            try:
-                logger.exception("ADMIN_EVOLUTION_PROPOSAL_DB_STATUS_FAILED proposal_id=%s error=%s", pid, str(e)[:200])
-            except Exception:
-                pass
-        finally:
-            try:
-                db.close()
-            except Exception:
-                pass
-
-    with _ADMIN_EVOLUTION_PROPOSAL_LOCK:
-        row = _ADMIN_EVOLUTION_PROPOSALS.get(pid)
-        if not isinstance(row, dict):
-            raise HTTPException(status_code=404, detail="proposal_not_found")
-        if str(row.get("status") or "") not in {"pending_approval", "draft"}:
-            raise HTTPException(status_code=409, detail="proposal_not_pending")
-        row["status"] = status_norm
-        row["updated_at"] = now
-        if status_norm == "approved":
-            row["approved_at"] = now
-            row["approved_by"] = str(actor or "")
-            row["execution_allowed"] = False
-        else:
-            row["rejected_at"] = now
-            row["rejected_by"] = str(actor or "")
-            row["execution_allowed"] = False
-        row["execution_status"] = "not_started"
-        _ADMIN_EVOLUTION_PROPOSALS[pid] = dict(row)
+    db = SessionLocal()
     try:
-        logger.info("ADMIN_EVOLUTION_PROPOSAL_%s proposal_id=%s actor=%s persistence=memory_fallback", status_norm.upper(), pid, actor)
-    except Exception:
-        pass
-    return _admin_evolution_public_row(row)
+        row = db.execute(text("""
+            SELECT * FROM admin_evolution_proposals
+            WHERE proposal_id = :proposal_id
+              AND org_slug = :org_slug
+            LIMIT 1
+        """), {
+            "proposal_id": pid,
+            "org_slug": org_norm,
+        }).mappings().first()
+        if not row:
+            raise HTTPException(status_code=404, detail="proposal_not_found")
+
+        public = _admin_evolution_mapping_to_public(row)
+        if str(public.get("status") or "") not in {"pending_approval", "draft"}:
+            raise HTTPException(status_code=409, detail="proposal_not_pending")
+
+        if status_norm == "approved":
+            result = db.execute(text("""
+                UPDATE admin_evolution_proposals
+                SET status = 'approved',
+                    updated_at = :updated_at,
+                    approved_at = :approved_at,
+                    approved_by = :actor,
+                    execution_allowed = FALSE,
+                    execution_status = 'not_started'
+                WHERE proposal_id = :proposal_id
+                  AND org_slug = :org_slug
+                  AND LOWER(status) IN ('pending_approval', 'draft')
+            """), {
+                "proposal_id": pid,
+                "org_slug": org_norm,
+                "updated_at": now,
+                "approved_at": now,
+                "actor": str(actor or ""),
+            })
+        else:
+            result = db.execute(text("""
+                UPDATE admin_evolution_proposals
+                SET status = 'rejected',
+                    updated_at = :updated_at,
+                    rejected_at = :rejected_at,
+                    rejected_by = :actor,
+                    execution_allowed = FALSE,
+                    execution_status = 'not_started'
+                WHERE proposal_id = :proposal_id
+                  AND org_slug = :org_slug
+                  AND LOWER(status) IN ('pending_approval', 'draft')
+            """), {
+                "proposal_id": pid,
+                "org_slug": org_norm,
+                "updated_at": now,
+                "rejected_at": now,
+                "actor": str(actor or ""),
+            })
+        if int(getattr(result, "rowcount", 0) or 0) != 1:
+            raise HTTPException(status_code=409, detail="proposal_tenant_update_conflict")
+
+        db.commit()
+        fresh = db.execute(text("""
+            SELECT * FROM admin_evolution_proposals
+            WHERE proposal_id = :proposal_id
+              AND org_slug = :org_slug
+            LIMIT 1
+        """), {
+            "proposal_id": pid,
+            "org_slug": org_norm,
+        }).mappings().first()
+        if not fresh:
+            raise HTTPException(status_code=404, detail="proposal_not_found")
+
+        try:
+            logger.info(
+                "ADMIN_EVOLUTION_PROPOSAL_%s proposal_id=%s org=%s actor=%s "
+                "persistence=db execution_enabled=false tenant_guard=canonical",
+                status_norm.upper(),
+                pid,
+                org_norm,
+                actor,
+            )
+        except Exception:
+            pass
+        return _admin_evolution_mapping_to_public(fresh)
+    except HTTPException:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
+    except SQLAlchemyTimeoutError as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        try:
+            logger.exception(
+                "ADMIN_EVOLUTION_PROPOSAL_DB_STATUS_TIMEOUT proposal_id=%s org=%s error=%s",
+                pid,
+                org_norm,
+                str(e)[:200],
+            )
+        except Exception:
+            pass
+        raise HTTPException(status_code=503, detail="evolution_db_unavailable")
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        try:
+            logger.exception(
+                "ADMIN_EVOLUTION_PROPOSAL_DB_STATUS_FAILED proposal_id=%s org=%s error=%s",
+                pid,
+                org_norm,
+                str(e)[:200],
+            )
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail="proposal_status_update_failed")
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
 
 
 def _admin_evolution_archive_baseline(
@@ -5550,50 +5645,68 @@ def _admin_evolution_archive_baseline(
             pass
 
 
-def _admin_evolution_list_executions(*, proposal_id: Optional[str] = None, status: Optional[str] = None, org_slug: Optional[str] = None) -> List[Dict[str, Any]]:
-    """
-    AO-13: read-only execution foundation.
-    No execution is created or run by this endpoint.
-    """
+def _admin_evolution_list_executions(
+    *,
+    org_slug: str,
+    proposal_id: Optional[str] = None,
+    status: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """List controlled execution records for one canonical tenant only."""
+    org_norm = str(org_slug or "").strip()
+    if not org_norm:
+        raise HTTPException(status_code=400, detail="org_slug_required")
     if not _admin_evolution_bootstrap_db_schema():
-        return []
+        raise HTTPException(status_code=503, detail="evolution_schema_unavailable")
+
     db = SessionLocal()
     try:
-        where = []
-        params: Dict[str, Any] = {}
+        where = ["org_slug = :org_slug"]
+        params: Dict[str, Any] = {"org_slug": org_norm}
         if proposal_id:
             where.append("proposal_id = :proposal_id")
             params["proposal_id"] = str(proposal_id)
         if status:
             where.append("LOWER(status) = :status")
             params["status"] = str(status).lower()
-        if org_slug:
-            where.append("org_slug = :org_slug")
-            params["org_slug"] = str(org_slug)
-        sql = "SELECT * FROM admin_evolution_executions"
-        if where:
-            sql += " WHERE " + " AND ".join(where)
+
+        sql = "SELECT * FROM admin_evolution_executions WHERE " + " AND ".join(where)
         sql += " ORDER BY updated_at DESC LIMIT 200"
         rows = db.execute(text(sql), params).mappings().all()
         out = []
         for row in rows:
             d = dict(row or {})
-            d["smoke_checklist"] = _admin_evolution_json_load(d.pop("smoke_checklist_json", None), [])
-            d["result"] = _admin_evolution_json_load(d.pop("result_json", None), {})
+            d["smoke_checklist"] = _admin_evolution_json_load(
+                d.pop("smoke_checklist_json", None),
+                [],
+            )
+            d["result"] = _admin_evolution_json_load(
+                d.pop("result_json", None),
+                {},
+            )
             out.append(_admin_evolution_public_row(d))
         return out
+    except HTTPException:
+        raise
     except SQLAlchemyTimeoutError as e:
         try:
-            logger.exception("ADMIN_EVOLUTION_EXECUTION_DB_LIST_TIMEOUT error=%s", str(e)[:200])
+            logger.exception(
+                "ADMIN_EVOLUTION_EXECUTION_DB_LIST_TIMEOUT org=%s error=%s",
+                org_norm,
+                str(e)[:200],
+            )
         except Exception:
             pass
         raise HTTPException(status_code=503, detail="evolution_db_unavailable")
     except Exception as e:
         try:
-            logger.exception("ADMIN_EVOLUTION_EXECUTION_DB_LIST_FAILED error=%s", str(e)[:200])
+            logger.exception(
+                "ADMIN_EVOLUTION_EXECUTION_DB_LIST_FAILED org=%s error=%s",
+                org_norm,
+                str(e)[:200],
+            )
         except Exception:
             pass
-        return []
+        raise HTTPException(status_code=503, detail="evolution_db_unavailable")
     finally:
         try:
             db.close()
@@ -5664,7 +5777,7 @@ def _admin_evolution_create_dry_run_execution(
     proposal_id: str,
     *,
     actor: str = "",
-    org_slug: Optional[str] = None,
+    org_slug: str,
 ) -> Dict[str, Any]:
     """Create a governed dry-run execution record for an approved proposal.
 
@@ -5681,7 +5794,7 @@ def _admin_evolution_create_dry_run_execution(
     pid = str(proposal_id or "").strip()
     if not pid:
         raise HTTPException(status_code=400, detail="proposal_id_required")
-    proposal = _admin_evolution_get_proposal(pid)
+    proposal = _admin_evolution_get_proposal(pid, org_slug=org_slug)
     if not proposal:
         raise HTTPException(status_code=404, detail="proposal_not_found")
 
@@ -5689,7 +5802,9 @@ def _admin_evolution_create_dry_run_execution(
     if status_norm != "approved":
         raise HTTPException(status_code=409, detail="proposal_must_be_approved_before_dry_run")
 
-    org = str(org_slug or proposal.get("org_slug") or "public").strip() or "public"
+    org = str(org_slug or "").strip()
+    if not org:
+        raise HTTPException(status_code=400, detail="org_slug_required")
     now = _admin_evolution_now()
     execution_id = "exec_" + uuid.uuid4().hex[:12]
     smoke_plan = _admin_evolution_default_smoke_checklist(proposal)
@@ -5810,18 +5925,22 @@ def _admin_evolution_create_dry_run_execution(
             "started_at": now,
             "finished_at": now,
         })
-        db.execute(text("""
+        proposal_update = db.execute(text("""
             UPDATE admin_evolution_proposals
             SET execution_id = :execution_id,
                 execution_status = 'dry_run_completed',
                 execution_allowed = FALSE,
                 updated_at = :updated_at
             WHERE proposal_id = :proposal_id
+              AND org_slug = :org_slug
         """), {
             "proposal_id": pid,
+            "org_slug": org,
             "execution_id": execution_id,
             "updated_at": now,
         })
+        if int(getattr(proposal_update, "rowcount", 0) or 0) != 1:
+            raise HTTPException(status_code=409, detail="proposal_tenant_update_conflict")
         db.commit()
         try:
             logger.info(
@@ -5861,7 +5980,7 @@ def _admin_evolution_create_dry_run_execution(
             pass
 
     try:
-        fresh = _admin_evolution_get_proposal(pid) or proposal
+        fresh = _admin_evolution_get_proposal(pid, org_slug=org) or proposal
     except HTTPException as e:
         if getattr(e, "status_code", None) == 503:
             try:
@@ -28584,6 +28703,48 @@ def admin_valuation_update(inp: ValuationConfigIn, _admin=Depends(require_admin_
 def admin_eos_health():
     return get_eos_health_snapshot()
 
+@app.get("/api/admin/system/version")
+def admin_system_version(
+    request: Request,
+    x_org_slug: Optional[str] = Header(default=None),
+    _admin=Depends(require_admin_access),
+    db: Session = Depends(get_db),
+):
+    """Return a tenant-scoped, sanitized release identity for administrators."""
+    org = get_request_org(_admin, x_org_slug)
+    authority_scope = (
+        "platform_admin"
+        if bool(_admin.get("is_admin_master") or _admin.get("write_approval_authority"))
+        else "tenant_admin"
+    )
+    request_id = _ao79a_request_id(request, "release_identity")
+    actor_ref = actor_reference(
+        _admin.get("sub") or _admin.get("email") or _admin.get("via")
+    )
+    identity = build_release_identity(
+        app,
+        app_version=APP_VERSION,
+        repo_root=Path(__file__).resolve().parent,
+        runtime_main_path=Path(__file__).resolve(),
+        database=db,
+        authenticated_org=org,
+        authority_scope=authority_scope,
+    )
+    try:
+        logger.info(
+            "ADMIN_SYSTEM_VERSION_ACCESSED request_id=%s actor_ref=%s "
+            "org=%s authority_scope=%s status_code=200 migration_in_sync=%s",
+            request_id,
+            actor_ref,
+            org,
+            authority_scope,
+            identity.get("migration_in_sync"),
+        )
+    except Exception:
+        pass
+    return {"ok": True, **identity}
+
+
 @app.get("/api/admin/overview")
 def admin_overview(_admin=Depends(require_admin_access), db: Session = Depends(get_db)):
     return {
@@ -28596,6 +28757,18 @@ def admin_overview(_admin=Depends(require_admin_access), db: Session = Depends(g
 
 
 
+
+try:
+    logger.info(
+        "EVOLUTION_ADMIN_TENANT_GUARD_BOOT_OK version=EA-TENANT-R1.1 "
+        "tenant_guard=get_request_org proposal_lookup=org_bound "
+        "proposal_mutations=db_only execution_queries=org_bound "
+        "cross_tenant=fail_closed"
+    )
+except Exception:
+    pass
+
+
 @app.get("/api/admin/evolution/proposals")
 def admin_evolution_proposals(
     status: Optional[str] = None,
@@ -28603,15 +28776,18 @@ def admin_evolution_proposals(
     x_org_slug: Optional[str] = Header(default=None),
     _admin=Depends(require_admin_access),
 ):
-    """
-    AO-11/AO-16: Admin can list proposal-only evolution drafts/pending approvals.
-    This endpoint is read-only and does not execute proposals.
-    """
-    org = get_org(x_org_slug)
-    rows = _admin_evolution_list_proposals(status=status, org_slug=org, include_archived=include_archived)
+    """Read proposal-only records from the canonical tenant."""
+    org = get_request_org(_admin, x_org_slug)
+    rows = _admin_evolution_list_proposals(
+        status=status,
+        org_slug=org,
+        include_archived=include_archived,
+    )
     return {
         "ok": True,
         "mode": "proposal_only_with_controlled_dry_run",
+        "tenant_guard": "canonical",
+        "org_slug": org,
         "execution_enabled": False,
         "can_execute_real": False,
         "dry_run_endpoint": "/api/admin/evolution/proposals/{proposal_id}/dry-run",
@@ -28673,14 +28849,18 @@ except Exception:
 @app.get("/api/admin/evolution/proposals/{proposal_id}")
 def admin_evolution_proposal_detail(
     proposal_id: str,
+    x_org_slug: Optional[str] = Header(default=None),
     _admin=Depends(require_admin_access),
 ):
-    row = _admin_evolution_get_proposal(proposal_id)
+    org = get_request_org(_admin, x_org_slug)
+    row = _admin_evolution_get_proposal(proposal_id, org_slug=org)
     if not row:
         raise HTTPException(status_code=404, detail="proposal_not_found")
     return {
         "ok": True,
         "mode": "proposal_only_with_controlled_dry_run",
+        "tenant_guard": "canonical",
+        "org_slug": org,
         "execution_enabled": False,
         "can_execute_real": False,
         "can_dry_run": bool(row.get("can_dry_run")),
@@ -28691,15 +28871,24 @@ def admin_evolution_proposal_detail(
 @app.post("/api/admin/evolution/proposals/{proposal_id}/approve")
 def admin_evolution_proposal_approve(
     proposal_id: str,
+    x_org_slug: Optional[str] = Header(default=None),
     _admin=Depends(require_admin_access),
 ):
+    org = get_request_org(_admin, x_org_slug)
     actor = ""
     if isinstance(_admin, dict):
         actor = str(_admin.get("email") or _admin.get("sub") or "")
-    row = _admin_evolution_update_status(proposal_id, status="approved", actor=actor)
+    row = _admin_evolution_update_status(
+        proposal_id,
+        status="approved",
+        actor=actor,
+        org_slug=org,
+    )
     return {
         "ok": True,
         "decision": "approved",
+        "tenant_guard": "canonical",
+        "org_slug": org,
         "execution_enabled": False,
         "can_execute_real": False,
         "can_dry_run": bool(row.get("can_dry_run")),
@@ -28712,15 +28901,24 @@ def admin_evolution_proposal_approve(
 @app.post("/api/admin/evolution/proposals/{proposal_id}/reject")
 def admin_evolution_proposal_reject(
     proposal_id: str,
+    x_org_slug: Optional[str] = Header(default=None),
     _admin=Depends(require_admin_access),
 ):
+    org = get_request_org(_admin, x_org_slug)
     actor = ""
     if isinstance(_admin, dict):
         actor = str(_admin.get("email") or _admin.get("sub") or "")
-    row = _admin_evolution_update_status(proposal_id, status="rejected", actor=actor)
+    row = _admin_evolution_update_status(
+        proposal_id,
+        status="rejected",
+        actor=actor,
+        org_slug=org,
+    )
     return {
         "ok": True,
         "decision": "rejected",
+        "tenant_guard": "canonical",
+        "org_slug": org,
         "execution_enabled": False,
         "can_execute_real": False,
         "can_dry_run": False,
@@ -28736,15 +28934,18 @@ def admin_evolution_executions(
     x_org_slug: Optional[str] = Header(default=None),
     _admin=Depends(require_admin_access),
 ):
-    """
-    AO-16: read-only list of controlled dry-run execution records.
-    This endpoint lists executions; it does not start real execution.
-    """
-    org = get_org(x_org_slug)
-    rows = _admin_evolution_list_executions(proposal_id=proposal_id, status=status, org_slug=org)
+    """Read controlled dry-run records from the canonical tenant."""
+    org = get_request_org(_admin, x_org_slug)
+    rows = _admin_evolution_list_executions(
+        proposal_id=proposal_id,
+        status=status,
+        org_slug=org,
+    )
     return {
         "ok": True,
         "mode": "controlled_dry_run_records",
+        "tenant_guard": "canonical",
+        "org_slug": org,
         "execution_enabled": False,
         "can_execute_real": False,
         "count": len(rows),
@@ -29779,6 +29980,7 @@ def _admin_evolution_build_branch_pr_plan(proposal: Dict[str, Any]) -> Dict[str,
 @app.get("/api/admin/evolution/proposals/{proposal_id}/execution-plan")
 def admin_evolution_proposal_execution_plan(
     proposal_id: str,
+    x_org_slug: Optional[str] = Header(default=None),
     _admin=Depends(require_admin_access),
 ):
     """
@@ -29787,7 +29989,8 @@ def admin_evolution_proposal_execution_plan(
     For AO-17C/AO-18A, this route is stage-aware: it must reference the existing
     AO-17B branch and must not suggest creating a new branch.
     """
-    row = _admin_evolution_get_proposal(proposal_id)
+    org = get_request_org(_admin, x_org_slug)
+    row = _admin_evolution_get_proposal(proposal_id, org_slug=org)
     if not row:
         raise HTTPException(status_code=404, detail="proposal_not_found")
 
@@ -29864,6 +30067,7 @@ def admin_evolution_proposal_execution_plan(
 @app.get("/api/admin/evolution/proposals/{proposal_id}/branch-pr-plan")
 def admin_evolution_proposal_branch_pr_plan(
     proposal_id: str,
+    x_org_slug: Optional[str] = Header(default=None),
     _admin=Depends(require_admin_access),
 ):
     """
@@ -29872,7 +30076,8 @@ def admin_evolution_proposal_branch_pr_plan(
     This endpoint does not create branches, write files, commit, open PRs,
     merge, deploy or run migrations. It only exposes the next-stage contract.
     """
-    row = _admin_evolution_get_proposal(proposal_id)
+    org = get_request_org(_admin, x_org_slug)
+    row = _admin_evolution_get_proposal(proposal_id, org_slug=org)
     if not row:
         raise HTTPException(status_code=404, detail="proposal_not_found")
     plan = _admin_evolution_build_branch_pr_plan(row)
@@ -30031,8 +30236,10 @@ def _admin_evolution_record_branch_create_execution(
             UPDATE admin_evolution_proposals
             SET updated_at = :updated_at
             WHERE proposal_id = :proposal_id
+              AND org_slug = :org_slug
         """), {
             "proposal_id": pid,
+            "org_slug": org_slug,
             "updated_at": now,
         })
         db.commit()
@@ -30067,7 +30274,7 @@ def _admin_evolution_create_governed_branch(
     proposal_id: str,
     *,
     actor: str = "",
-    org_slug: Optional[str] = None,
+    org_slug: str,
     branch_override: Optional[str] = None,
     repo_target: Optional[str] = "both",
 ) -> Dict[str, Any]:
@@ -30075,7 +30282,7 @@ def _admin_evolution_create_governed_branch(
     if not pid:
         raise HTTPException(status_code=400, detail="proposal_id_required")
 
-    proposal = _admin_evolution_get_proposal(pid)
+    proposal = _admin_evolution_get_proposal(pid, org_slug=org_slug)
     if not proposal:
         raise HTTPException(status_code=404, detail="proposal_not_found")
 
@@ -30091,7 +30298,9 @@ def _admin_evolution_create_governed_branch(
     plan = _admin_evolution_build_branch_pr_plan(proposal)
     suggested_branch = str(plan.get("suggested_branch") or "").strip()
     branch_name = _admin_evolution_safe_branch_name(branch_override or suggested_branch, pid)
-    org = str(org_slug or proposal.get("org_slug") or "public").strip() or "public"
+    org = str(org_slug or "").strip()
+    if not org:
+        raise HTTPException(status_code=400, detail="org_slug_required")
     trace_id = f"ao17b_{pid}_{uuid.uuid4().hex[:8]}"
 
     targets = _admin_evolution_branch_repo_targets(repo_target)
@@ -30347,7 +30556,8 @@ def _admin_evolution_record_pr_create_execution(
             UPDATE admin_evolution_proposals
             SET updated_at = :updated_at
             WHERE proposal_id = :proposal_id
-        """), {"proposal_id": pid, "updated_at": now})
+              AND org_slug = :org_slug
+        """), {"proposal_id": pid, "org_slug": org_slug, "updated_at": now})
         db.commit()
         receipt["audit_recorded"] = True
         receipt["audit_execution_status"] = status
@@ -30463,12 +30673,12 @@ def admin_evolution_proposal_create_pr(
     if isinstance(_admin, dict):
         actor = str(_admin.get("email") or _admin.get("sub") or "")
 
-    org = get_org(x_org_slug)
+    org = get_request_org(_admin, x_org_slug)
     pid = str(proposal_id or "").strip()
     if not pid:
         raise HTTPException(status_code=400, detail="proposal_id_required")
 
-    proposal = _admin_evolution_get_proposal(pid)
+    proposal = _admin_evolution_get_proposal(pid, org_slug=org)
     if not proposal:
         raise HTTPException(status_code=404, detail="proposal_not_found")
 
@@ -30925,7 +31135,8 @@ def _admin_evolution_record_merge_execution(
             UPDATE admin_evolution_proposals
             SET updated_at = :updated_at
             WHERE proposal_id = :proposal_id
-        """), {"proposal_id": pid, "updated_at": now})
+              AND org_slug = :org_slug
+        """), {"proposal_id": pid, "org_slug": org_slug, "updated_at": now})
         db.commit()
         receipt["audit_recorded"] = True
         receipt["audit_execution_status"] = status
@@ -30971,12 +31182,12 @@ def admin_evolution_proposal_merge_pr(
     if isinstance(_admin, dict):
         actor = str(_admin.get("email") or _admin.get("sub") or "")
 
-    org = get_org(x_org_slug)
+    org = get_request_org(_admin, x_org_slug)
     pid = str(proposal_id or "").strip()
     if not pid:
         raise HTTPException(status_code=400, detail="proposal_id_required")
 
-    proposal = _admin_evolution_get_proposal(pid)
+    proposal = _admin_evolution_get_proposal(pid, org_slug=org)
     if not proposal:
         raise HTTPException(status_code=404, detail="proposal_not_found")
 
@@ -31136,7 +31347,7 @@ def admin_evolution_proposal_create_branch(
     actor = ""
     if isinstance(_admin, dict):
         actor = str(_admin.get("email") or _admin.get("sub") or "")
-    org = get_org(x_org_slug)
+    org = get_request_org(_admin, x_org_slug)
     body_obj = body if isinstance(body, AdminEvolutionBranchCreateRequest) else AdminEvolutionBranchCreateRequest()
     return _admin_evolution_create_governed_branch(
         proposal_id,
@@ -31678,7 +31889,8 @@ def _admin_evolution_record_branch_patch_execution(
             UPDATE admin_evolution_proposals
             SET updated_at = :updated_at
             WHERE proposal_id = :proposal_id
-        """), {"proposal_id": pid, "updated_at": now})
+              AND org_slug = :org_slug
+        """), {"proposal_id": pid, "org_slug": org_slug, "updated_at": now})
         db.commit()
         receipt["audit_recorded"] = True
         receipt["audit_execution_status"] = status
@@ -31754,7 +31966,7 @@ def _admin_evolution_apply_branch_patch(
     body: Optional[AdminEvolutionBranchPatchApplyRequest],
 ) -> Dict[str, Any]:
     pid = str(proposal_id or "").strip()
-    proposal = _admin_evolution_get_proposal(pid)
+    proposal = _admin_evolution_get_proposal(pid, org_slug=org_slug)
     if not proposal:
         raise HTTPException(status_code=404, detail="proposal_not_found")
     if str(proposal.get("status") or "").strip().lower() != "approved":
@@ -31900,7 +32112,7 @@ def _admin_evolution_revert_branch_patch(
     body: Optional[AdminEvolutionBranchPatchRevertRequest],
 ) -> Dict[str, Any]:
     pid = str(proposal_id or "").strip()
-    proposal = _admin_evolution_get_proposal(pid)
+    proposal = _admin_evolution_get_proposal(pid, org_slug=org_slug)
     if not proposal:
         raise HTTPException(status_code=404, detail="proposal_not_found")
     if not _admin_evolution_is_restore_point_stage(proposal):
@@ -32023,7 +32235,7 @@ def admin_evolution_proposal_apply_branch_patch(
     actor = ""
     if isinstance(_admin, dict):
         actor = str(_admin.get("email") or _admin.get("sub") or "")
-    org = get_org(x_org_slug)
+    org = get_request_org(_admin, x_org_slug)
     body_obj = body if isinstance(body, AdminEvolutionBranchPatchApplyRequest) else AdminEvolutionBranchPatchApplyRequest()
     return _admin_evolution_apply_branch_patch(proposal_id, actor=actor, org_slug=org, body=body_obj)
 
@@ -32043,7 +32255,7 @@ def admin_evolution_proposal_revert_branch_patch(
     actor = ""
     if isinstance(_admin, dict):
         actor = str(_admin.get("email") or _admin.get("sub") or "")
-    org = get_org(x_org_slug)
+    org = get_request_org(_admin, x_org_slug)
     body_obj = body if isinstance(body, AdminEvolutionBranchPatchRevertRequest) else AdminEvolutionBranchPatchRevertRequest()
     return _admin_evolution_revert_branch_patch(proposal_id, actor=actor, org_slug=org, body=body_obj)
 
@@ -32064,7 +32276,7 @@ def admin_evolution_proposal_dry_run(
     actor = ""
     if isinstance(_admin, dict):
         actor = str(_admin.get("email") or _admin.get("sub") or "")
-    org = get_org(x_org_slug)
+    org = get_request_org(_admin, x_org_slug)
     try:
         logger.info(
             "ADMIN_EVOLUTION_DRY_RUN_REQUEST proposal_id=%s org=%s actor=%s",
@@ -40599,7 +40811,7 @@ async def chat_stream(
         proposal = None
         if proposal_id:
             try:
-                proposal = _admin_evolution_get_proposal(proposal_id)
+                proposal = _admin_evolution_get_proposal(proposal_id, org_slug=org)
             except Exception:
                 proposal = None
         else:
@@ -40739,7 +40951,7 @@ async def chat_stream(
         proposal = None
         if proposal_id:
             try:
-                proposal = _admin_evolution_get_proposal(proposal_id)
+                proposal = _admin_evolution_get_proposal(proposal_id, org_slug=org)
             except Exception:
                 proposal = None
         else:
@@ -41010,7 +41222,7 @@ async def chat_stream(
         execution_status = "unknown"
         try:
             if proposal_id:
-                proposal = _admin_evolution_get_proposal(proposal_id)
+                proposal = _admin_evolution_get_proposal(proposal_id, org_slug=org)
             if isinstance(proposal, dict):
                 proposal_status = str(
                     proposal.get("status")

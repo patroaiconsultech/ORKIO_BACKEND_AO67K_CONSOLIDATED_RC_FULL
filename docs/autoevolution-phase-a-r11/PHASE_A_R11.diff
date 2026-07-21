@@ -1,0 +1,2864 @@
+--- a/main.py
++++ b/main.py
+@@ -11,6 +11,7 @@
+ import os
+ import sys
+ import types
++from pathlib import Path
+ 
+ if __package__ in (None, ""):
+     _AO01_ROOT = os.path.dirname(os.path.abspath(__file__))
+@@ -49,6 +50,12 @@
+ import unicodedata
+ from types import SimpleNamespace
+ from typing import Any, Dict, List, Optional
++
++from app.runtime.release_identity import (
++    actor_reference,
++    build_release_identity,
++    emit_boot_identity,
++)
+ 
+ from app.runtime.agent_turn_context import (
+     resolve_agent_turn_context,
+@@ -4860,6 +4867,19 @@
+ app = FastAPI(title="Patroai API", version=APP_VERSION)
+ 
+ 
++@app.on_event("startup")
++def _startup_release_identity_r11():
++    """Emit sanitized code and database release identity after import."""
++    emit_boot_identity(
++        logger,
++        app,
++        app_version=APP_VERSION,
++        repo_root=Path(__file__).resolve().parent,
++        runtime_main_path=Path(__file__).resolve(),
++        database=ENGINE,
++    )
++
++
+ 
+ 
+ # AO-13_PTE_ADMIN_EVOLUTION_PERSISTENCE
+@@ -5193,202 +5213,277 @@
+     return _admin_evolution_memory_put(row)
+ 
+ 
+-def _admin_evolution_get_proposal(proposal_id: str) -> Optional[Dict[str, Any]]:
++def _admin_evolution_get_proposal(
++    proposal_id: str,
++    *,
++    org_slug: str,
++) -> Optional[Dict[str, Any]]:
++    """Return one proposal only from the canonical tenant.
++
++    Admin Evolution reads are PostgreSQL-only. A database failure must not
++    silently fall back to process memory because that can diverge across
++    replicas and bypass the canonical tenant boundary.
++    """
+     pid = str(proposal_id or "").strip()
++    org_norm = str(org_slug or "").strip()
+     if not pid:
+         return None
+-    if _admin_evolution_bootstrap_db_schema():
+-        db = SessionLocal()
++    if not org_norm:
++        raise HTTPException(status_code=400, detail="org_slug_required")
++    if not _admin_evolution_bootstrap_db_schema():
++        raise HTTPException(status_code=503, detail="evolution_schema_unavailable")
++
++    db = SessionLocal()
++    try:
++        res = db.execute(text("""
++            SELECT * FROM admin_evolution_proposals
++            WHERE proposal_id = :proposal_id
++              AND org_slug = :org_slug
++            LIMIT 1
++        """), {
++            "proposal_id": pid,
++            "org_slug": org_norm,
++        }).mappings().first()
++        if not res:
++            return None
++        return _admin_evolution_mapping_to_public(res)
++    except HTTPException:
++        raise
++    except SQLAlchemyTimeoutError as e:
+         try:
+-            res = db.execute(text("""
+-                SELECT * FROM admin_evolution_proposals
+-                WHERE proposal_id = :proposal_id
+-                LIMIT 1
+-            """), {"proposal_id": pid}).mappings().first()
+-            if res:
+-                return _admin_evolution_mapping_to_public(res)
+-        except SQLAlchemyTimeoutError as e:
+-            try:
+-                logger.exception(
+-                    "ADMIN_EVOLUTION_PROPOSAL_DB_TIMEOUT proposal_id=%s error=%s",
+-                    pid,
+-                    str(e)[:200],
+-                )
+-            except Exception:
+-                pass
+-            raise HTTPException(status_code=503, detail="evolution_db_unavailable")
+-        except Exception as e:
+-            try:
+-                logger.exception("ADMIN_EVOLUTION_PROPOSAL_DB_GET_FAILED proposal_id=%s error=%s", pid, str(e)[:200])
+-            except Exception:
+-                pass
+-        finally:
+-            try:
+-                db.close()
+-            except Exception:
+-                pass
+-    with _ADMIN_EVOLUTION_PROPOSAL_LOCK:
+-        row = _ADMIN_EVOLUTION_PROPOSALS.get(pid)
+-        return _admin_evolution_public_row(row) if isinstance(row, dict) else None
+-
+-
+-
+-def _admin_evolution_list_proposals(*, status: Optional[str] = None, org_slug: Optional[str] = None, include_archived: bool = False) -> List[Dict[str, Any]]:
++            logger.exception(
++                "ADMIN_EVOLUTION_PROPOSAL_DB_TIMEOUT proposal_id=%s org=%s error=%s",
++                pid,
++                org_norm,
++                str(e)[:200],
++            )
++        except Exception:
++            pass
++        raise HTTPException(status_code=503, detail="evolution_db_unavailable")
++    except Exception as e:
++        try:
++            logger.exception(
++                "ADMIN_EVOLUTION_PROPOSAL_DB_GET_FAILED proposal_id=%s org=%s error=%s",
++                pid,
++                org_norm,
++                str(e)[:200],
++            )
++        except Exception:
++            pass
++        raise HTTPException(status_code=503, detail="evolution_db_unavailable")
++    finally:
++        try:
++            db.close()
++        except Exception:
++            pass
++
++
++
++def _admin_evolution_list_proposals(
++    *,
++    org_slug: str,
++    status: Optional[str] = None,
++    include_archived: bool = False,
++) -> List[Dict[str, Any]]:
++    """List proposals for exactly one canonical tenant, fail-closed."""
+     status_norm = str(status or "").strip().lower()
+     org_norm = str(org_slug or "").strip()
+-    if _admin_evolution_bootstrap_db_schema():
+-        db = SessionLocal()
++    if not org_norm:
++        raise HTTPException(status_code=400, detail="org_slug_required")
++    if not _admin_evolution_bootstrap_db_schema():
++        raise HTTPException(status_code=503, detail="evolution_schema_unavailable")
++
++    db = SessionLocal()
++    try:
++        where = ["org_slug = :org_slug"]
++        params: Dict[str, Any] = {"org_slug": org_norm}
++        if status_norm:
++            where.append("LOWER(status) = :status")
++            params["status"] = status_norm
++        elif not include_archived:
++            where.append("LOWER(status) <> 'archived'")
++
++        sql = "SELECT * FROM admin_evolution_proposals WHERE " + " AND ".join(where)
++        sql += " ORDER BY updated_at DESC LIMIT 200"
++        rows = db.execute(text(sql), params).mappings().all()
++        return [_admin_evolution_mapping_to_public(x) for x in rows]
++    except HTTPException:
++        raise
++    except SQLAlchemyTimeoutError as e:
+         try:
+-            where = []
+-            params: Dict[str, Any] = {}
+-            if status_norm:
+-                where.append("LOWER(status) = :status")
+-                params["status"] = status_norm
+-            elif not include_archived:
+-                where.append("LOWER(status) <> 'archived'")
+-            if org_norm:
+-                where.append("org_slug = :org_slug")
+-                params["org_slug"] = org_norm
+-            sql = "SELECT * FROM admin_evolution_proposals"
+-            if where:
+-                sql += " WHERE " + " AND ".join(where)
+-            sql += " ORDER BY updated_at DESC LIMIT 200"
+-            rows = db.execute(text(sql), params).mappings().all()
+-            return [_admin_evolution_mapping_to_public(x) for x in rows]
+-        except SQLAlchemyTimeoutError as e:
+-            try:
+-                logger.exception("ADMIN_EVOLUTION_PROPOSAL_DB_LIST_TIMEOUT error=%s", str(e)[:200])
+-            except Exception:
+-                pass
+-            raise HTTPException(status_code=503, detail="evolution_db_unavailable")
+-        except Exception as e:
+-            try:
+-                logger.exception("ADMIN_EVOLUTION_PROPOSAL_DB_LIST_FAILED error=%s", str(e)[:200])
+-            except Exception:
+-                pass
+-        finally:
+-            try:
+-                db.close()
+-            except Exception:
+-                pass
+-
+-    with _ADMIN_EVOLUTION_PROPOSAL_LOCK:
+-        rows = list(_ADMIN_EVOLUTION_PROPOSALS.values())
+-    out: List[Dict[str, Any]] = []
+-    for row in rows:
+-        if status_norm and str(row.get("status") or "").lower() != status_norm:
+-            continue
+-        if (not status_norm) and (not include_archived) and str(row.get("status") or "").lower() == "archived":
+-            continue
+-        if org_norm and str(row.get("org_slug") or "") != org_norm:
+-            continue
+-        out.append(_admin_evolution_public_row(row))
+-    out.sort(key=lambda x: int(x.get("updated_at") or 0), reverse=True)
+-    return out
+-
+-
+-
+-def _admin_evolution_update_status(proposal_id: str, *, status: str, actor: str) -> Dict[str, Any]:
++            logger.exception(
++                "ADMIN_EVOLUTION_PROPOSAL_DB_LIST_TIMEOUT org=%s error=%s",
++                org_norm,
++                str(e)[:200],
++            )
++        except Exception:
++            pass
++        raise HTTPException(status_code=503, detail="evolution_db_unavailable")
++    except Exception as e:
++        try:
++            logger.exception(
++                "ADMIN_EVOLUTION_PROPOSAL_DB_LIST_FAILED org=%s error=%s",
++                org_norm,
++                str(e)[:200],
++            )
++        except Exception:
++            pass
++        raise HTTPException(status_code=503, detail="evolution_db_unavailable")
++    finally:
++        try:
++            db.close()
++        except Exception:
++            pass
++
++
++
++def _admin_evolution_update_status(
++    proposal_id: str,
++    *,
++    status: str,
++    actor: str,
++    org_slug: str,
++) -> Dict[str, Any]:
++    """Approve/reject one proposal inside the canonical tenant only."""
+     pid = str(proposal_id or "").strip()
++    org_norm = str(org_slug or "").strip()
+     if not pid:
+         raise HTTPException(status_code=400, detail="proposal_id_required")
++    if not org_norm:
++        raise HTTPException(status_code=400, detail="org_slug_required")
++
+     status_norm = str(status or "").strip().lower()
+     if status_norm not in {"approved", "rejected"}:
+         raise HTTPException(status_code=400, detail="invalid_status")
++    if not _admin_evolution_bootstrap_db_schema():
++        raise HTTPException(status_code=503, detail="evolution_schema_unavailable")
++
+     now = _admin_evolution_now()
+-
+-    if _admin_evolution_bootstrap_db_schema():
+-        db = SessionLocal()
++    db = SessionLocal()
++    try:
++        row = db.execute(text("""
++            SELECT * FROM admin_evolution_proposals
++            WHERE proposal_id = :proposal_id
++              AND org_slug = :org_slug
++            LIMIT 1
++        """), {
++            "proposal_id": pid,
++            "org_slug": org_norm,
++        }).mappings().first()
++        if not row:
++            raise HTTPException(status_code=404, detail="proposal_not_found")
++
++        public = _admin_evolution_mapping_to_public(row)
++        if str(public.get("status") or "") not in {"pending_approval", "draft"}:
++            raise HTTPException(status_code=409, detail="proposal_not_pending")
++
++        if status_norm == "approved":
++            result = db.execute(text("""
++                UPDATE admin_evolution_proposals
++                SET status = 'approved',
++                    updated_at = :updated_at,
++                    approved_at = :approved_at,
++                    approved_by = :actor,
++                    execution_allowed = FALSE,
++                    execution_status = 'not_started'
++                WHERE proposal_id = :proposal_id
++                  AND org_slug = :org_slug
++                  AND LOWER(status) IN ('pending_approval', 'draft')
++            """), {
++                "proposal_id": pid,
++                "org_slug": org_norm,
++                "updated_at": now,
++                "approved_at": now,
++                "actor": str(actor or ""),
++            })
++        else:
++            result = db.execute(text("""
++                UPDATE admin_evolution_proposals
++                SET status = 'rejected',
++                    updated_at = :updated_at,
++                    rejected_at = :rejected_at,
++                    rejected_by = :actor,
++                    execution_allowed = FALSE,
++                    execution_status = 'not_started'
++                WHERE proposal_id = :proposal_id
++                  AND org_slug = :org_slug
++                  AND LOWER(status) IN ('pending_approval', 'draft')
++            """), {
++                "proposal_id": pid,
++                "org_slug": org_norm,
++                "updated_at": now,
++                "rejected_at": now,
++                "actor": str(actor or ""),
++            })
++        if int(getattr(result, "rowcount", 0) or 0) != 1:
++            raise HTTPException(status_code=409, detail="proposal_tenant_update_conflict")
++
++        db.commit()
++        fresh = db.execute(text("""
++            SELECT * FROM admin_evolution_proposals
++            WHERE proposal_id = :proposal_id
++              AND org_slug = :org_slug
++            LIMIT 1
++        """), {
++            "proposal_id": pid,
++            "org_slug": org_norm,
++        }).mappings().first()
++        if not fresh:
++            raise HTTPException(status_code=404, detail="proposal_not_found")
++
+         try:
+-            row = db.execute(text("""
+-                SELECT * FROM admin_evolution_proposals
+-                WHERE proposal_id = :proposal_id
+-                LIMIT 1
+-            """), {"proposal_id": pid}).mappings().first()
+-            if not row:
+-                raise HTTPException(status_code=404, detail="proposal_not_found")
+-            public = _admin_evolution_mapping_to_public(row)
+-            if str(public.get("status") or "") not in {"pending_approval", "draft"}:
+-                raise HTTPException(status_code=409, detail="proposal_not_pending")
+-
+-            if status_norm == "approved":
+-                db.execute(text("""
+-                    UPDATE admin_evolution_proposals
+-                    SET status = 'approved',
+-                        updated_at = :updated_at,
+-                        approved_at = :approved_at,
+-                        approved_by = :actor,
+-                        execution_allowed = FALSE,
+-                        execution_status = 'not_started'
+-                    WHERE proposal_id = :proposal_id
+-                """), {"proposal_id": pid, "updated_at": now, "approved_at": now, "actor": str(actor or "")})
+-            else:
+-                db.execute(text("""
+-                    UPDATE admin_evolution_proposals
+-                    SET status = 'rejected',
+-                        updated_at = :updated_at,
+-                        rejected_at = :rejected_at,
+-                        rejected_by = :actor,
+-                        execution_allowed = FALSE,
+-                        execution_status = 'not_started'
+-                    WHERE proposal_id = :proposal_id
+-                """), {"proposal_id": pid, "updated_at": now, "rejected_at": now, "actor": str(actor or "")})
+-            db.commit()
+-            fresh = db.execute(text("""
+-                SELECT * FROM admin_evolution_proposals
+-                WHERE proposal_id = :proposal_id
+-                LIMIT 1
+-            """), {"proposal_id": pid}).mappings().first()
+-            try:
+-                logger.info(
+-                    "ADMIN_EVOLUTION_PROPOSAL_%s proposal_id=%s actor=%s persistence=db execution_enabled=false",
+-                    status_norm.upper(),
+-                    pid,
+-                    actor,
+-                )
+-            except Exception:
+-                pass
+-            return _admin_evolution_mapping_to_public(fresh)
+-        except HTTPException:
+-            raise
+-        except Exception as e:
+-            try:
+-                db.rollback()
+-            except Exception:
+-                pass
+-            try:
+-                logger.exception("ADMIN_EVOLUTION_PROPOSAL_DB_STATUS_FAILED proposal_id=%s error=%s", pid, str(e)[:200])
+-            except Exception:
+-                pass
+-        finally:
+-            try:
+-                db.close()
+-            except Exception:
+-                pass
+-
+-    with _ADMIN_EVOLUTION_PROPOSAL_LOCK:
+-        row = _ADMIN_EVOLUTION_PROPOSALS.get(pid)
+-        if not isinstance(row, dict):
+-            raise HTTPException(status_code=404, detail="proposal_not_found")
+-        if str(row.get("status") or "") not in {"pending_approval", "draft"}:
+-            raise HTTPException(status_code=409, detail="proposal_not_pending")
+-        row["status"] = status_norm
+-        row["updated_at"] = now
+-        if status_norm == "approved":
+-            row["approved_at"] = now
+-            row["approved_by"] = str(actor or "")
+-            row["execution_allowed"] = False
+-        else:
+-            row["rejected_at"] = now
+-            row["rejected_by"] = str(actor or "")
+-            row["execution_allowed"] = False
+-        row["execution_status"] = "not_started"
+-        _ADMIN_EVOLUTION_PROPOSALS[pid] = dict(row)
+-    try:
+-        logger.info("ADMIN_EVOLUTION_PROPOSAL_%s proposal_id=%s actor=%s persistence=memory_fallback", status_norm.upper(), pid, actor)
+-    except Exception:
+-        pass
+-    return _admin_evolution_public_row(row)
++            logger.info(
++                "ADMIN_EVOLUTION_PROPOSAL_%s proposal_id=%s org=%s actor=%s "
++                "persistence=db execution_enabled=false tenant_guard=canonical",
++                status_norm.upper(),
++                pid,
++                org_norm,
++                actor,
++            )
++        except Exception:
++            pass
++        return _admin_evolution_mapping_to_public(fresh)
++    except HTTPException:
++        try:
++            db.rollback()
++        except Exception:
++            pass
++        raise
++    except SQLAlchemyTimeoutError as e:
++        try:
++            db.rollback()
++        except Exception:
++            pass
++        try:
++            logger.exception(
++                "ADMIN_EVOLUTION_PROPOSAL_DB_STATUS_TIMEOUT proposal_id=%s org=%s error=%s",
++                pid,
++                org_norm,
++                str(e)[:200],
++            )
++        except Exception:
++            pass
++        raise HTTPException(status_code=503, detail="evolution_db_unavailable")
++    except Exception as e:
++        try:
++            db.rollback()
++        except Exception:
++            pass
++        try:
++            logger.exception(
++                "ADMIN_EVOLUTION_PROPOSAL_DB_STATUS_FAILED proposal_id=%s org=%s error=%s",
++                pid,
++                org_norm,
++                str(e)[:200],
++            )
++        except Exception:
++            pass
++        raise HTTPException(status_code=500, detail="proposal_status_update_failed")
++    finally:
++        try:
++            db.close()
++        except Exception:
++            pass
+ 
+ 
+ def _admin_evolution_archive_baseline(
+@@ -5550,50 +5645,68 @@
+             pass
+ 
+ 
+-def _admin_evolution_list_executions(*, proposal_id: Optional[str] = None, status: Optional[str] = None, org_slug: Optional[str] = None) -> List[Dict[str, Any]]:
+-    """
+-    AO-13: read-only execution foundation.
+-    No execution is created or run by this endpoint.
+-    """
++def _admin_evolution_list_executions(
++    *,
++    org_slug: str,
++    proposal_id: Optional[str] = None,
++    status: Optional[str] = None,
++) -> List[Dict[str, Any]]:
++    """List controlled execution records for one canonical tenant only."""
++    org_norm = str(org_slug or "").strip()
++    if not org_norm:
++        raise HTTPException(status_code=400, detail="org_slug_required")
+     if not _admin_evolution_bootstrap_db_schema():
+-        return []
++        raise HTTPException(status_code=503, detail="evolution_schema_unavailable")
++
+     db = SessionLocal()
+     try:
+-        where = []
+-        params: Dict[str, Any] = {}
++        where = ["org_slug = :org_slug"]
++        params: Dict[str, Any] = {"org_slug": org_norm}
+         if proposal_id:
+             where.append("proposal_id = :proposal_id")
+             params["proposal_id"] = str(proposal_id)
+         if status:
+             where.append("LOWER(status) = :status")
+             params["status"] = str(status).lower()
+-        if org_slug:
+-            where.append("org_slug = :org_slug")
+-            params["org_slug"] = str(org_slug)
+-        sql = "SELECT * FROM admin_evolution_executions"
+-        if where:
+-            sql += " WHERE " + " AND ".join(where)
++
++        sql = "SELECT * FROM admin_evolution_executions WHERE " + " AND ".join(where)
+         sql += " ORDER BY updated_at DESC LIMIT 200"
+         rows = db.execute(text(sql), params).mappings().all()
+         out = []
+         for row in rows:
+             d = dict(row or {})
+-            d["smoke_checklist"] = _admin_evolution_json_load(d.pop("smoke_checklist_json", None), [])
+-            d["result"] = _admin_evolution_json_load(d.pop("result_json", None), {})
++            d["smoke_checklist"] = _admin_evolution_json_load(
++                d.pop("smoke_checklist_json", None),
++                [],
++            )
++            d["result"] = _admin_evolution_json_load(
++                d.pop("result_json", None),
++                {},
++            )
+             out.append(_admin_evolution_public_row(d))
+         return out
++    except HTTPException:
++        raise
+     except SQLAlchemyTimeoutError as e:
+         try:
+-            logger.exception("ADMIN_EVOLUTION_EXECUTION_DB_LIST_TIMEOUT error=%s", str(e)[:200])
++            logger.exception(
++                "ADMIN_EVOLUTION_EXECUTION_DB_LIST_TIMEOUT org=%s error=%s",
++                org_norm,
++                str(e)[:200],
++            )
+         except Exception:
+             pass
+         raise HTTPException(status_code=503, detail="evolution_db_unavailable")
+     except Exception as e:
+         try:
+-            logger.exception("ADMIN_EVOLUTION_EXECUTION_DB_LIST_FAILED error=%s", str(e)[:200])
++            logger.exception(
++                "ADMIN_EVOLUTION_EXECUTION_DB_LIST_FAILED org=%s error=%s",
++                org_norm,
++                str(e)[:200],
++            )
+         except Exception:
+             pass
+-        return []
++        raise HTTPException(status_code=503, detail="evolution_db_unavailable")
+     finally:
+         try:
+             db.close()
+@@ -5664,7 +5777,7 @@
+     proposal_id: str,
+     *,
+     actor: str = "",
+-    org_slug: Optional[str] = None,
++    org_slug: str,
+ ) -> Dict[str, Any]:
+     """Create a governed dry-run execution record for an approved proposal.
+ 
+@@ -5681,7 +5794,7 @@
+     pid = str(proposal_id or "").strip()
+     if not pid:
+         raise HTTPException(status_code=400, detail="proposal_id_required")
+-    proposal = _admin_evolution_get_proposal(pid)
++    proposal = _admin_evolution_get_proposal(pid, org_slug=org_slug)
+     if not proposal:
+         raise HTTPException(status_code=404, detail="proposal_not_found")
+ 
+@@ -5689,7 +5802,9 @@
+     if status_norm != "approved":
+         raise HTTPException(status_code=409, detail="proposal_must_be_approved_before_dry_run")
+ 
+-    org = str(org_slug or proposal.get("org_slug") or "public").strip() or "public"
++    org = str(org_slug or "").strip()
++    if not org:
++        raise HTTPException(status_code=400, detail="org_slug_required")
+     now = _admin_evolution_now()
+     execution_id = "exec_" + uuid.uuid4().hex[:12]
+     smoke_plan = _admin_evolution_default_smoke_checklist(proposal)
+@@ -5810,18 +5925,22 @@
+             "started_at": now,
+             "finished_at": now,
+         })
+-        db.execute(text("""
++        proposal_update = db.execute(text("""
+             UPDATE admin_evolution_proposals
+             SET execution_id = :execution_id,
+                 execution_status = 'dry_run_completed',
+                 execution_allowed = FALSE,
+                 updated_at = :updated_at
+             WHERE proposal_id = :proposal_id
++              AND org_slug = :org_slug
+         """), {
+             "proposal_id": pid,
++            "org_slug": org,
+             "execution_id": execution_id,
+             "updated_at": now,
+         })
++        if int(getattr(proposal_update, "rowcount", 0) or 0) != 1:
++            raise HTTPException(status_code=409, detail="proposal_tenant_update_conflict")
+         db.commit()
+         try:
+             logger.info(
+@@ -5861,7 +5980,7 @@
+             pass
+ 
+     try:
+-        fresh = _admin_evolution_get_proposal(pid) or proposal
++        fresh = _admin_evolution_get_proposal(pid, org_slug=org) or proposal
+     except HTTPException as e:
+         if getattr(e, "status_code", None) == 503:
+             try:
+@@ -28584,6 +28703,48 @@
+ def admin_eos_health():
+     return get_eos_health_snapshot()
+ 
++@app.get("/api/admin/system/version")
++def admin_system_version(
++    request: Request,
++    x_org_slug: Optional[str] = Header(default=None),
++    _admin=Depends(require_admin_access),
++    db: Session = Depends(get_db),
++):
++    """Return a tenant-scoped, sanitized release identity for administrators."""
++    org = get_request_org(_admin, x_org_slug)
++    authority_scope = (
++        "platform_admin"
++        if bool(_admin.get("is_admin_master") or _admin.get("write_approval_authority"))
++        else "tenant_admin"
++    )
++    request_id = _ao79a_request_id(request, "release_identity")
++    actor_ref = actor_reference(
++        _admin.get("sub") or _admin.get("email") or _admin.get("via")
++    )
++    identity = build_release_identity(
++        app,
++        app_version=APP_VERSION,
++        repo_root=Path(__file__).resolve().parent,
++        runtime_main_path=Path(__file__).resolve(),
++        database=db,
++        authenticated_org=org,
++        authority_scope=authority_scope,
++    )
++    try:
++        logger.info(
++            "ADMIN_SYSTEM_VERSION_ACCESSED request_id=%s actor_ref=%s "
++            "org=%s authority_scope=%s status_code=200 migration_in_sync=%s",
++            request_id,
++            actor_ref,
++            org,
++            authority_scope,
++            identity.get("migration_in_sync"),
++        )
++    except Exception:
++        pass
++    return {"ok": True, **identity}
++
++
+ @app.get("/api/admin/overview")
+ def admin_overview(_admin=Depends(require_admin_access), db: Session = Depends(get_db)):
+     return {
+@@ -28596,6 +28757,18 @@
+ 
+ 
+ 
++
++try:
++    logger.info(
++        "EVOLUTION_ADMIN_TENANT_GUARD_BOOT_OK version=EA-TENANT-R1.1 "
++        "tenant_guard=get_request_org proposal_lookup=org_bound "
++        "proposal_mutations=db_only execution_queries=org_bound "
++        "cross_tenant=fail_closed"
++    )
++except Exception:
++    pass
++
++
+ @app.get("/api/admin/evolution/proposals")
+ def admin_evolution_proposals(
+     status: Optional[str] = None,
+@@ -28603,15 +28776,18 @@
+     x_org_slug: Optional[str] = Header(default=None),
+     _admin=Depends(require_admin_access),
+ ):
+-    """
+-    AO-11/AO-16: Admin can list proposal-only evolution drafts/pending approvals.
+-    This endpoint is read-only and does not execute proposals.
+-    """
+-    org = get_org(x_org_slug)
+-    rows = _admin_evolution_list_proposals(status=status, org_slug=org, include_archived=include_archived)
++    """Read proposal-only records from the canonical tenant."""
++    org = get_request_org(_admin, x_org_slug)
++    rows = _admin_evolution_list_proposals(
++        status=status,
++        org_slug=org,
++        include_archived=include_archived,
++    )
+     return {
+         "ok": True,
+         "mode": "proposal_only_with_controlled_dry_run",
++        "tenant_guard": "canonical",
++        "org_slug": org,
+         "execution_enabled": False,
+         "can_execute_real": False,
+         "dry_run_endpoint": "/api/admin/evolution/proposals/{proposal_id}/dry-run",
+@@ -28673,14 +28849,18 @@
+ @app.get("/api/admin/evolution/proposals/{proposal_id}")
+ def admin_evolution_proposal_detail(
+     proposal_id: str,
++    x_org_slug: Optional[str] = Header(default=None),
+     _admin=Depends(require_admin_access),
+ ):
+-    row = _admin_evolution_get_proposal(proposal_id)
++    org = get_request_org(_admin, x_org_slug)
++    row = _admin_evolution_get_proposal(proposal_id, org_slug=org)
+     if not row:
+         raise HTTPException(status_code=404, detail="proposal_not_found")
+     return {
+         "ok": True,
+         "mode": "proposal_only_with_controlled_dry_run",
++        "tenant_guard": "canonical",
++        "org_slug": org,
+         "execution_enabled": False,
+         "can_execute_real": False,
+         "can_dry_run": bool(row.get("can_dry_run")),
+@@ -28691,15 +28871,24 @@
+ @app.post("/api/admin/evolution/proposals/{proposal_id}/approve")
+ def admin_evolution_proposal_approve(
+     proposal_id: str,
++    x_org_slug: Optional[str] = Header(default=None),
+     _admin=Depends(require_admin_access),
+ ):
++    org = get_request_org(_admin, x_org_slug)
+     actor = ""
+     if isinstance(_admin, dict):
+         actor = str(_admin.get("email") or _admin.get("sub") or "")
+-    row = _admin_evolution_update_status(proposal_id, status="approved", actor=actor)
++    row = _admin_evolution_update_status(
++        proposal_id,
++        status="approved",
++        actor=actor,
++        org_slug=org,
++    )
+     return {
+         "ok": True,
+         "decision": "approved",
++        "tenant_guard": "canonical",
++        "org_slug": org,
+         "execution_enabled": False,
+         "can_execute_real": False,
+         "can_dry_run": bool(row.get("can_dry_run")),
+@@ -28712,15 +28901,24 @@
+ @app.post("/api/admin/evolution/proposals/{proposal_id}/reject")
+ def admin_evolution_proposal_reject(
+     proposal_id: str,
++    x_org_slug: Optional[str] = Header(default=None),
+     _admin=Depends(require_admin_access),
+ ):
++    org = get_request_org(_admin, x_org_slug)
+     actor = ""
+     if isinstance(_admin, dict):
+         actor = str(_admin.get("email") or _admin.get("sub") or "")
+-    row = _admin_evolution_update_status(proposal_id, status="rejected", actor=actor)
++    row = _admin_evolution_update_status(
++        proposal_id,
++        status="rejected",
++        actor=actor,
++        org_slug=org,
++    )
+     return {
+         "ok": True,
+         "decision": "rejected",
++        "tenant_guard": "canonical",
++        "org_slug": org,
+         "execution_enabled": False,
+         "can_execute_real": False,
+         "can_dry_run": False,
+@@ -28736,15 +28934,18 @@
+     x_org_slug: Optional[str] = Header(default=None),
+     _admin=Depends(require_admin_access),
+ ):
+-    """
+-    AO-16: read-only list of controlled dry-run execution records.
+-    This endpoint lists executions; it does not start real execution.
+-    """
+-    org = get_org(x_org_slug)
+-    rows = _admin_evolution_list_executions(proposal_id=proposal_id, status=status, org_slug=org)
++    """Read controlled dry-run records from the canonical tenant."""
++    org = get_request_org(_admin, x_org_slug)
++    rows = _admin_evolution_list_executions(
++        proposal_id=proposal_id,
++        status=status,
++        org_slug=org,
++    )
+     return {
+         "ok": True,
+         "mode": "controlled_dry_run_records",
++        "tenant_guard": "canonical",
++        "org_slug": org,
+         "execution_enabled": False,
+         "can_execute_real": False,
+         "count": len(rows),
+@@ -29779,6 +29980,7 @@
+ @app.get("/api/admin/evolution/proposals/{proposal_id}/execution-plan")
+ def admin_evolution_proposal_execution_plan(
+     proposal_id: str,
++    x_org_slug: Optional[str] = Header(default=None),
+     _admin=Depends(require_admin_access),
+ ):
+     """
+@@ -29787,7 +29989,8 @@
+     For AO-17C/AO-18A, this route is stage-aware: it must reference the existing
+     AO-17B branch and must not suggest creating a new branch.
+     """
+-    row = _admin_evolution_get_proposal(proposal_id)
++    org = get_request_org(_admin, x_org_slug)
++    row = _admin_evolution_get_proposal(proposal_id, org_slug=org)
+     if not row:
+         raise HTTPException(status_code=404, detail="proposal_not_found")
+ 
+@@ -29864,6 +30067,7 @@
+ @app.get("/api/admin/evolution/proposals/{proposal_id}/branch-pr-plan")
+ def admin_evolution_proposal_branch_pr_plan(
+     proposal_id: str,
++    x_org_slug: Optional[str] = Header(default=None),
+     _admin=Depends(require_admin_access),
+ ):
+     """
+@@ -29872,7 +30076,8 @@
+     This endpoint does not create branches, write files, commit, open PRs,
+     merge, deploy or run migrations. It only exposes the next-stage contract.
+     """
+-    row = _admin_evolution_get_proposal(proposal_id)
++    org = get_request_org(_admin, x_org_slug)
++    row = _admin_evolution_get_proposal(proposal_id, org_slug=org)
+     if not row:
+         raise HTTPException(status_code=404, detail="proposal_not_found")
+     plan = _admin_evolution_build_branch_pr_plan(row)
+@@ -30031,8 +30236,10 @@
+             UPDATE admin_evolution_proposals
+             SET updated_at = :updated_at
+             WHERE proposal_id = :proposal_id
++              AND org_slug = :org_slug
+         """), {
+             "proposal_id": pid,
++            "org_slug": org_slug,
+             "updated_at": now,
+         })
+         db.commit()
+@@ -30067,7 +30274,7 @@
+     proposal_id: str,
+     *,
+     actor: str = "",
+-    org_slug: Optional[str] = None,
++    org_slug: str,
+     branch_override: Optional[str] = None,
+     repo_target: Optional[str] = "both",
+ ) -> Dict[str, Any]:
+@@ -30075,7 +30282,7 @@
+     if not pid:
+         raise HTTPException(status_code=400, detail="proposal_id_required")
+ 
+-    proposal = _admin_evolution_get_proposal(pid)
++    proposal = _admin_evolution_get_proposal(pid, org_slug=org_slug)
+     if not proposal:
+         raise HTTPException(status_code=404, detail="proposal_not_found")
+ 
+@@ -30091,7 +30298,9 @@
+     plan = _admin_evolution_build_branch_pr_plan(proposal)
+     suggested_branch = str(plan.get("suggested_branch") or "").strip()
+     branch_name = _admin_evolution_safe_branch_name(branch_override or suggested_branch, pid)
+-    org = str(org_slug or proposal.get("org_slug") or "public").strip() or "public"
++    org = str(org_slug or "").strip()
++    if not org:
++        raise HTTPException(status_code=400, detail="org_slug_required")
+     trace_id = f"ao17b_{pid}_{uuid.uuid4().hex[:8]}"
+ 
+     targets = _admin_evolution_branch_repo_targets(repo_target)
+@@ -30347,7 +30556,8 @@
+             UPDATE admin_evolution_proposals
+             SET updated_at = :updated_at
+             WHERE proposal_id = :proposal_id
+-        """), {"proposal_id": pid, "updated_at": now})
++              AND org_slug = :org_slug
++        """), {"proposal_id": pid, "org_slug": org_slug, "updated_at": now})
+         db.commit()
+         receipt["audit_recorded"] = True
+         receipt["audit_execution_status"] = status
+@@ -30463,12 +30673,12 @@
+     if isinstance(_admin, dict):
+         actor = str(_admin.get("email") or _admin.get("sub") or "")
+ 
+-    org = get_org(x_org_slug)
++    org = get_request_org(_admin, x_org_slug)
+     pid = str(proposal_id or "").strip()
+     if not pid:
+         raise HTTPException(status_code=400, detail="proposal_id_required")
+ 
+-    proposal = _admin_evolution_get_proposal(pid)
++    proposal = _admin_evolution_get_proposal(pid, org_slug=org)
+     if not proposal:
+         raise HTTPException(status_code=404, detail="proposal_not_found")
+ 
+@@ -30925,7 +31135,8 @@
+             UPDATE admin_evolution_proposals
+             SET updated_at = :updated_at
+             WHERE proposal_id = :proposal_id
+-        """), {"proposal_id": pid, "updated_at": now})
++              AND org_slug = :org_slug
++        """), {"proposal_id": pid, "org_slug": org_slug, "updated_at": now})
+         db.commit()
+         receipt["audit_recorded"] = True
+         receipt["audit_execution_status"] = status
+@@ -30971,12 +31182,12 @@
+     if isinstance(_admin, dict):
+         actor = str(_admin.get("email") or _admin.get("sub") or "")
+ 
+-    org = get_org(x_org_slug)
++    org = get_request_org(_admin, x_org_slug)
+     pid = str(proposal_id or "").strip()
+     if not pid:
+         raise HTTPException(status_code=400, detail="proposal_id_required")
+ 
+-    proposal = _admin_evolution_get_proposal(pid)
++    proposal = _admin_evolution_get_proposal(pid, org_slug=org)
+     if not proposal:
+         raise HTTPException(status_code=404, detail="proposal_not_found")
+ 
+@@ -31136,7 +31347,7 @@
+     actor = ""
+     if isinstance(_admin, dict):
+         actor = str(_admin.get("email") or _admin.get("sub") or "")
+-    org = get_org(x_org_slug)
++    org = get_request_org(_admin, x_org_slug)
+     body_obj = body if isinstance(body, AdminEvolutionBranchCreateRequest) else AdminEvolutionBranchCreateRequest()
+     return _admin_evolution_create_governed_branch(
+         proposal_id,
+@@ -31678,7 +31889,8 @@
+             UPDATE admin_evolution_proposals
+             SET updated_at = :updated_at
+             WHERE proposal_id = :proposal_id
+-        """), {"proposal_id": pid, "updated_at": now})
++              AND org_slug = :org_slug
++        """), {"proposal_id": pid, "org_slug": org_slug, "updated_at": now})
+         db.commit()
+         receipt["audit_recorded"] = True
+         receipt["audit_execution_status"] = status
+@@ -31754,7 +31966,7 @@
+     body: Optional[AdminEvolutionBranchPatchApplyRequest],
+ ) -> Dict[str, Any]:
+     pid = str(proposal_id or "").strip()
+-    proposal = _admin_evolution_get_proposal(pid)
++    proposal = _admin_evolution_get_proposal(pid, org_slug=org_slug)
+     if not proposal:
+         raise HTTPException(status_code=404, detail="proposal_not_found")
+     if str(proposal.get("status") or "").strip().lower() != "approved":
+@@ -31900,7 +32112,7 @@
+     body: Optional[AdminEvolutionBranchPatchRevertRequest],
+ ) -> Dict[str, Any]:
+     pid = str(proposal_id or "").strip()
+-    proposal = _admin_evolution_get_proposal(pid)
++    proposal = _admin_evolution_get_proposal(pid, org_slug=org_slug)
+     if not proposal:
+         raise HTTPException(status_code=404, detail="proposal_not_found")
+     if not _admin_evolution_is_restore_point_stage(proposal):
+@@ -32023,7 +32235,7 @@
+     actor = ""
+     if isinstance(_admin, dict):
+         actor = str(_admin.get("email") or _admin.get("sub") or "")
+-    org = get_org(x_org_slug)
++    org = get_request_org(_admin, x_org_slug)
+     body_obj = body if isinstance(body, AdminEvolutionBranchPatchApplyRequest) else AdminEvolutionBranchPatchApplyRequest()
+     return _admin_evolution_apply_branch_patch(proposal_id, actor=actor, org_slug=org, body=body_obj)
+ 
+@@ -32043,7 +32255,7 @@
+     actor = ""
+     if isinstance(_admin, dict):
+         actor = str(_admin.get("email") or _admin.get("sub") or "")
+-    org = get_org(x_org_slug)
++    org = get_request_org(_admin, x_org_slug)
+     body_obj = body if isinstance(body, AdminEvolutionBranchPatchRevertRequest) else AdminEvolutionBranchPatchRevertRequest()
+     return _admin_evolution_revert_branch_patch(proposal_id, actor=actor, org_slug=org, body=body_obj)
+ 
+@@ -32064,7 +32276,7 @@
+     actor = ""
+     if isinstance(_admin, dict):
+         actor = str(_admin.get("email") or _admin.get("sub") or "")
+-    org = get_org(x_org_slug)
++    org = get_request_org(_admin, x_org_slug)
+     try:
+         logger.info(
+             "ADMIN_EVOLUTION_DRY_RUN_REQUEST proposal_id=%s org=%s actor=%s",
+@@ -40599,7 +40811,7 @@
+         proposal = None
+         if proposal_id:
+             try:
+-                proposal = _admin_evolution_get_proposal(proposal_id)
++                proposal = _admin_evolution_get_proposal(proposal_id, org_slug=org)
+             except Exception:
+                 proposal = None
+         else:
+@@ -40739,7 +40951,7 @@
+         proposal = None
+         if proposal_id:
+             try:
+-                proposal = _admin_evolution_get_proposal(proposal_id)
++                proposal = _admin_evolution_get_proposal(proposal_id, org_slug=org)
+             except Exception:
+                 proposal = None
+         else:
+@@ -41010,7 +41222,7 @@
+         execution_status = "unknown"
+         try:
+             if proposal_id:
+-                proposal = _admin_evolution_get_proposal(proposal_id)
++                proposal = _admin_evolution_get_proposal(proposal_id, org_slug=org)
+             if isinstance(proposal, dict):
+                 proposal_status = str(
+                     proposal.get("status")
+--- a/runtime/release_identity.py
++++ b/runtime/release_identity.py
+@@ -0,0 +1,320 @@
++from __future__ import annotations
++
++import ast
++import hashlib
++import logging
++import os
++import re
++from pathlib import Path
++from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Tuple
++
++from sqlalchemy import text
++
++
++CONTRACT_VERSION = "ORKIO-REL-ID-R1.1"
++
++_COMMIT_RE = re.compile(r"^[0-9a-fA-F]{7,64}$")
++_SAFE_TEXT_RE = re.compile(r"[^A-Za-z0-9._/@:+-]+")
++
++_COMMIT_ENV_KEYS: Sequence[str] = (
++    "ORKIO_COMMIT_SHA",
++    "RAILWAY_GIT_COMMIT_SHA",
++    "GIT_COMMIT_SHA",
++    "SOURCE_COMMIT_SHA",
++)
++_BRANCH_ENV_KEYS: Sequence[str] = (
++    "ORKIO_GIT_BRANCH",
++    "RAILWAY_GIT_BRANCH",
++    "GIT_BRANCH",
++    "SOURCE_BRANCH",
++)
++_DEPLOYMENT_ENV_KEYS: Sequence[str] = (
++    "ORKIO_DEPLOYMENT_ID",
++    "RAILWAY_DEPLOYMENT_ID",
++)
++_BUILD_TIME_ENV_KEYS: Sequence[str] = (
++    "ORKIO_BUILD_TIMESTAMP",
++    "BUILD_TIMESTAMP",
++    "SOURCE_DATE_EPOCH",
++)
++
++_GOVERNANCE_FLAG_NAMES: Sequence[str] = (
++    "EVOLUTION_MARCO_ZERO_PREVIEW_ENABLED",
++    "EVOLUTION_MARCO_ZERO_WRITE_ENABLED",
++    "EVOLUTION_SIGNALS_SNAPSHOT_WRITE_ENABLED",
++    "EVOLUTION_AGENT_EVAL_WRITE_ENABLED",
++)
++
++
++def _first_env(environ: Mapping[str, str], names: Iterable[str]) -> str:
++    for name in names:
++        raw = str(environ.get(name) or "").strip()
++        if raw:
++            return raw
++    return ""
++
++
++def _safe_text(value: Any, *, default: str = "unknown", max_length: int = 160) -> str:
++    raw = str(value or "").strip()
++    if not raw:
++        return default
++    sanitized = _SAFE_TEXT_RE.sub("_", raw)
++    sanitized = sanitized.strip("._")
++    if not sanitized:
++        return default
++    return sanitized[:max_length]
++
++
++def _safe_commit(value: Any) -> str:
++    raw = str(value or "").strip()
++    if not _COMMIT_RE.fullmatch(raw):
++        return "unknown"
++    return raw.lower()
++
++
++def _env_flag(environ: Mapping[str, str], name: str, *, default: bool = False) -> bool:
++    raw = environ.get(name)
++    if raw is None:
++        return default
++    return str(raw).strip().lower() in {"1", "true", "yes", "y", "on"}
++
++
++def sha256_file(path: Path) -> str:
++    try:
++        return hashlib.sha256(path.read_bytes()).hexdigest()
++    except Exception:
++        return "unavailable"
++
++
++def actor_reference(value: Any) -> str:
++    """Return a stable non-reversible reference suitable for audit logs."""
++    raw = str(value or "").strip().lower()
++    if not raw:
++        return "actor:unknown"
++    return "actor_sha256:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
++
++
++def _assignment_value(tree: ast.AST, name: str) -> Any:
++    for node in getattr(tree, "body", []):
++        target_name: Optional[str] = None
++        value_node: Optional[ast.AST] = None
++        if isinstance(node, ast.Assign):
++            if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
++                target_name = node.targets[0].id
++                value_node = node.value
++        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
++            target_name = node.target.id
++            value_node = node.value
++        if target_name != name or value_node is None:
++            continue
++        try:
++            return ast.literal_eval(value_node)
++        except Exception:
++            return None
++    return None
++
++
++def detect_migration_heads(repo_root: Path) -> Sequence[str]:
++    versions_dir = repo_root / "alembic" / "versions"
++    if not versions_dir.is_dir():
++        return ()
++
++    revisions = set()
++    referenced = set()
++    for path in sorted(versions_dir.glob("*.py")):
++        if path.name.startswith("__"):
++            continue
++        try:
++            tree = ast.parse(path.read_text(encoding="utf-8-sig"))
++        except Exception:
++            continue
++
++        revision = _assignment_value(tree, "revision")
++        down_revision = _assignment_value(tree, "down_revision")
++        if isinstance(revision, str) and revision.strip():
++            revisions.add(revision.strip())
++
++        if isinstance(down_revision, str) and down_revision.strip():
++            referenced.add(down_revision.strip())
++        elif isinstance(down_revision, (tuple, list, set)):
++            referenced.update(
++                str(item).strip()
++                for item in down_revision
++                if isinstance(item, str) and str(item).strip()
++            )
++
++    return tuple(sorted(revisions - referenced))
++
++
++def detect_database_revisions(database: Any) -> Tuple[Tuple[str, ...], str]:
++    """Read Alembic revisions without mutating database state.
++
++    Accepts either a SQLAlchemy Session/Connection or an Engine. Only the
++    exception class name is surfaced, preventing credentials or SQL text from
++    leaking into the release identity payload.
++    """
++    if database is None:
++        return (), "not_queried"
++
++    connection = None
++    close_connection = False
++    try:
++        if hasattr(database, "connect") and not hasattr(database, "execute"):
++            connection = database.connect()
++            close_connection = True
++        else:
++            connection = database
++
++        result = connection.execute(
++            text("SELECT version_num FROM alembic_version ORDER BY version_num")
++        )
++        values = result.scalars().all()
++        revisions = tuple(
++            sorted(
++                {
++                    str(value).strip()
++                    for value in values
++                    if str(value or "").strip()
++                }
++            )
++        )
++        return revisions, "ok"
++    except Exception as exc:
++        return (), "error:" + exc.__class__.__name__
++    finally:
++        if close_connection and connection is not None:
++            try:
++                connection.close()
++            except Exception:
++                pass
++
++
++def build_release_identity(
++    app: Any,
++    *,
++    app_version: str,
++    repo_root: Optional[Path] = None,
++    runtime_main_path: Optional[Path] = None,
++    environ: Optional[Mapping[str, str]] = None,
++    database: Any = None,
++    authenticated_org: Optional[str] = None,
++    authority_scope: Optional[str] = None,
++) -> Dict[str, Any]:
++    env = dict(os.environ if environ is None else environ)
++    root = Path(repo_root or Path(__file__).resolve().parents[1]).resolve()
++    main_path = Path(runtime_main_path or (root / "main.py")).resolve()
++
++    commit_sha = _safe_commit(_first_env(env, _COMMIT_ENV_KEYS))
++    branch = _safe_text(_first_env(env, _BRANCH_ENV_KEYS), max_length=128)
++    deployment_id = _safe_text(_first_env(env, _DEPLOYMENT_ENV_KEYS), max_length=160)
++    build_timestamp = _safe_text(
++        _first_env(env, _BUILD_TIME_ENV_KEYS),
++        default="unknown",
++        max_length=80,
++    )
++    runtime_main_sha256 = sha256_file(main_path)
++    code_heads = list(detect_migration_heads(root))
++    database_revisions, database_revision_status = detect_database_revisions(database)
++    database_revision_list = list(database_revisions)
++    if database_revision_status == "ok":
++        migration_in_sync: Optional[bool] = sorted(code_heads) == sorted(database_revision_list)
++    else:
++        migration_in_sync = None
++
++    explicit_release_id = _safe_text(
++        env.get("ORKIO_RELEASE_ID"),
++        default="",
++        max_length=160,
++    )
++    if explicit_release_id:
++        release_id = explicit_release_id
++    elif commit_sha != "unknown":
++        release_id = f"orkio-{commit_sha[:12]}"
++    else:
++        release_id = f"orkio-file-{runtime_main_sha256[:12]}"
++
++    governance_flags = {
++        name: _env_flag(env, name, default=False)
++        for name in _GOVERNANCE_FLAG_NAMES
++    }
++
++    routes = getattr(app, "routes", ()) or ()
++    return {
++        "contract_version": CONTRACT_VERSION,
++        "release_id": release_id,
++        "app_version": str(app_version or "unknown"),
++        "environment": _safe_text(env.get("APP_ENV"), default="unknown", max_length=64),
++        "commit_sha": commit_sha,
++        "branch": branch,
++        "deployment_id": deployment_id,
++        "build_timestamp": build_timestamp,
++        "migration_code_heads": code_heads,
++        "migration_database_revisions": database_revision_list,
++        "migration_database_revision": (
++            database_revision_list[0]
++            if len(database_revision_list) == 1
++            else ("unknown" if not database_revision_list else ",".join(database_revision_list))
++        ),
++        "migration_database_status": database_revision_status,
++        "migration_in_sync": migration_in_sync,
++        "route_count": len(routes),
++        "runtime_main_path": str(main_path),
++        "runtime_main_sha256": runtime_main_sha256,
++        "authenticated_org": _safe_text(
++            authenticated_org,
++            default="not_applicable",
++            max_length=128,
++        ),
++        "authority_scope": _safe_text(
++            authority_scope,
++            default="not_applicable",
++            max_length=64,
++        ),
++        "governance_flags": governance_flags,
++    }
++
++
++def emit_boot_identity(
++    logger: logging.Logger,
++    app: Any,
++    *,
++    app_version: str,
++    repo_root: Optional[Path] = None,
++    runtime_main_path: Optional[Path] = None,
++    environ: Optional[Mapping[str, str]] = None,
++    database: Any = None,
++) -> Dict[str, Any]:
++    identity = build_release_identity(
++        app,
++        app_version=app_version,
++        repo_root=repo_root,
++        runtime_main_path=runtime_main_path,
++        environ=environ,
++        database=database,
++    )
++    logger.info(
++        "ORKIO_BOOT_IDENTITY "
++        "contract_version=%s release_id=%s commit_sha=%s branch=%s "
++        "deployment_id=%s migration_code_heads=%s migration_database_revisions=%s "
++        "migration_database_status=%s migration_in_sync=%s route_count=%s "
++        "runtime_main_path=%s runtime_main_sha256=%s "
++        "marco_zero_preview_enabled=%s marco_zero_write_enabled=%s "
++        "signals_snapshot_write_enabled=%s agent_eval_write_enabled=%s",
++        identity["contract_version"],
++        identity["release_id"],
++        identity["commit_sha"],
++        identity["branch"],
++        identity["deployment_id"],
++        ",".join(identity["migration_code_heads"]) or "unknown",
++        ",".join(identity["migration_database_revisions"]) or "unknown",
++        identity["migration_database_status"],
++        identity["migration_in_sync"],
++        identity["route_count"],
++        identity["runtime_main_path"],
++        identity["runtime_main_sha256"],
++        identity["governance_flags"]["EVOLUTION_MARCO_ZERO_PREVIEW_ENABLED"],
++        identity["governance_flags"]["EVOLUTION_MARCO_ZERO_WRITE_ENABLED"],
++        identity["governance_flags"]["EVOLUTION_SIGNALS_SNAPSHOT_WRITE_ENABLED"],
++        identity["governance_flags"]["EVOLUTION_AGENT_EVAL_WRITE_ENABLED"],
++    )
++    return identity
+--- a/tests/test_evolution_admin_tenant_r11.py
++++ b/tests/test_evolution_admin_tenant_r11.py
+@@ -0,0 +1,299 @@
++from __future__ import annotations
++
++import importlib
++import sys
++from pathlib import Path
++
++import pytest
++from fastapi import HTTPException
++from sqlalchemy import create_engine, text
++from sqlalchemy.orm import sessionmaker
++from sqlalchemy.pool import StaticPool
++
++
++ROOT = Path(__file__).resolve().parents[1]
++PARENT = ROOT.parent
++if str(PARENT) not in sys.path:
++    sys.path.insert(0, str(PARENT))
++
++main = importlib.import_module("app.main")
++
++
++@pytest.fixture()
++def tenant_db(monkeypatch):
++    engine = create_engine(
++        "sqlite+pysqlite:///:memory:",
++        connect_args={"check_same_thread": False},
++        poolclass=StaticPool,
++    )
++    SessionLocal = sessionmaker(bind=engine)
++
++    with engine.begin() as conn:
++        conn.execute(text("""
++            CREATE TABLE admin_evolution_proposals (
++                proposal_id TEXT PRIMARY KEY,
++                org_slug TEXT NOT NULL,
++                status TEXT NOT NULL,
++                title TEXT,
++                summary TEXT,
++                risk TEXT,
++                target_files_json TEXT,
++                rollback_plan TEXT,
++                checklist_json TEXT,
++                source TEXT,
++                source_thread_id TEXT,
++                created_by TEXT,
++                approved_by TEXT,
++                rejected_by TEXT,
++                created_at BIGINT,
++                updated_at BIGINT,
++                approved_at BIGINT,
++                rejected_at BIGINT,
++                execution_id TEXT,
++                execution_status TEXT,
++                write_allowed BOOLEAN,
++                execution_allowed BOOLEAN,
++                human_approval_required BOOLEAN
++            )
++        """))
++        conn.execute(text("""
++            CREATE TABLE admin_evolution_executions (
++                execution_id TEXT PRIMARY KEY,
++                proposal_id TEXT NOT NULL,
++                org_slug TEXT NOT NULL,
++                status TEXT NOT NULL,
++                mode TEXT,
++                created_by TEXT,
++                approved_by TEXT,
++                risk TEXT,
++                rollback_plan TEXT,
++                smoke_checklist_json TEXT,
++                result_json TEXT,
++                created_at BIGINT,
++                updated_at BIGINT,
++                started_at BIGINT,
++                finished_at BIGINT
++            )
++        """))
++
++        rows = [
++            {
++                "proposal_id": "prop-a-pending",
++                "org_slug": "tenant-a",
++                "status": "pending_approval",
++                "updated_at": 100,
++            },
++            {
++                "proposal_id": "prop-a-approved",
++                "org_slug": "tenant-a",
++                "status": "approved",
++                "updated_at": 101,
++            },
++            {
++                "proposal_id": "prop-b-pending",
++                "org_slug": "tenant-b",
++                "status": "pending_approval",
++                "updated_at": 102,
++            },
++            {
++                "proposal_id": "prop-b-approved",
++                "org_slug": "tenant-b",
++                "status": "approved",
++                "updated_at": 103,
++            },
++        ]
++        for row in rows:
++            conn.execute(text("""
++                INSERT INTO admin_evolution_proposals (
++                    proposal_id, org_slug, status, title, summary, risk,
++                    target_files_json, rollback_plan, checklist_json,
++                    source, source_thread_id, created_by, created_at, updated_at,
++                    execution_status, write_allowed, execution_allowed,
++                    human_approval_required
++                ) VALUES (
++                    :proposal_id, :org_slug, :status, :proposal_id, '', 'low',
++                    '[]', 'rollback', '[]',
++                    'test', 'thread-test', 'tester', 1, :updated_at,
++                    'not_started', FALSE, FALSE, TRUE
++                )
++            """), row)
++
++        conn.execute(text("""
++            INSERT INTO admin_evolution_executions (
++                execution_id, proposal_id, org_slug, status, mode,
++                smoke_checklist_json, result_json, created_at, updated_at
++            ) VALUES (
++                'exec-a', 'prop-a-approved', 'tenant-a', 'dry_run_completed',
++                'controlled_dry_run_no_write', '[]', '{}', 1, 1
++            )
++        """))
++        conn.execute(text("""
++            INSERT INTO admin_evolution_executions (
++                execution_id, proposal_id, org_slug, status, mode,
++                smoke_checklist_json, result_json, created_at, updated_at
++            ) VALUES (
++                'exec-b', 'prop-b-approved', 'tenant-b', 'dry_run_completed',
++                'controlled_dry_run_no_write', '[]', '{}', 1, 1
++            )
++        """))
++
++    monkeypatch.setattr(main, "SessionLocal", SessionLocal)
++    monkeypatch.setattr(main, "_admin_evolution_bootstrap_db_schema", lambda: True)
++    return SessionLocal
++
++
++def _status(SessionLocal, proposal_id: str) -> str:
++    with SessionLocal() as db:
++        return str(db.execute(
++            text(
++                "SELECT status FROM admin_evolution_proposals "
++                "WHERE proposal_id = :proposal_id"
++            ),
++            {"proposal_id": proposal_id},
++        ).scalar_one())
++
++
++def test_proposal_lookup_is_tenant_bound(tenant_db):
++    assert main._admin_evolution_get_proposal(
++        "prop-a-pending",
++        org_slug="tenant-a",
++    )["org_slug"] == "tenant-a"
++
++    assert main._admin_evolution_get_proposal(
++        "prop-a-pending",
++        org_slug="tenant-b",
++    ) is None
++
++
++def test_proposal_list_is_tenant_bound(tenant_db):
++    rows = main._admin_evolution_list_proposals(org_slug="tenant-a")
++    assert {row["proposal_id"] for row in rows} == {
++        "prop-a-pending",
++        "prop-a-approved",
++    }
++    assert all(row["org_slug"] == "tenant-a" for row in rows)
++
++
++def test_execution_list_is_tenant_bound(tenant_db):
++    rows = main._admin_evolution_list_executions(org_slug="tenant-a")
++    assert [row["execution_id"] for row in rows] == ["exec-a"]
++    assert rows[0]["org_slug"] == "tenant-a"
++
++
++def test_detail_route_rejects_header_tenant_mismatch(tenant_db):
++    with pytest.raises(HTTPException) as exc:
++        main.admin_evolution_proposal_detail(
++            "prop-a-pending",
++            x_org_slug="tenant-b",
++            _admin={"org": "tenant-a", "role": "admin"},
++        )
++    assert exc.value.status_code == 403
++    assert exc.value.detail == "Tenant mismatch"
++
++
++def test_detail_route_hides_other_tenant_identifier(tenant_db):
++    with pytest.raises(HTTPException) as exc:
++        main.admin_evolution_proposal_detail(
++            "prop-b-pending",
++            x_org_slug="tenant-a",
++            _admin={"org": "tenant-a", "role": "admin"},
++        )
++    assert exc.value.status_code == 404
++    assert exc.value.detail == "proposal_not_found"
++
++
++def test_approve_updates_only_canonical_tenant(tenant_db):
++    result = main.admin_evolution_proposal_approve(
++        "prop-a-pending",
++        x_org_slug="tenant-a",
++        _admin={
++            "org": "tenant-a",
++            "role": "admin",
++            "email": "admin-a@example.test",
++        },
++    )
++
++    assert result["proposal"]["status"] == "approved"
++    assert result["proposal"]["org_slug"] == "tenant-a"
++    assert result["tenant_guard"] == "canonical"
++    assert _status(tenant_db, "prop-a-pending") == "approved"
++    assert _status(tenant_db, "prop-b-pending") == "pending_approval"
++
++
++def test_approve_cannot_target_other_tenant(tenant_db):
++    with pytest.raises(HTTPException) as exc:
++        main.admin_evolution_proposal_approve(
++            "prop-b-pending",
++            x_org_slug="tenant-a",
++            _admin={"org": "tenant-a", "role": "admin"},
++        )
++    assert exc.value.status_code == 404
++    assert _status(tenant_db, "prop-b-pending") == "pending_approval"
++
++
++def test_dry_run_cannot_target_other_tenant(tenant_db):
++    with pytest.raises(HTTPException) as exc:
++        main.admin_evolution_proposal_dry_run(
++            "prop-b-approved",
++            x_org_slug="tenant-a",
++            _admin={"org": "tenant-a", "role": "admin"},
++        )
++    assert exc.value.status_code == 404
++
++    with tenant_db() as db:
++        count = db.execute(text(
++            "SELECT COUNT(*) FROM admin_evolution_executions "
++            "WHERE org_slug = 'tenant-a' AND proposal_id = 'prop-b-approved'"
++        )).scalar_one()
++    assert count == 0
++
++
++def test_dry_run_updates_proposal_inside_same_tenant(tenant_db):
++    result = main.admin_evolution_proposal_dry_run(
++        "prop-a-approved",
++        x_org_slug="tenant-a",
++        _admin={
++            "org": "tenant-a",
++            "role": "admin",
++            "email": "admin-a@example.test",
++        },
++    )
++
++    assert result["ok"] is True
++    assert result["dry_run"] is True
++    assert result["write_allowed"] is False
++    assert result["proposal"]["org_slug"] == "tenant-a"
++
++    with tenant_db() as db:
++        proposal = db.execute(text("""
++            SELECT org_slug, execution_status
++            FROM admin_evolution_proposals
++            WHERE proposal_id = 'prop-a-approved'
++        """)).mappings().one()
++        execution = db.execute(text("""
++            SELECT org_slug, proposal_id
++            FROM admin_evolution_executions
++            WHERE execution_id = :execution_id
++        """), {"execution_id": result["execution_id"]}).mappings().one()
++
++    assert proposal["org_slug"] == "tenant-a"
++    assert proposal["execution_status"] == "dry_run_completed"
++    assert execution["org_slug"] == "tenant-a"
++    assert execution["proposal_id"] == "prop-a-approved"
++
++
++def test_admin_evolution_database_failure_is_fail_closed(monkeypatch):
++    monkeypatch.setattr(main, "_admin_evolution_bootstrap_db_schema", lambda: False)
++
++    with pytest.raises(HTTPException) as exc:
++        main._admin_evolution_get_proposal(
++            "prop-a-pending",
++            org_slug="tenant-a",
++        )
++    assert exc.value.status_code == 503
++    assert exc.value.detail == "evolution_schema_unavailable"
++
++    with pytest.raises(HTTPException) as exc:
++        main._admin_evolution_list_proposals(org_slug="tenant-a")
++    assert exc.value.status_code == 503
++    assert exc.value.detail == "evolution_schema_unavailable"
+--- a/tests/test_evolution_admin_tenant_r11_static.py
++++ b/tests/test_evolution_admin_tenant_r11_static.py
+@@ -0,0 +1,90 @@
++from pathlib import Path
++import ast
++
++
++ROOT = Path(__file__).resolve().parents[1]
++SOURCE = (ROOT / "main.py").read_text(encoding="utf-8-sig")
++TREE = ast.parse(SOURCE)
++
++
++def _function_source(name: str) -> str:
++    node = next(
++        item for item in ast.walk(TREE)
++        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
++        and item.name == name
++    )
++    lines = SOURCE.splitlines()
++    return "\n".join(lines[node.lineno - 1:node.end_lineno])
++
++
++def test_all_admin_evolution_routes_use_canonical_tenant_guard():
++    route_functions = []
++    for node in ast.walk(TREE):
++        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
++            continue
++        paths = []
++        for decorator in node.decorator_list:
++            if (
++                isinstance(decorator, ast.Call)
++                and isinstance(decorator.func, ast.Attribute)
++                and isinstance(decorator.func.value, ast.Name)
++                and decorator.func.value.id == "app"
++                and decorator.args
++                and isinstance(decorator.args[0], ast.Constant)
++                and isinstance(decorator.args[0].value, str)
++                and "/api/admin/evolution" in decorator.args[0].value
++            ):
++                paths.append(decorator.args[0].value)
++        if paths:
++            route_functions.append((node.name, paths, _function_source(node.name)))
++
++    assert route_functions
++    for name, paths, source in route_functions:
++        assert "get_request_org(_admin, x_org_slug)" in source, (name, paths)
++        assert "get_org(x_org_slug)" not in source, (name, paths)
++
++
++def test_proposal_lookup_and_mutation_are_org_bound_and_db_only():
++    getter = _function_source("_admin_evolution_get_proposal")
++    updater = _function_source("_admin_evolution_update_status")
++    dry_run = _function_source("_admin_evolution_create_dry_run_execution")
++
++    assert "AND org_slug = :org_slug" in getter
++    assert "_ADMIN_EVOLUTION_PROPOSALS" not in getter
++    assert "evolution_db_unavailable" in getter
++
++    assert updater.count("AND org_slug = :org_slug") >= 4
++    assert "_ADMIN_EVOLUTION_PROPOSALS" not in updater
++    assert "proposal_tenant_update_conflict" in updater
++
++    assert "AND org_slug = :org_slug" in dry_run
++    assert "proposal_tenant_update_conflict" in dry_run
++
++
++def test_all_proposal_lookup_calls_supply_org_slug():
++    for node in ast.walk(TREE):
++        if not isinstance(node, ast.Call):
++            continue
++        if not (
++            isinstance(node.func, ast.Name)
++            and node.func.id == "_admin_evolution_get_proposal"
++        ):
++            continue
++        assert any(keyword.arg == "org_slug" for keyword in node.keywords), (
++            node.lineno,
++            ast.unparse(node),
++        )
++
++
++def test_tenant_guard_canary_is_present():
++    assert "EVOLUTION_ADMIN_TENANT_GUARD_BOOT_OK" in SOURCE
++    assert "version=EA-TENANT-R1.1" in SOURCE
++    assert "cross_tenant=fail_closed" in SOURCE
++
++
++def test_status_mutation_uses_atomic_state_precondition():
++    updater = _function_source("_admin_evolution_update_status")
++    assert updater.count(
++        "AND LOWER(status) IN ('pending_approval', 'draft')"
++    ) == 2
++    assert "proposal_tenant_update_conflict" in updater
+--- a/tests/test_evolution_admin_tenant_r11_postgres.py
++++ b/tests/test_evolution_admin_tenant_r11_postgres.py
+@@ -0,0 +1,207 @@
++from __future__ import annotations
++
++import importlib
++import os
++import sys
++import uuid
++from concurrent.futures import ThreadPoolExecutor
++from pathlib import Path
++
++import pytest
++from fastapi import HTTPException
++from sqlalchemy import create_engine, event, text
++from sqlalchemy.orm import sessionmaker
++
++
++ROOT = Path(__file__).resolve().parents[1]
++PARENT = ROOT.parent
++if str(PARENT) not in sys.path:
++    sys.path.insert(0, str(PARENT))
++
++main = importlib.import_module("app.main")
++
++POSTGRES_URL = os.getenv("ORKIO_TEST_POSTGRES_URL", "").strip()
++pytestmark = pytest.mark.skipif(
++    not POSTGRES_URL,
++    reason="ORKIO_TEST_POSTGRES_URL is required for PostgreSQL tenant integration",
++)
++
++
++@pytest.fixture()
++def postgres_tenant_db(monkeypatch):
++    schema = "phase_a_r11_" + uuid.uuid4().hex[:16]
++    engine = create_engine(POSTGRES_URL, pool_pre_ping=True)
++
++    @event.listens_for(engine, "connect")
++    def _set_search_path(dbapi_connection, _connection_record):
++        cursor = dbapi_connection.cursor()
++        try:
++            cursor.execute(f'SET search_path TO "{schema}", public')
++        finally:
++            cursor.close()
++
++    # Create schema before the listener's search_path can reference it.
++    bootstrap = create_engine(POSTGRES_URL, pool_pre_ping=True)
++    with bootstrap.begin() as conn:
++        conn.execute(text(f'CREATE SCHEMA "{schema}"'))
++    bootstrap.dispose()
++
++    SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
++    with engine.begin() as conn:
++        conn.execute(text("""
++            CREATE TABLE admin_evolution_proposals (
++                proposal_id VARCHAR PRIMARY KEY,
++                org_slug VARCHAR NOT NULL,
++                status VARCHAR NOT NULL,
++                title TEXT,
++                summary TEXT,
++                risk VARCHAR,
++                target_files_json TEXT,
++                rollback_plan TEXT,
++                checklist_json TEXT,
++                source VARCHAR,
++                source_thread_id VARCHAR,
++                created_by VARCHAR,
++                approved_by VARCHAR,
++                rejected_by VARCHAR,
++                created_at BIGINT,
++                updated_at BIGINT,
++                approved_at BIGINT,
++                rejected_at BIGINT,
++                execution_id VARCHAR,
++                execution_status VARCHAR,
++                write_allowed BOOLEAN,
++                execution_allowed BOOLEAN,
++                human_approval_required BOOLEAN
++            )
++        """))
++        conn.execute(text("""
++            CREATE TABLE admin_evolution_executions (
++                execution_id VARCHAR PRIMARY KEY,
++                proposal_id VARCHAR NOT NULL,
++                org_slug VARCHAR NOT NULL,
++                status VARCHAR NOT NULL,
++                mode VARCHAR,
++                created_by VARCHAR,
++                approved_by VARCHAR,
++                risk VARCHAR,
++                rollback_plan TEXT,
++                smoke_checklist_json TEXT,
++                result_json TEXT,
++                created_at BIGINT,
++                updated_at BIGINT,
++                started_at BIGINT,
++                finished_at BIGINT
++            )
++        """))
++        for proposal_id, org_slug, status, updated_at in (
++            ("proposal-a", "tenant-a", "pending_approval", 100),
++            ("proposal-b", "tenant-b", "pending_approval", 101),
++            ("proposal-race", "tenant-a", "pending_approval", 102),
++        ):
++            conn.execute(text("""
++                INSERT INTO admin_evolution_proposals (
++                    proposal_id, org_slug, status, title, summary, risk,
++                    target_files_json, rollback_plan, checklist_json,
++                    source, source_thread_id, created_by, created_at, updated_at,
++                    execution_status, write_allowed, execution_allowed,
++                    human_approval_required
++                ) VALUES (
++                    :proposal_id, :org_slug, :status, :proposal_id, '', 'low',
++                    '[]', 'rollback', '[]', 'test', 'thread-test', 'tester',
++                    1, :updated_at, 'not_started', FALSE, FALSE, TRUE
++                )
++            """), {
++                "proposal_id": proposal_id,
++                "org_slug": org_slug,
++                "status": status,
++                "updated_at": updated_at,
++            })
++
++    monkeypatch.setattr(main, "SessionLocal", SessionLocal)
++    monkeypatch.setattr(main, "_admin_evolution_bootstrap_db_schema", lambda: True)
++    monkeypatch.setattr(main, "tenant_mode", lambda: "multi")
++
++    try:
++        yield SessionLocal
++    finally:
++        engine.dispose()
++        cleanup = create_engine(POSTGRES_URL, pool_pre_ping=True)
++        with cleanup.begin() as conn:
++            conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
++        cleanup.dispose()
++
++
++def _status(SessionLocal, proposal_id: str) -> str:
++    with SessionLocal() as db:
++        return str(db.execute(
++            text(
++                "SELECT status FROM admin_evolution_proposals "
++                "WHERE proposal_id = :proposal_id"
++            ),
++            {"proposal_id": proposal_id},
++        ).scalar_one())
++
++
++def _counts(SessionLocal, org_slug: str):
++    with SessionLocal() as db:
++        proposals = int(db.execute(
++            text("SELECT COUNT(*) FROM admin_evolution_proposals WHERE org_slug=:org"),
++            {"org": org_slug},
++        ).scalar_one())
++        executions = int(db.execute(
++            text("SELECT COUNT(*) FROM admin_evolution_executions WHERE org_slug=:org"),
++            {"org": org_slug},
++        ).scalar_one())
++    return proposals, executions
++
++
++def test_postgres_cross_tenant_reads_and_mutations_fail_closed(postgres_tenant_db):
++    before = _counts(postgres_tenant_db, "tenant-b")
++
++    with pytest.raises(HTTPException) as exc:
++        main.admin_evolution_proposal_detail(
++            "proposal-b",
++            x_org_slug="tenant-a",
++            _admin={"org": "tenant-a", "role": "admin"},
++        )
++    assert exc.value.status_code in {403, 404}
++
++    with pytest.raises(HTTPException) as exc:
++        main.admin_evolution_proposal_approve(
++            "proposal-b",
++            x_org_slug="tenant-a",
++            _admin={"org": "tenant-a", "role": "admin"},
++        )
++    assert exc.value.status_code in {403, 404}
++
++    with pytest.raises(HTTPException) as exc:
++        main.admin_evolution_proposals(
++            x_org_slug="tenant-b",
++            _admin={"org": "tenant-a", "role": "admin"},
++        )
++    assert exc.value.status_code == 403
++    assert exc.value.detail == "Tenant mismatch"
++
++    assert _status(postgres_tenant_db, "proposal-b") == "pending_approval"
++    assert _counts(postgres_tenant_db, "tenant-b") == before
++
++
++def test_postgres_concurrent_approval_has_single_winner(postgres_tenant_db):
++    def approve(actor: str):
++        try:
++            result = main._admin_evolution_update_status(
++                "proposal-race",
++                status="approved",
++                actor=actor,
++                org_slug="tenant-a",
++            )
++            return ("ok", result["status"])
++        except HTTPException as exc:
++            return ("error", exc.status_code)
++
++    with ThreadPoolExecutor(max_workers=2) as pool:
++        results = list(pool.map(approve, ("admin-a", "admin-b")))
++
++    assert sorted(results) == [("error", 409), ("ok", "approved")]
++    assert _status(postgres_tenant_db, "proposal-race") == "approved"
+--- a/tests/test_release_identity_r11.py
++++ b/tests/test_release_identity_r11.py
+@@ -0,0 +1,219 @@
++from __future__ import annotations
++
++import logging
++from pathlib import Path
++from types import SimpleNamespace
++
++from sqlalchemy import create_engine, text
++
++from runtime.release_identity import (
++    CONTRACT_VERSION,
++    actor_reference,
++    build_release_identity,
++    detect_database_revisions,
++    detect_migration_heads,
++    emit_boot_identity,
++)
++
++
++def _write_migration(path: Path, revision: str, down_revision):
++    path.write_text(
++        "\n".join(
++            [
++                f"revision = {revision!r}",
++                f"down_revision = {down_revision!r}",
++            ]
++        ),
++        encoding="utf-8",
++    )
++
++
++def _database_with_revision(revision: str):
++    engine = create_engine("sqlite+pysqlite:///:memory:")
++    with engine.begin() as conn:
++        conn.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(64) NOT NULL)"))
++        conn.execute(
++            text("INSERT INTO alembic_version (version_num) VALUES (:revision)"),
++            {"revision": revision},
++        )
++    return engine
++
++
++def test_detect_migration_heads(tmp_path):
++    versions = tmp_path / "alembic" / "versions"
++    versions.mkdir(parents=True)
++    _write_migration(versions / "0001.py", "0001", None)
++    _write_migration(versions / "0002.py", "0002", "0001")
++    _write_migration(versions / "0003.py", "0003", "0002")
++
++    assert detect_migration_heads(tmp_path) == ("0003",)
++
++
++def test_detect_database_revisions_is_read_only():
++    engine = _database_with_revision("0038")
++    revisions, status = detect_database_revisions(engine)
++    assert revisions == ("0038",)
++    assert status == "ok"
++
++    with engine.connect() as conn:
++        count = conn.execute(text("SELECT COUNT(*) FROM alembic_version")).scalar_one()
++    assert count == 1
++
++
++def test_build_release_identity_correlates_code_and_database(tmp_path):
++    main_path = tmp_path / "main.py"
++    main_path.write_text("app = object()\n", encoding="utf-8")
++    versions = tmp_path / "alembic" / "versions"
++    versions.mkdir(parents=True)
++    _write_migration(
++        versions / "0038.py",
++        "0038_patch_auth_password_reset_tokens",
++        None,
++    )
++    engine = _database_with_revision("0038_patch_auth_password_reset_tokens")
++
++    app = SimpleNamespace(routes=[1, 2, 3])
++    env = {
++        "APP_ENV": "staging",
++        "RAILWAY_GIT_COMMIT_SHA": "A" * 40,
++        "RAILWAY_GIT_BRANCH": "feature/release identity",
++        "RAILWAY_DEPLOYMENT_ID": "deploy-123",
++        "ORKIO_RELEASE_ID": "release/test",
++        "EVOLUTION_MARCO_ZERO_PREVIEW_ENABLED": "true",
++        "EVOLUTION_MARCO_ZERO_WRITE_ENABLED": "false",
++        "EVOLUTION_SIGNALS_SNAPSHOT_WRITE_ENABLED": "0",
++        "EVOLUTION_AGENT_EVAL_WRITE_ENABLED": "no",
++        "DATABASE_URL": "postgresql://must-not-leak",
++        "JWT_SECRET": "must-not-leak",
++    }
++
++    identity = build_release_identity(
++        app,
++        app_version="2.4.0",
++        repo_root=tmp_path,
++        runtime_main_path=main_path,
++        environ=env,
++        database=engine,
++        authenticated_org="tenant-a",
++        authority_scope="tenant_admin",
++    )
++
++    assert identity["contract_version"] == CONTRACT_VERSION
++    assert identity["release_id"] == "release/test"
++    assert identity["commit_sha"] == "a" * 40
++    assert identity["branch"] == "feature/release_identity"
++    assert identity["route_count"] == 3
++    assert identity["migration_code_heads"] == [
++        "0038_patch_auth_password_reset_tokens"
++    ]
++    assert identity["migration_database_revisions"] == [
++        "0038_patch_auth_password_reset_tokens"
++    ]
++    assert identity["migration_database_revision"] == (
++        "0038_patch_auth_password_reset_tokens"
++    )
++    assert identity["migration_database_status"] == "ok"
++    assert identity["migration_in_sync"] is True
++    assert identity["authenticated_org"] == "tenant-a"
++    assert identity["authority_scope"] == "tenant_admin"
++    assert len(identity["runtime_main_sha256"]) == 64
++    assert identity["governance_flags"] == {
++        "EVOLUTION_MARCO_ZERO_PREVIEW_ENABLED": True,
++        "EVOLUTION_MARCO_ZERO_WRITE_ENABLED": False,
++        "EVOLUTION_SIGNALS_SNAPSHOT_WRITE_ENABLED": False,
++        "EVOLUTION_AGENT_EVAL_WRITE_ENABLED": False,
++    }
++
++    serialized = repr(identity)
++    assert "postgresql://must-not-leak" not in serialized
++    assert "must-not-leak" not in serialized
++
++
++def test_migration_mismatch_is_observable(tmp_path):
++    main_path = tmp_path / "main.py"
++    main_path.write_text("# test\n", encoding="utf-8")
++    versions = tmp_path / "alembic" / "versions"
++    versions.mkdir(parents=True)
++    _write_migration(versions / "0038.py", "0038", None)
++    engine = _database_with_revision("0037")
++
++    identity = build_release_identity(
++        SimpleNamespace(routes=[]),
++        app_version="x",
++        repo_root=tmp_path,
++        runtime_main_path=main_path,
++        database=engine,
++    )
++    assert identity["migration_code_heads"] == ["0038"]
++    assert identity["migration_database_revisions"] == ["0037"]
++    assert identity["migration_in_sync"] is False
++
++
++def test_database_failure_is_sanitized(tmp_path):
++    main_path = tmp_path / "main.py"
++    main_path.write_text("# test\n", encoding="utf-8")
++    engine = create_engine("sqlite+pysqlite:///:memory:")
++
++    identity = build_release_identity(
++        SimpleNamespace(routes=[]),
++        app_version="x",
++        repo_root=tmp_path,
++        runtime_main_path=main_path,
++        database=engine,
++    )
++    assert identity["migration_database_revisions"] == []
++    assert identity["migration_database_status"].startswith("error:")
++    assert identity["migration_in_sync"] is None
++    assert "SELECT" not in repr(identity)
++
++
++def test_invalid_commit_and_actor_are_sanitized(tmp_path):
++    main_path = tmp_path / "main.py"
++    main_path.write_text("# test\n", encoding="utf-8")
++    app = SimpleNamespace(routes=[])
++
++    identity = build_release_identity(
++        app,
++        app_version="x",
++        repo_root=tmp_path,
++        runtime_main_path=main_path,
++        environ={"RAILWAY_GIT_COMMIT_SHA": "not a sha; secret=abc"},
++    )
++
++    assert identity["commit_sha"] == "unknown"
++    assert identity["release_id"].startswith("orkio-file-")
++    assert actor_reference("admin@example.test").startswith("actor_sha256:")
++    assert "admin@example.test" not in actor_reference("admin@example.test")
++
++
++def test_emit_boot_identity_logs_only_sanitized_fields(tmp_path, caplog):
++    main_path = tmp_path / "main.py"
++    main_path.write_text("# boot\n", encoding="utf-8")
++    versions = tmp_path / "alembic" / "versions"
++    versions.mkdir(parents=True)
++    _write_migration(versions / "0038.py", "0038", None)
++    engine = _database_with_revision("0038")
++    app = SimpleNamespace(routes=[1])
++    logger = logging.getLogger("release-identity-r11-test")
++
++    with caplog.at_level(logging.INFO, logger=logger.name):
++        identity = emit_boot_identity(
++            logger,
++            app,
++            app_version="2.4.0",
++            repo_root=tmp_path,
++            runtime_main_path=main_path,
++            database=engine,
++            environ={
++                "ORKIO_COMMIT_SHA": "b" * 40,
++                "DATABASE_URL": "postgresql://never-log",
++                "EVOLUTION_MARCO_ZERO_WRITE_ENABLED": "false",
++            },
++        )
++
++    assert identity["commit_sha"] == "b" * 40
++    output = "\n".join(caplog.messages)
++    assert "ORKIO_BOOT_IDENTITY" in output
++    assert "postgresql://never-log" not in output
++    assert "migration_in_sync=True" in output
++    assert "marco_zero_write_enabled=False" in output
+--- a/tests/test_release_identity_r11_static.py
++++ b/tests/test_release_identity_r11_static.py
+@@ -0,0 +1,49 @@
++from pathlib import Path
++import ast
++
++
++ROOT = Path(__file__).resolve().parents[1]
++SOURCE = (ROOT / "main.py").read_text(encoding="utf-8-sig")
++TREE = ast.parse(SOURCE)
++
++
++def _function_source(name: str) -> str:
++    node = next(
++        item for item in ast.walk(TREE)
++        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
++        and item.name == name
++    )
++    lines = SOURCE.splitlines()
++    return "\n".join(lines[node.lineno - 1:node.end_lineno])
++
++
++def test_release_identity_endpoint_is_admin_and_tenant_scoped():
++    source = _function_source("admin_system_version")
++    assert 'Depends(require_admin_access)' in source
++    assert 'Depends(get_db)' in source
++    assert 'get_request_org(_admin, x_org_slug)' in source
++    assert 'authenticated_org=org' in source
++    assert 'authority_scope=authority_scope' in source
++    assert 'database=db' in source
++    assert 'ADMIN_SYSTEM_VERSION_ACCESSED' in source
++    assert 'audit(' not in source
++    assert '@app.get("/api/admin/system/version")' in SOURCE
++    assert '@app.get("/api/system/version")' not in SOURCE
++
++
++def test_boot_identity_correlates_database_revision():
++    source = _function_source("_startup_release_identity_r11")
++    assert 'emit_boot_identity(' in source
++    assert 'app_version=APP_VERSION' in source
++    assert 'runtime_main_path=Path(__file__).resolve()' in source
++    assert 'database=ENGINE' in source
++
++
++def test_phase_a_contains_tenant_and_release_canaries():
++    assert "EVOLUTION_ADMIN_TENANT_GUARD_BOOT_OK" in SOURCE
++    assert "version=EA-TENANT-R1.1" in SOURCE
++    release_source = (ROOT / "runtime" / "release_identity.py").read_text()
++    assert "ORKIO_BOOT_IDENTITY" in release_source
++    assert 'CONTRACT_VERSION = "ORKIO-REL-ID-R1.1"' in release_source
++    assert "migration_database_revisions" in release_source
++    assert "migration_in_sync" in release_source
+--- a/tests/test_release_identity_r11_route.py
++++ b/tests/test_release_identity_r11_route.py
+@@ -0,0 +1,76 @@
++from __future__ import annotations
++
++import importlib
++import sys
++from pathlib import Path
++
++import pytest
++from fastapi import HTTPException
++from starlette.requests import Request
++
++
++ROOT = Path(__file__).resolve().parents[1]
++PARENT = ROOT.parent
++if str(PARENT) not in sys.path:
++    sys.path.insert(0, str(PARENT))
++
++main = importlib.import_module("app.main")
++
++
++def _request():
++    return Request(
++        {
++            "type": "http",
++            "method": "GET",
++            "path": "/api/admin/system/version",
++            "headers": [],
++            "query_string": b"",
++            "client": ("127.0.0.1", 12345),
++            "server": ("test", 80),
++            "scheme": "http",
++        }
++    )
++
++
++def test_admin_system_version_rejects_tenant_mismatch(monkeypatch):
++    monkeypatch.setattr(main, "tenant_mode", lambda: "multi")
++    with pytest.raises(HTTPException) as exc:
++        main.admin_system_version(
++            request=_request(),
++            x_org_slug="tenant-b",
++            _admin={"org": "tenant-a", "role": "admin", "sub": "admin-a"},
++            db=object(),
++        )
++    assert exc.value.status_code == 403
++    assert exc.value.detail == "Tenant mismatch"
++
++
++def test_admin_system_version_passes_canonical_scope_to_identity(monkeypatch):
++    monkeypatch.setattr(main, "tenant_mode", lambda: "multi")
++    observed = {}
++
++    def fake_build_release_identity(*args, **kwargs):
++        observed.update(kwargs)
++        return {
++            "contract_version": "ORKIO-REL-ID-R1.1",
++            "migration_in_sync": True,
++        }
++
++    monkeypatch.setattr(main, "build_release_identity", fake_build_release_identity)
++    result = main.admin_system_version(
++        request=_request(),
++        x_org_slug="tenant-a",
++        _admin={
++            "org": "tenant-a",
++            "role": "admin",
++            "sub": "admin-a",
++            "is_admin_master": False,
++            "write_approval_authority": False,
++        },
++        db=object(),
++    )
++
++    assert result["ok"] is True
++    assert observed["authenticated_org"] == "tenant-a"
++    assert observed["authority_scope"] == "tenant_admin"
++    assert observed["database"] is not None
+--- a/tests/test_phase_a_r11_auth_regression.py
++++ b/tests/test_phase_a_r11_auth_regression.py
+@@ -0,0 +1,56 @@
++from __future__ import annotations
++
++import ast
++import hashlib
++from pathlib import Path
++
++
++ROOT = Path(__file__).resolve().parents[1]
++SOURCE = (ROOT / "main.py").read_text(encoding="utf-8-sig")
++TREE = ast.parse(SOURCE)
++EXPECTED = {'forgot_password': '19401988f01913a3f01cae8f06f111e72fe64e980404ca756724d7d41d5e1411', 'reset_password': 'f04390cab41a7018ad70d920e6a81bcf26da44878c923a652affb9f922574244', 'change_password': 'b89fb1a1b53280d82a15b5c3512aad701e4536bc9616c0c781c17ec26bce9dcf', 'register': '42a99b6f161231d71b15d573af4c6193b539d30d4fbc686a346cb462845a7c82', 'login': 'a32fea598f47d9164d31f577402e5a46e06dc9c21300e0d30531623541c7478e', '_startup_access_gate_guard': '8cc19bc6d0f84035be1521481fcba8675231d4a8db342bf8fd5aebbba313b2a7'}
++
++
++def _function_source(name: str) -> str:
++    node = next(
++        item for item in ast.walk(TREE)
++        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
++        and item.name == name
++    )
++    lines = SOURCE.splitlines()
++    return "\n".join(lines[node.lineno - 1:node.end_lineno])
++
++
++def test_current_auth_and_access_gate_functions_are_preserved_exactly():
++    observed = {
++        name: hashlib.sha256(_function_source(name).encode("utf-8")).hexdigest()
++        for name in EXPECTED
++    }
++    assert observed == EXPECTED
++
++
++def test_auth_reset_migration_0038_is_preserved():
++    path = ROOT / "alembic" / "versions" / "0038_patch_auth_password_reset_tokens.py"
++    assert path.is_file()
++    source = path.read_text(encoding="utf-8-sig")
++    tree = ast.parse(source)
++
++    values = {}
++    for node in tree.body:
++        if isinstance(node, ast.Assign):
++            for target in node.targets:
++                if isinstance(target, ast.Name) and target.id in {"revision", "down_revision"}:
++                    values[target.id] = ast.literal_eval(node.value)
++
++    assert values["revision"] == "0038_patch_auth_password_reset_tokens"
++    assert values["down_revision"] == "0037_patch_evolution_signals_metrics"
++    assert "password_reset_tokens" in source
++
++
++def test_login_and_registration_gates_remain_separate():
++    register = _function_source("register")
++    login = _function_source("login")
++    assert "access_gate_register_required()" in register
++    assert "access_gate_login_required()" not in register
++    assert "access_gate_login_required()" in login
++    assert "access_gate_register_required()" not in login
+--- a/tests/test_phase_a_r11_atomic_applier.py
++++ b/tests/test_phase_a_r11_atomic_applier.py
+@@ -0,0 +1,107 @@
++from __future__ import annotations
++
++import hashlib
++from pathlib import Path
++
++import pytest
++
++from tools.apply_phase_a_r11 import ApplyError, transactional_apply
++
++
++def _sha(data: bytes) -> str:
++    return hashlib.sha256(data).hexdigest()
++
++
++def _make_package(tmp_path: Path):
++    package = tmp_path / "package"
++    target = tmp_path / "target"
++    package.mkdir()
++    target.mkdir()
++
++    (package / "a.txt").write_bytes(b"new-a")
++    (package / "nested").mkdir()
++    (package / "nested" / "b.txt").write_bytes(b"new-b")
++
++    (target / "a.txt").write_bytes(b"old-a")
++    (target / "nested").mkdir()
++    (target / "nested" / "b.txt").write_bytes(b"old-b")
++
++    copy_paths = ["a.txt", "nested/b.txt"]
++    hashes = {
++        "a.txt": _sha(b"new-a"),
++        "nested/b.txt": _sha(b"new-b"),
++    }
++    return package, target, copy_paths, hashes
++
++
++def test_transactional_apply_success(tmp_path):
++    package, target, copy_paths, hashes = _make_package(tmp_path)
++    observed = transactional_apply(
++        package,
++        target,
++        copy_paths=copy_paths,
++        expected_hashes=hashes,
++    )
++    assert observed == hashes
++    assert (target / "a.txt").read_bytes() == b"new-a"
++    assert (target / "nested" / "b.txt").read_bytes() == b"new-b"
++
++
++def test_transactional_apply_restores_all_files_after_failure(tmp_path):
++    package, target, copy_paths, hashes = _make_package(tmp_path)
++
++    with pytest.raises(ApplyError) as exc:
++        transactional_apply(
++            package,
++            target,
++            copy_paths=copy_paths,
++            expected_hashes=hashes,
++            simulate_failure_after=1,
++        )
++
++    assert "rollback_complete" in str(exc.value)
++    assert (target / "a.txt").read_bytes() == b"old-a"
++    assert (target / "nested" / "b.txt").read_bytes() == b"old-b"
++
++
++def test_transactional_apply_removes_new_files_after_failure(tmp_path):
++    package = tmp_path / "package"
++    target = tmp_path / "target"
++    package.mkdir()
++    target.mkdir()
++    (package / "a.txt").write_bytes(b"new-a")
++    (package / "newdir").mkdir()
++    (package / "newdir" / "b.txt").write_bytes(b"new-b")
++    copy_paths = ["a.txt", "newdir/b.txt"]
++    hashes = {
++        "a.txt": _sha(b"new-a"),
++        "newdir/b.txt": _sha(b"new-b"),
++    }
++
++    with pytest.raises(ApplyError):
++        transactional_apply(
++            package,
++            target,
++            copy_paths=copy_paths,
++            expected_hashes=hashes,
++            simulate_failure_after=1,
++        )
++
++    assert not (target / "a.txt").exists()
++    assert not (target / "newdir" / "b.txt").exists()
++    assert not (target / "newdir").exists()
++
++
++def test_unsafe_path_is_rejected(tmp_path):
++    package = tmp_path / "package"
++    target = tmp_path / "target"
++    package.mkdir()
++    target.mkdir()
++
++    with pytest.raises(ApplyError):
++        transactional_apply(
++            package,
++            target,
++            copy_paths=["../escape.txt"],
++            expected_hashes={"../escape.txt": _sha(b"x")},
++        )
+--- a/tools/apply_phase_a_r11.py
++++ b/tools/apply_phase_a_r11.py
+@@ -0,0 +1,352 @@
++from __future__ import annotations
++
++import argparse
++import hashlib
++import json
++import os
++import stat
++import sys
++import tempfile
++from dataclasses import dataclass
++from pathlib import Path
++from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
++
++
++PATCH_ID = "ORKIO-AUTOEVOLUTION-PHASE-A-R1.1"
++MANIFEST_NAME = "PATCH_MANIFEST.json"
++
++
++class ApplyError(RuntimeError):
++    pass
++
++
++@dataclass(frozen=True)
++class OriginalFile:
++    existed: bool
++    data: bytes = b""
++    mode: int = 0o644
++
++
++def sha256_bytes(data: bytes) -> str:
++    return hashlib.sha256(data).hexdigest()
++
++
++def sha256_path(path: Path) -> str:
++    return sha256_bytes(path.read_bytes())
++
++
++def _safe_relative_path(raw: str) -> Path:
++    rel = Path(str(raw or ""))
++    if not raw or rel.is_absolute() or ".." in rel.parts:
++        raise ApplyError(f"unsafe_package_path:{raw!r}")
++    return rel
++
++
++def load_manifest(package_root: Path) -> Dict[str, object]:
++    path = package_root / MANIFEST_NAME
++    if not path.is_file():
++        raise ApplyError(f"manifest_missing:{path}")
++    try:
++        manifest = json.loads(path.read_text(encoding="utf-8"))
++    except Exception as exc:
++        raise ApplyError(f"manifest_invalid:{exc.__class__.__name__}") from exc
++    if manifest.get("patch_id") != PATCH_ID:
++        raise ApplyError("manifest_patch_id_mismatch")
++    return manifest
++
++
++def validate_payload(
++    package_root: Path,
++    copy_paths: Sequence[str],
++    expected_hashes: Mapping[str, str],
++) -> Dict[str, str]:
++    observed: Dict[str, str] = {}
++    for raw in copy_paths:
++        rel = _safe_relative_path(raw)
++        source = package_root / rel
++        if not source.is_file():
++            raise ApplyError(f"source_missing:{rel.as_posix()}")
++        digest = sha256_path(source)
++        expected = str(expected_hashes.get(rel.as_posix()) or "")
++        if not expected:
++            raise ApplyError(f"source_hash_missing:{rel.as_posix()}")
++        if digest != expected:
++            raise ApplyError(f"source_hash_mismatch:{rel.as_posix()}")
++        observed[rel.as_posix()] = digest
++    return observed
++
++
++def _write_replace(destination: Path, data: bytes, mode: int) -> None:
++    destination.parent.mkdir(parents=True, exist_ok=True)
++    fd, temp_name = tempfile.mkstemp(
++        prefix=f".{destination.name}.phase-a-r11.",
++        dir=str(destination.parent),
++    )
++    temp_path = Path(temp_name)
++    try:
++        with os.fdopen(fd, "wb") as handle:
++            handle.write(data)
++            handle.flush()
++            os.fsync(handle.fileno())
++        os.chmod(temp_path, stat.S_IMODE(mode) or 0o644)
++        os.replace(temp_path, destination)
++    finally:
++        try:
++            if temp_path.exists():
++                temp_path.unlink()
++        except Exception:
++            pass
++
++
++def transactional_apply(
++    package_root: Path,
++    target_root: Path,
++    *,
++    copy_paths: Sequence[str],
++    expected_hashes: Mapping[str, str],
++    simulate_failure_after: int = 0,
++) -> Dict[str, str]:
++    """Apply all files or restore every destination to its original state."""
++    package_root = package_root.resolve()
++    target_root = target_root.resolve()
++    if not target_root.is_dir():
++        raise ApplyError(f"target_not_directory:{target_root}")
++
++    observed = validate_payload(package_root, copy_paths, expected_hashes)
++    originals: Dict[str, OriginalFile] = {}
++    staged: Dict[str, bytes] = {}
++    created_parents: List[Path] = []
++
++    for raw in copy_paths:
++        rel = _safe_relative_path(raw)
++        source = package_root / rel
++        destination = target_root / rel
++        try:
++            destination.relative_to(target_root)
++        except ValueError as exc:
++            raise ApplyError(f"destination_outside_target:{rel}") from exc
++
++        staged[rel.as_posix()] = source.read_bytes()
++        if destination.exists():
++            if not destination.is_file():
++                raise ApplyError(f"destination_not_file:{rel.as_posix()}")
++            originals[rel.as_posix()] = OriginalFile(
++                existed=True,
++                data=destination.read_bytes(),
++                mode=stat.S_IMODE(destination.stat().st_mode),
++            )
++        else:
++            originals[rel.as_posix()] = OriginalFile(existed=False)
++            parent = destination.parent
++            while parent != target_root and not parent.exists():
++                created_parents.append(parent)
++                parent = parent.parent
++
++    applied: List[str] = []
++    try:
++        for raw in copy_paths:
++            rel = _safe_relative_path(raw)
++            key = rel.as_posix()
++            destination = target_root / rel
++            source_mode = stat.S_IMODE((package_root / rel).stat().st_mode)
++            _write_replace(destination, staged[key], source_mode)
++            applied.append(key)
++            if simulate_failure_after and len(applied) >= simulate_failure_after:
++                raise ApplyError("simulated_failure")
++
++        for raw in copy_paths:
++            rel = _safe_relative_path(raw)
++            key = rel.as_posix()
++            destination = target_root / rel
++            if not destination.is_file():
++                raise ApplyError(f"post_apply_missing:{key}")
++            if sha256_path(destination) != observed[key]:
++                raise ApplyError(f"post_apply_hash_mismatch:{key}")
++        return observed
++    except Exception as exc:
++        rollback_errors: List[str] = []
++        for raw in reversed(copy_paths):
++            rel = _safe_relative_path(raw)
++            key = rel.as_posix()
++            destination = target_root / rel
++            original = originals[key]
++            try:
++                if original.existed:
++                    _write_replace(destination, original.data, original.mode)
++                elif destination.exists():
++                    destination.unlink()
++            except Exception as rollback_exc:
++                rollback_errors.append(
++                    f"{key}:{rollback_exc.__class__.__name__}"
++                )
++
++        for parent in sorted(set(created_parents), key=lambda p: len(p.parts), reverse=True):
++            try:
++                parent.rmdir()
++            except OSError:
++                pass
++
++        for raw in copy_paths:
++            rel = _safe_relative_path(raw)
++            key = rel.as_posix()
++            destination = target_root / rel
++            original = originals[key]
++            try:
++                if original.existed:
++                    if not destination.is_file():
++                        rollback_errors.append(f"{key}:missing_after_rollback")
++                    elif sha256_path(destination) != sha256_bytes(original.data):
++                        rollback_errors.append(f"{key}:hash_after_rollback")
++                elif destination.exists():
++                    rollback_errors.append(f"{key}:unexpected_after_rollback")
++            except Exception as verify_exc:
++                rollback_errors.append(
++                    f"{key}:verify_{verify_exc.__class__.__name__}"
++                )
++
++        if rollback_errors:
++            raise ApplyError(
++                "apply_failed_and_rollback_incomplete:"
++                + ",".join(sorted(set(rollback_errors)))
++            ) from exc
++        raise ApplyError(
++            f"apply_failed_rollback_complete:{exc.__class__.__name__}"
++        ) from exc
++
++
++def _baseline_state(
++    target_root: Path,
++    *,
++    accepted_main_hashes: Sequence[str],
++    candidate_main_hash: str,
++) -> Tuple[str, str]:
++    main_path = target_root / "main.py"
++    if not main_path.is_file():
++        raise ApplyError("target_main_missing")
++    observed = sha256_path(main_path)
++    if observed == candidate_main_hash:
++        return "already_candidate", observed
++    if observed not in set(accepted_main_hashes):
++        raise ApplyError(f"unknown_main_baseline:{observed}")
++    return "accepted_baseline", observed
++
++
++def execute(
++    target_root: Path,
++    *,
++    package_root: Optional[Path] = None,
++    dry_run: bool = False,
++    simulate_failure_after: int = 0,
++) -> Dict[str, object]:
++    root = Path(package_root or Path(__file__).resolve().parents[1]).resolve()
++    target = target_root.resolve()
++    manifest = load_manifest(root)
++    copy_paths = [str(value) for value in manifest.get("copy_paths", [])]
++    expected_hashes = {
++        str(key): str(value)
++        for key, value in dict(manifest.get("payload_sha256", {})).items()
++    }
++    accepted = [
++        str(value)
++        for value in manifest.get("accepted_source_main_sha256", [])
++    ]
++    candidate_hash = str(manifest.get("candidate_main_sha256") or "")
++    if not copy_paths or not candidate_hash:
++        raise ApplyError("manifest_apply_contract_incomplete")
++
++    baseline_state, observed_main = _baseline_state(
++        target,
++        accepted_main_hashes=accepted,
++        candidate_main_hash=candidate_hash,
++    )
++    payload = validate_payload(root, copy_paths, expected_hashes)
++
++    if baseline_state == "already_candidate":
++        mismatches = [
++            rel
++            for rel, expected in payload.items()
++            if not (target / rel).is_file()
++            or sha256_path(target / rel) != expected
++        ]
++        if not mismatches:
++            return {
++                "ok": True,
++                "patch_id": PATCH_ID,
++                "mode": "already_applied",
++                "write_executed": False,
++                "rollback_executed": False,
++                "observed_main_sha256": observed_main,
++                "candidate_main_sha256": candidate_hash,
++            }
++
++    if dry_run:
++        return {
++            "ok": True,
++            "patch_id": PATCH_ID,
++            "mode": "dry_run",
++            "baseline_state": baseline_state,
++            "write_executed": False,
++            "rollback_executed": False,
++            "observed_main_sha256": observed_main,
++            "candidate_main_sha256": candidate_hash,
++            "copy_count": len(copy_paths),
++        }
++
++    transactional_apply(
++        root,
++        target,
++        copy_paths=copy_paths,
++        expected_hashes=expected_hashes,
++        simulate_failure_after=simulate_failure_after,
++    )
++    return {
++        "ok": True,
++        "patch_id": PATCH_ID,
++        "mode": "applied",
++        "write_executed": True,
++        "rollback_executed": False,
++        "observed_main_sha256": observed_main,
++        "candidate_main_sha256": candidate_hash,
++        "copy_count": len(copy_paths),
++    }
++
++
++def main(argv: Optional[Sequence[str]] = None) -> int:
++    parser = argparse.ArgumentParser(
++        description="Fail-closed transactional applier for ORKIO Phase A R1.1"
++    )
++    parser.add_argument("target", type=Path)
++    parser.add_argument("--dry-run", action="store_true")
++    parser.add_argument(
++        "--simulate-failure-after",
++        type=int,
++        default=0,
++        help=argparse.SUPPRESS,
++    )
++    args = parser.parse_args(argv)
++    try:
++        result = execute(
++            args.target,
++            dry_run=args.dry_run,
++            simulate_failure_after=max(0, args.simulate_failure_after),
++        )
++        print(json.dumps(result, sort_keys=True))
++        return 0
++    except ApplyError as exc:
++        print(
++            json.dumps(
++                {
++                    "ok": False,
++                    "patch_id": PATCH_ID,
++                    "error": str(exc),
++                    "write_executed": False,
++                },
++                sort_keys=True,
++            ),
++            file=sys.stderr,
++        )
++        return 2
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())

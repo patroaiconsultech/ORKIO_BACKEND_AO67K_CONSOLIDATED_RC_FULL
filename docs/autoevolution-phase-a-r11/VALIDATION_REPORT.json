@@ -1,0 +1,98 @@
+{
+  "patch_id": "ORKIO-AUTOEVOLUTION-PHASE-A-R1.1",
+  "created_at": "2026-07-21",
+  "mode": "proposal_only",
+  "source_artifact": {
+    "filename": "ORKIO_BACKEND_AO67K_CONSOLIDATED_RC_FULL-main (46).zip",
+    "sha256": "c7996f126c570254d1efc73cff23194414ed2f48866270ac41d64999fb131870",
+    "main_sha256": "7a25bfd0538ce8ff180ee6916b43cc5bfe59891d24cc5f77da96c1aca7b20ab9",
+    "git_branch": "NOT_PROVEN",
+    "git_head": "NOT_PROVEN",
+    "deployed_commit": "NOT_PROVEN",
+    "migration_code_head": "0038_patch_auth_password_reset_tokens",
+    "runtime_route_count_local": 251
+  },
+  "candidate": {
+    "main_sha256": "03a60be6fb48740edbecba266e934d049324256af390acd9ed83c4e2dea06f1c",
+    "release_identity_sha256": "b1154eebbff1292d02c1f89b405430140db291b7b0d1ef5af70acf873bb1d271",
+    "migration_added": false,
+    "frontend_changed": false,
+    "runtime_route_count_local": 252,
+    "canaries": [
+      "EVOLUTION_ADMIN_TENANT_GUARD_BOOT_OK version=EA-TENANT-R1.1",
+      "ORKIO_BOOT_IDENTITY contract_version=ORKIO-REL-ID-R1.1"
+    ]
+  },
+  "validation": {
+    "three_way_rebase": "CLEAN_NO_CONFLICT_MARKERS",
+    "py_compile": "PASS_11_CHANGED_PYTHON_FILES",
+    "focused_tests": {
+      "passed": 34,
+      "failed": 0,
+      "skipped": 2
+    },
+    "postgres_integration": {
+      "status": "NOT_EXECUTED",
+      "reason": "ORKIO_TEST_POSTGRES_URL not available",
+      "tests_included": 2
+    },
+    "baseline_full_suite": {
+      "passed": 228,
+      "failed": 8,
+      "skipped": 2
+    },
+    "candidate_full_suite": {
+      "passed": 262,
+      "failed": 8,
+      "skipped": 4
+    },
+    "failure_names_match_baseline": true,
+    "failure_names": [
+      "tests/test_ao01_route_decision_diagnostic.py::test_route_diagnostics_are_attached_for_handled_decision",
+      "tests/test_ao01_route_decision_diagnostic.py::test_route_diagnostics_are_attached_for_fail_open_decision",
+      "tests/test_ao01_single_route_authority.py::test_complex_prompts_create_binding_full_runtime_decision",
+      "tests/test_docio0013_document_artifacts.py::test_formula_injection_and_zero_false_are_preserved",
+      "tests/test_docio0014_conversational_bridge.py::test_payload_builder_produces_bounded_xlsx_rows",
+      "tests/test_docio0014_conversational_bridge.py::test_command_service_persists_artifact_event_assistant_and_audit_atomically",
+      "tests/test_document_artifact_service.py::test_generate_pptx_artifact_uses_executive_template_when_available",
+      "tests/test_document_artifact_service.py::test_generate_pdf_artifact_has_executive_governance_header_when_available"
+    ],
+    "new_regressions": false,
+    "runtime_import": "PASS",
+    "release_route_present": true,
+    "migration_code_head_detected": "0038_patch_auth_password_reset_tokens",
+    "auth_function_source_hashes_preserved": {
+      "forgot_password": "19401988f01913a3f01cae8f06f111e72fe64e980404ca756724d7d41d5e1411",
+      "reset_password": "f04390cab41a7018ad70d920e6a81bcf26da44878c923a652affb9f922574244",
+      "change_password": "b89fb1a1b53280d82a15b5c3512aad701e4536bc9616c0c781c17ec26bce9dcf",
+      "register": "42a99b6f161231d71b15d573af4c6193b539d30d4fbc686a346cb462845a7c82",
+      "login": "a32fea598f47d9164d31f577402e5a46e06dc9c21300e0d30531623541c7478e",
+      "_startup_access_gate_guard": "8cc19bc6d0f84035be1521481fcba8675231d4a8db342bf8fd5aebbba313b2a7"
+    },
+    "atomic_applier_success_test": "PASS",
+    "atomic_applier_rollback_test": "PASS",
+    "secret_scan": "PASS",
+    "git_diff_check": "PASS_NO_WHITESPACE_ERRORS",
+    "package_dry_run": "PASS",
+    "package_simulated_failure_rollback_exact": true,
+    "package_apply_to_disposable_copy": "PASS",
+    "package_idempotency": "PASS"
+  },
+  "governance": {
+    "write_executed": false,
+    "commit_executed": false,
+    "merge_executed": false,
+    "deploy_executed": false,
+    "migration_executed": false,
+    "execution_allowed": false,
+    "human_approval_required": true
+  },
+  "gates": {
+    "go_apply_dry_run_current46": true,
+    "go_open_branch_after_dry_run": true,
+    "go_postgres_two_tenant_test": true,
+    "go_deploy_now": false,
+    "go_enable_evolution_write": false,
+    "go_begin_mz001_r2": false
+  }
+}
