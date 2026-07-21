@@ -1,0 +1,24 @@
+{
+  "package": "ORKIO_BACKEND_ACCESS_GRANT_HEADER_BRIDGE_R17_DELTA_ROOT_UPLOAD",
+  "repository": "patroaiconsultech/ORKIO_BACKEND_AO67K_CONSOLIDATED_RC_FULL",
+  "apply_at": "repository_root",
+  "base": "R1.6 cumulative plus access-code register hotfix",
+  "files_modified": [
+    "schemas/access_grants.py",
+    "services/access_grant_service.py",
+    "routes/access_grants.py"
+  ],
+  "files_added": [
+    "tests/test_access_grant_header_transport_r17.py",
+    "docs/access-grant-header-bridge-r17/README.md"
+  ],
+  "files_deleted": [],
+  "required_env": {
+    "ACCESS_GATE_HEADER_TRANSPORT_ENABLED": "true"
+  },
+  "focused_tests": "8 passed",
+  "compile": "PASS",
+  "migration_required": false,
+  "commit_executed": false,
+  "deploy_executed": false
+}

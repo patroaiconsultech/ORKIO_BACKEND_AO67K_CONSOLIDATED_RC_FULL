@@ -137,6 +137,11 @@ def load_access_grant_config(*, require_signing_key: bool = False) -> AccessGran
     return config
 
 
+def access_gate_header_transport_enabled() -> bool:
+    """Enable the signed header transport for cross-origin browser journeys."""
+    return _env_bool("ACCESS_GATE_HEADER_TRANSPORT_ENABLED", False)
+
+
 def access_gate_auth_required() -> bool:
     """Legacy compatibility accessor. Prefer the route-specific helpers."""
     return load_access_grant_config().require_for_auth
@@ -376,18 +381,41 @@ def get_request_access_grant(
     required: bool = True,
 ) -> Optional[dict[str, Any]]:
     cfg = load_access_grant_config(require_signing_key=required)
-    token = request.cookies.get(cfg.cookie_name)
+    token = None
+    transport = "none"
+
+    if access_gate_header_transport_enabled():
+        raw_header = str(
+            request.headers.get("x-orkio-access-grant")
+            or request.headers.get("x-access-grant")
+            or ""
+        ).strip()
+        if raw_header:
+            if len(raw_header) > 4096:
+                if required:
+                    raise HTTPException(status_code=403, detail="ACCESS_GRANT_INVALID")
+                return None
+            token = raw_header
+            transport = "header"
+
+    if not token:
+        token = request.cookies.get(cfg.cookie_name)
+        if token:
+            transport = "cookie"
+
     if not token:
         if required:
             raise HTTPException(status_code=403, detail="ACCESS_GRANT_REQUIRED")
         return None
     try:
-        return decode_access_grant(
+        claims = decode_access_grant(
             token,
             expected_org=expected_org,
             user_agent=request.headers.get("user-agent", ""),
             config=cfg,
         )
+        claims["_transport"] = transport
+        return claims
     except AccessGrantInvalidError as exc:
         if required:
             raise HTTPException(status_code=403, detail=str(exc))

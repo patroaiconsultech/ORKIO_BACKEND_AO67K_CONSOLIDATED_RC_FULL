@@ -27,6 +27,7 @@ from app.services.access_grant_service import (
     find_signup_code_by_id,
     issue_access_grant,
     load_access_grant_config,
+    access_gate_header_transport_enabled,
     set_access_grant_cookie,
 )
 
@@ -253,6 +254,9 @@ def build_access_grants_router(deps: AccessGrantRouterDeps) -> APIRouter:
             purpose=payload.purpose,
             expires_at=int(claims["exp"]),
             scope=list(claims.get("scope") or []),
+            grant_token=(
+                token if access_gate_header_transport_enabled() else None
+            ),
         )
 
     @router.get("/status", response_model=AccessGrantStatusOut)

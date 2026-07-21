@@ -25,6 +25,9 @@ class AccessGrantOut(BaseModel):
     purpose: AccessGrantPurpose
     expires_at: int
     scope: list[str] = Field(default_factory=list)
+    # R1.7 compatibility bridge. Returned only when the explicit header
+    # transport flag is enabled; clients must keep it in memory only.
+    grant_token: Optional[str] = None
 
 
 class AccessGrantStatusOut(BaseModel):
