@@ -811,6 +811,7 @@ from .runtime.agent_registry import (
     ordered_registry_slugs as registry_ordered_slugs,
     registry_payload as build_agent_registry_payload,
 )
+from .runtime.glip_aria_agent_contract import complete_patroai_selector_agents, ensure_glip_aria_agent
 
 import importlib
 
@@ -3473,6 +3474,8 @@ Typical response length: 2–4 short paragraphs or a structured technical analys
         voice_id="echo",
         is_default=False,
     )
+
+    ensure_glip_aria_agent(upsert)
 
 
 
@@ -33750,6 +33753,7 @@ def agent_delegate(inp: DelegateIn, x_org_slug: Optional[str] = Header(default=N
 @app.get("/api/agents")
 def list_agents(x_org_slug: Optional[str] = Header(default=None), user=Depends(get_current_user), db: Session = Depends(get_db)):
     org = get_request_org(user, x_org_slug)
+    privileged = _payload_has_catalog_privileged_access(user)
     try:
         ensure_core_agents(db, org)
     except Exception:
@@ -33766,14 +33770,6 @@ def list_agents(x_org_slug: Optional[str] = Header(default=None), user=Depends(g
         # Return the merged runtime roster so the selector remains usable even
         # when some agents are roster-backed rather than persisted rows.
         items = _list_admin_agents_merged(db, org)
-        required = {"orkio", "team", "chris", "orion"}
-        present = {str(item.get("agent_key") or "").strip().lower() for item in list(items or []) if isinstance(item, dict)}
-        if not required.issubset(present):
-            roster = get_agent_roster()
-            for slug in ["orkio", "team", "chris", "orion"]:
-                if slug not in present:
-                    items.append(_build_roster_only_agent_payload(org, slug, dict(roster.get(slug) or {})))
-        return items
     except Exception:
         try:
             db.rollback()
@@ -33783,11 +33779,15 @@ def list_agents(x_org_slug: Optional[str] = Header(default=None), user=Depends(g
             logger.exception("AGENTS_LIST_MERGED_FAILED_ROSTER_FALLBACK org=%s", org)
         except Exception:
             pass
-        roster = get_agent_roster()
-        items: List[Dict[str, Any]] = []
-        for slug in ["orkio", "team", "chris", "orion"]:
-            items.append(_build_roster_only_agent_payload(org, slug, dict(roster.get(slug) or {})))
-        return items
+        items = []
+
+    return complete_patroai_selector_agents(
+        items,
+        privileged=privileged,
+        org=org,
+        roster=get_agent_roster(),
+        build_roster_payload=_build_roster_only_agent_payload,
+    )
 
 
 @app.get("/api/agents/runtime-catalog")

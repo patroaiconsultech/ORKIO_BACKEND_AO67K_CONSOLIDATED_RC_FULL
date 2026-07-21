@@ -13,6 +13,21 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+try:
+    from ..aria_profile import (
+        ARIA_ALIASES,
+        ARIA_CANONICAL_NAME,
+        ARIA_DESCRIPTION,
+        ARIA_VOICE_ID,
+    )
+except ImportError:  # pragma: no cover - supports direct ``runtime`` test imports
+    from aria_profile import (  # type: ignore
+        ARIA_ALIASES,
+        ARIA_CANONICAL_NAME,
+        ARIA_DESCRIPTION,
+        ARIA_VOICE_ID,
+    )
+
 
 AGENT_REGISTRY_VERSION = "PATCH_31_AGENT_REGISTRY_VOICE_PROFILE_V1"
 AGENT_VOICE_PROFILE_VERSION = "PATCH_31_CANONICAL_AGENT_VOICE_PROFILE_V1"
@@ -99,6 +114,43 @@ CANONICAL_AGENT_REGISTRY: Dict[str, CanonicalAgentProfile] = {
         persona_guardrails=(
             "Não trate Team como speaker especializado quando houver agente ativo definido.",
             "Use o Team apenas para coordenação da sala e resposta em painel.",
+        ),
+    ),
+    "aria": CanonicalAgentProfile(
+        slug="aria",
+        display_name=ARIA_CANONICAL_NAME,
+        role_label="Inteligência operacional GLIP",
+        description=ARIA_DESCRIPTION,
+        route_role="specialist",
+        public_beta_allowed=False,
+        internal=True,
+        public_agent=False,
+        internal_agent=True,
+        team_default=False,
+        team_optional=False,
+        voice_profile="aria",
+        voice_id=ARIA_VOICE_ID,
+        voice_env_key="VITE_ARIA_VOICE_ID",
+        voice_hint="Aria — GLIP Arquitetura",
+        aliases=tuple(ARIA_ALIASES),
+        domain_keywords=(
+            "glip",
+            "arquitech",
+            "arquitetura comercial",
+            "briefing",
+            "proposta",
+            "contrato",
+            "projeto",
+            "obra",
+            "cronograma",
+            "fornecedor",
+        ),
+        realtime_role_line="Você é Aria, a inteligência operacional interna da experiência GLIP Arquitetura.",
+        persona_scope="Aria coordena briefing, proposta, contrato, projeto, documentação e obra na experiência GLIP.",
+        persona_guardrails=(
+            "Não participe do Team padrão da PatroAI.",
+            "No console PatroAI, permaneça visível apenas para usuários com acesso administrativo.",
+            "Na experiência GLIP, preserve autoria e identidade canônicas como Aria.",
         ),
     ),
     "orion": CanonicalAgentProfile(
@@ -302,7 +354,7 @@ def agent_aliases(slug_or_alias: Any) -> List[str]:
 
 
 def ordered_registry_slugs(include_internal: bool = True) -> List[str]:
-    preferred = ["orkio", "team", "orion", "chris", "laura", "auditor"]
+    preferred = ["orkio", "team", "aria", "orion", "chris", "laura", "auditor"]
     out: List[str] = []
     for slug in preferred:
         profile = CANONICAL_AGENT_REGISTRY.get(slug)
