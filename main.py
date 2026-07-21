@@ -761,6 +761,14 @@ from .routes.evolution_signals import (
     EvolutionSignalsRouterDeps,
     build_evolution_signals_router,
 )
+from .routes.evolution_intelligence import (
+    EvolutionIntelligenceRouterDeps,
+    build_evolution_intelligence_router,
+)
+from .evolution.intelligence.governance import (
+    load_evolution_governance_config,
+    validate_evolution_governance_config,
+)
 from .services.access_grant_service import (
     access_gate_auth_required,
     access_gate_register_required,
@@ -811,7 +819,6 @@ from .runtime.agent_registry import (
     ordered_registry_slugs as registry_ordered_slugs,
     registry_payload as build_agent_registry_payload,
 )
-from .runtime.glip_aria_agent_contract import complete_patroai_selector_agents, ensure_glip_aria_agent
 
 import importlib
 
@@ -3475,8 +3482,6 @@ Typical response length: 2–4 short paragraphs or a structured technical analys
         is_default=False,
     )
 
-    ensure_glip_aria_agent(upsert)
-
 
 
 
@@ -5238,6 +5243,36 @@ def _startup_release_identity_r11():
     app.state.runtime_identity_status = "validated"
 
 
+@app.on_event("startup")
+def _startup_evolution_intelligence_governance_r1():
+    """Fail closed on unsafe Evolution Intelligence configuration."""
+    app.state.evolution_intelligence_status = "initializing"
+    app.state.evolution_intelligence_governance_validated = False
+    try:
+        config = validate_evolution_governance_config(
+            load_evolution_governance_config()
+        )
+    except Exception:
+        app.state.evolution_intelligence_status = "failed"
+        app.state.evolution_intelligence_governance_validated = False
+        logger.exception("EVOLUTION_INTELLIGENCE_GOVERNANCE_FAILED")
+        raise
+    app.state.evolution_intelligence_config = config
+    app.state.evolution_intelligence_status = "validated"
+    app.state.evolution_intelligence_governance_validated = True
+    logger.info(
+        "EVOLUTION_INTELLIGENCE_GOVERNANCE_OK version=%s center_enabled=%s "
+        "proposal_only=%s write_enabled=%s auto_apply_enabled=%s "
+        "human_approval_required=%s",
+        config["version"],
+        config["center_enabled"],
+        config["proposal_only"],
+        config["write_enabled"],
+        config["auto_apply_enabled"],
+        config["human_approval_required"],
+    )
+
+
 
 
 # AO-13_PTE_ADMIN_EVOLUTION_PERSISTENCE
@@ -6907,6 +6942,19 @@ app.include_router(
         )
     )
 )
+app.include_router(
+    build_evolution_intelligence_router(
+        EvolutionIntelligenceRouterDeps(
+            get_db=get_db,
+            require_admin_access=require_admin_access,
+            get_request_org=get_request_org,
+            new_id=new_id,
+            now_ts=now_ts,
+            actor_reference=actor_reference,
+            logger=logger,
+        )
+    )
+)
 try:
     _evolution_signals_module = sys.modules.get(build_evolution_signals_router.__module__)
     logger.info(
@@ -7859,20 +7907,39 @@ def register(inp: RegisterIn, request: Request = None, x_org_slug: Optional[str]
     is_admin_email = email in admin_emails()
 
     access_grant_claims = None
+    prevalidated_signup_code = None
     logger.info(
-        "AUTH_ACCESS_GATE_DECISION route=register required=%s org=%s request_id=%s",
+        "AUTH_ACCESS_GATE_DECISION route=register required=%s org=%s request_id=%s access_code_present=%s",
         access_gate_register_required(),
         org,
         request_id,
+        bool(inp.access_code),
     )
     if access_gate_register_required():
-        if request is None:
-            raise HTTPException(status_code=403, detail="ACCESS_GRANT_REQUIRED")
-        access_grant_claims = require_request_access_grant(
-            request,
-            expected_org=org,
-            db=db,
-        )
+        # Registration supports a single-step invite flow:
+        # - when the form submits an access_code, validate and consume it server-side;
+        # - otherwise require the previously issued signed access-grant cookie.
+        #
+        # This preserves the closed-beta gate while avoiding the contradictory
+        # requirement for the user to validate a second, non-editable "code".
+        if inp.access_code:
+            prevalidated_signup_code = _validate_access_code(db, org, inp.access_code)
+            if not prevalidated_signup_code:
+                logger.warning(
+                    "REGISTER_DENIED reason=invalid_access_code request_id=%s org=%s email_ref=%s",
+                    request_id,
+                    org,
+                    email_ref,
+                )
+                raise HTTPException(status_code=403, detail="INVALID_ACCESS_CODE")
+        else:
+            if request is None:
+                raise HTTPException(status_code=403, detail="ACCESS_GRANT_REQUIRED")
+            access_grant_claims = require_request_access_grant(
+                request,
+                expected_org=org,
+                db=db,
+            )
 
     try:
         logger.warning(
@@ -7898,10 +7965,10 @@ def register(inp: RegisterIn, request: Request = None, x_org_slug: Optional[str]
 
 
     if SUMMIT_MODE and not is_admin_email:
-        sc = None
-        if inp.access_code:
+        sc = prevalidated_signup_code
+        if sc is None and inp.access_code:
             sc = _validate_access_code(db, org, inp.access_code)
-        elif access_grant_claims:
+        elif sc is None and access_grant_claims:
             sc = find_signup_code_by_id(
                 db,
                 org_slug=org,
@@ -7963,7 +8030,7 @@ def register(inp: RegisterIn, request: Request = None, x_org_slug: Optional[str]
         product_scope = "full"
 
     elif inp.access_code:
-        sc = _validate_access_code(db, org, inp.access_code)
+        sc = prevalidated_signup_code or _validate_access_code(db, org, inp.access_code)
         if sc:
             signup_code_label = sc.label
             signup_source = sc.source
@@ -33753,7 +33820,6 @@ def agent_delegate(inp: DelegateIn, x_org_slug: Optional[str] = Header(default=N
 @app.get("/api/agents")
 def list_agents(x_org_slug: Optional[str] = Header(default=None), user=Depends(get_current_user), db: Session = Depends(get_db)):
     org = get_request_org(user, x_org_slug)
-    privileged = _payload_has_catalog_privileged_access(user)
     try:
         ensure_core_agents(db, org)
     except Exception:
@@ -33770,6 +33836,14 @@ def list_agents(x_org_slug: Optional[str] = Header(default=None), user=Depends(g
         # Return the merged runtime roster so the selector remains usable even
         # when some agents are roster-backed rather than persisted rows.
         items = _list_admin_agents_merged(db, org)
+        required = {"orkio", "team", "chris", "orion"}
+        present = {str(item.get("agent_key") or "").strip().lower() for item in list(items or []) if isinstance(item, dict)}
+        if not required.issubset(present):
+            roster = get_agent_roster()
+            for slug in ["orkio", "team", "chris", "orion"]:
+                if slug not in present:
+                    items.append(_build_roster_only_agent_payload(org, slug, dict(roster.get(slug) or {})))
+        return items
     except Exception:
         try:
             db.rollback()
@@ -33779,15 +33853,11 @@ def list_agents(x_org_slug: Optional[str] = Header(default=None), user=Depends(g
             logger.exception("AGENTS_LIST_MERGED_FAILED_ROSTER_FALLBACK org=%s", org)
         except Exception:
             pass
-        items = []
-
-    return complete_patroai_selector_agents(
-        items,
-        privileged=privileged,
-        org=org,
-        roster=get_agent_roster(),
-        build_roster_payload=_build_roster_only_agent_payload,
-    )
+        roster = get_agent_roster()
+        items: List[Dict[str, Any]] = []
+        for slug in ["orkio", "team", "chris", "orion"]:
+            items.append(_build_roster_only_agent_payload(org, slug, dict(roster.get(slug) or {})))
+        return items
 
 
 @app.get("/api/agents/runtime-catalog")

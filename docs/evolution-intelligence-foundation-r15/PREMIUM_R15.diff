@@ -1,0 +1,4355 @@
+--- /dev/null
++++ b/alembic/versions/0039_patch_evolution_intelligence_foundation.py
+@@ -0,0 +1,278 @@
++"""Add Evolution Intelligence Foundation objectives, targets and health snapshots.
++
++Revision ID: 0039_patch_evolution_intelligence_foundation
++Revises: 0038_patch_auth_password_reset_tokens
++"""
++
++from __future__ import annotations
++
++from alembic import op
++import sqlalchemy as sa
++
++
++revision = "0039_patch_evolution_intelligence_foundation"
++down_revision = "0038_patch_auth_password_reset_tokens"
++branch_labels = None
++depends_on = None
++
++
++def upgrade() -> None:
++    op.create_table(
++        "evolution_objectives",
++        sa.Column("id", sa.String(length=96), primary_key=True),
++        sa.Column("org_slug", sa.String(length=160), nullable=False),
++        sa.Column("name", sa.String(length=180), nullable=False),
++        sa.Column("description", sa.Text(), nullable=False),
++        sa.Column("category", sa.String(length=64), nullable=False),
++        sa.Column("priority", sa.Integer(), nullable=False, server_default="50"),
++        sa.Column("status", sa.String(length=24), nullable=False, server_default="draft"),
++        sa.Column("starts_at", sa.BigInteger(), nullable=True),
++        sa.Column("ends_at", sa.BigInteger(), nullable=True),
++        sa.Column("owner_ref", sa.String(length=180), nullable=False),
++        sa.Column("success_definition", sa.Text(), nullable=False),
++        sa.Column(
++            "proposal_policy",
++            sa.String(length=32),
++            nullable=False,
++            server_default="proposal_only",
++        ),
++        sa.Column(
++            "human_approval_required",
++            sa.Boolean(),
++            nullable=False,
++            server_default=sa.true(),
++        ),
++        sa.Column("version", sa.Integer(), nullable=False, server_default="1"),
++        sa.Column("created_by", sa.String(length=180), nullable=False),
++        sa.Column("updated_by", sa.String(length=180), nullable=False),
++        sa.Column("created_at", sa.BigInteger(), nullable=False),
++        sa.Column("updated_at", sa.BigInteger(), nullable=False),
++        sa.CheckConstraint(
++            "priority >= 0 AND priority <= 100",
++            name="ck_evolution_objective_priority",
++        ),
++        sa.CheckConstraint(
++            "status IN ('draft','active','paused','completed')",
++            name="ck_evolution_objective_status",
++        ),
++        sa.CheckConstraint(
++            "proposal_policy = 'proposal_only'",
++            name="ck_evolution_objective_proposal_only",
++        ),
++        sa.CheckConstraint(
++            "human_approval_required = TRUE",
++            name="ck_evolution_objective_human_approval",
++        ),
++        sa.CheckConstraint(
++            "ends_at IS NULL OR starts_at IS NULL OR ends_at > starts_at",
++            name="ck_evolution_objective_date_range",
++        ),
++        sa.UniqueConstraint(
++            "id",
++            "org_slug",
++            name="ux_evolution_objective_id_org",
++        ),
++        sa.UniqueConstraint(
++            "org_slug",
++            "name",
++            name="ux_evolution_objective_org_name",
++        ),
++    )
++    op.create_index(
++        "ix_evolution_objectives_org_status_priority",
++        "evolution_objectives",
++        ["org_slug", "status", "priority"],
++    )
++    op.create_index(
++        "ix_evolution_objectives_org_updated",
++        "evolution_objectives",
++        ["org_slug", "updated_at"],
++    )
++
++    op.create_table(
++        "evolution_kpi_targets",
++        sa.Column("id", sa.String(length=96), primary_key=True),
++        sa.Column("org_slug", sa.String(length=160), nullable=False),
++        sa.Column("objective_id", sa.String(length=96), nullable=True),
++        sa.Column(
++            "scope_key",
++            sa.String(length=96),
++            nullable=False,
++            server_default="__global__",
++        ),
++        sa.Column("kpi_code", sa.String(length=128), nullable=False),
++        sa.Column("target_value", sa.Float(), nullable=False),
++        sa.Column("warning_threshold", sa.Float(), nullable=False),
++        sa.Column("critical_threshold", sa.Float(), nullable=False),
++        sa.Column("weight", sa.Float(), nullable=False),
++        sa.Column(
++            "minimum_sample_size",
++            sa.Integer(),
++            nullable=False,
++            server_default="0",
++        ),
++        sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
++        sa.Column(
++            "proposal_enabled",
++            sa.Boolean(),
++            nullable=False,
++            server_default=sa.true(),
++        ),
++        sa.Column(
++            "auto_apply_enabled",
++            sa.Boolean(),
++            nullable=False,
++            server_default=sa.false(),
++        ),
++        sa.Column("version", sa.Integer(), nullable=False, server_default="1"),
++        sa.Column("starts_at", sa.BigInteger(), nullable=True),
++        sa.Column("ends_at", sa.BigInteger(), nullable=True),
++        sa.Column("created_by", sa.String(length=180), nullable=False),
++        sa.Column("updated_by", sa.String(length=180), nullable=False),
++        sa.Column("created_at", sa.BigInteger(), nullable=False),
++        sa.Column("updated_at", sa.BigInteger(), nullable=False),
++        sa.CheckConstraint(
++            "target_value >= 0 AND target_value <= 100",
++            name="ck_evolution_kpi_target_value",
++        ),
++        sa.CheckConstraint(
++            "critical_threshold >= 0 AND critical_threshold <= warning_threshold",
++            name="ck_evolution_kpi_critical_threshold",
++        ),
++        sa.CheckConstraint(
++            "warning_threshold <= target_value",
++            name="ck_evolution_kpi_warning_threshold",
++        ),
++        sa.CheckConstraint(
++            "weight > 0 AND weight <= 1",
++            name="ck_evolution_kpi_weight",
++        ),
++        sa.CheckConstraint(
++            "minimum_sample_size >= 0",
++            name="ck_evolution_kpi_min_sample",
++        ),
++        sa.CheckConstraint(
++            "auto_apply_enabled = FALSE",
++            name="ck_evolution_kpi_auto_apply_disabled",
++        ),
++        sa.CheckConstraint(
++            "(objective_id IS NULL AND scope_key = '__global__') "
++            "OR (objective_id IS NOT NULL AND scope_key = objective_id)",
++            name="ck_evolution_kpi_scope_key",
++        ),
++        sa.ForeignKeyConstraint(
++            ["objective_id", "org_slug"],
++            ["evolution_objectives.id", "evolution_objectives.org_slug"],
++            name="fk_evolution_kpi_target_objective_org",
++        ),
++        sa.UniqueConstraint(
++            "org_slug",
++            "scope_key",
++            "kpi_code",
++            name="ux_evolution_kpi_target_scope",
++        ),
++    )
++    op.create_index(
++        "ix_evolution_kpi_targets_org_kpi",
++        "evolution_kpi_targets",
++        ["org_slug", "kpi_code"],
++    )
++    op.create_index(
++        "ix_evolution_kpi_targets_org_objective",
++        "evolution_kpi_targets",
++        ["org_slug", "objective_id"],
++    )
++
++    op.create_table(
++        "evolution_health_snapshots",
++        sa.Column("id", sa.String(length=96), primary_key=True),
++        sa.Column("org_slug", sa.String(length=160), nullable=False),
++        sa.Column("objective_id", sa.String(length=96), nullable=True),
++        sa.Column("captured_at", sa.BigInteger(), nullable=False),
++        sa.Column("window_start", sa.BigInteger(), nullable=False),
++        sa.Column("window_end", sa.BigInteger(), nullable=False),
++        sa.Column("project_health_score", sa.Float(), nullable=True),
++        sa.Column("confidence", sa.Float(), nullable=False, server_default="0"),
++        sa.Column("data_coverage", sa.Float(), nullable=False, server_default="0"),
++        sa.Column("status", sa.String(length=24), nullable=False),
++        sa.Column(
++            "production_go",
++            sa.Boolean(),
++            nullable=False,
++            server_default=sa.false(),
++        ),
++        sa.Column("dimensions_json", sa.Text(), nullable=False, server_default="{}"),
++        sa.Column("missing_kpis_json", sa.Text(), nullable=False, server_default="[]"),
++        sa.Column("blocker_kpis_json", sa.Text(), nullable=False, server_default="[]"),
++        sa.Column("release_id", sa.String(length=160), nullable=True),
++        sa.Column("commit_sha", sa.String(length=64), nullable=True),
++        sa.Column("deployment_id", sa.String(length=160), nullable=True),
++        sa.Column("runtime_main_sha256", sa.String(length=64), nullable=True),
++        sa.Column("formula_version", sa.String(length=160), nullable=False),
++        sa.Column("captured_by", sa.String(length=180), nullable=False),
++        sa.Column("capture_reason", sa.String(length=300), nullable=False),
++        sa.Column("created_at", sa.BigInteger(), nullable=False),
++        sa.CheckConstraint(
++            "project_health_score IS NULL OR (project_health_score >= 0 AND project_health_score <= 100)",
++            name="ck_evolution_health_score",
++        ),
++        sa.CheckConstraint(
++            "confidence >= 0 AND confidence <= 1",
++            name="ck_evolution_health_confidence",
++        ),
++        sa.CheckConstraint(
++            "data_coverage >= 0 AND data_coverage <= 1",
++            name="ck_evolution_health_coverage",
++        ),
++        sa.CheckConstraint(
++            "status IN ('healthy','warning','critical','blocker','unknown')",
++            name="ck_evolution_health_status",
++        ),
++        sa.ForeignKeyConstraint(
++            ["objective_id", "org_slug"],
++            ["evolution_objectives.id", "evolution_objectives.org_slug"],
++            name="fk_evolution_health_objective_org",
++        ),
++    )
++    op.create_index(
++        "ix_evolution_health_org_captured",
++        "evolution_health_snapshots",
++        ["org_slug", "captured_at"],
++    )
++    op.create_index(
++        "ix_evolution_health_org_objective_captured",
++        "evolution_health_snapshots",
++        ["org_slug", "objective_id", "captured_at"],
++    )
++
++
++def downgrade() -> None:
++    op.drop_index(
++        "ix_evolution_health_org_objective_captured",
++        table_name="evolution_health_snapshots",
++    )
++    op.drop_index(
++        "ix_evolution_health_org_captured",
++        table_name="evolution_health_snapshots",
++    )
++    op.drop_table("evolution_health_snapshots")
++
++    op.drop_index(
++        "ix_evolution_kpi_targets_org_objective",
++        table_name="evolution_kpi_targets",
++    )
++    op.drop_index(
++        "ix_evolution_kpi_targets_org_kpi",
++        table_name="evolution_kpi_targets",
++    )
++    op.drop_table("evolution_kpi_targets")
++
++    op.drop_index(
++        "ix_evolution_objectives_org_updated",
++        table_name="evolution_objectives",
++    )
++    op.drop_index(
++        "ix_evolution_objectives_org_status_priority",
++        table_name="evolution_objectives",
++    )
++    op.drop_table("evolution_objectives")
+--- /dev/null
++++ b/docs/evolution-intelligence-foundation-r15/00_README_FIRST.md
+@@ -0,0 +1,48 @@
++# ORKIO Evolution Intelligence Foundation R1.5
++
++## Objetivo
++
++Transformar os sinais já existentes do Evolution Center em uma fundação
++confiável de objetivos, metas, saúde composta, diagnóstico, priorização e
++propostas somente para revisão humana.
++
++Esta release **não** aplica patches, não cria commits, não abre PRs, não executa
++deploys e não habilita auto-apply.
++
++## Escopo entregue
++
++- catálogo formal e versionado dos sete sinais atuais;
++- objetivos tenant-isolated, limitados a cinco ativos por tenant;
++- metas globais ou vinculadas a objetivo;
++- score de saúde por dimensão e score geral com cobertura;
++- ausência de dados representada como `unknown` ou `insufficient_data`;
++- blockers não compensáveis por média;
++- diagnóstico que separa evidência de hipótese;
++- priorização transparente;
++- preview de proposta em `proposal_only`;
++- snapshots compostos imutáveis, com escrita desabilitada por padrão;
++- auditoria de alterações de objetivo, meta e snapshot;
++- startup fail-closed para configurações inseguras;
++- migration 0039 com constraints tenant-aware.
++
++## Não incluído
++
++- frontend;
++- aplicação automática de proposta;
++- geração de diff baseada em causa não confirmada;
++- escrita em GitHub;
++- execução em staging ou produção;
++- validação PostgreSQL/Railway real;
++- SSE real com provider.
++
++## Ordem de aplicação
++
++1. Criar branch a partir do HEAD atual.
++2. Aplicar o pacote delta na raiz do backend.
++3. Executar `python scripts/validate_premium_package.py`.
++4. Executar `python scripts/evolution_validate_kpis.py`.
++5. Revisar a migration 0039.
++6. Configurar flags explicitamente.
++7. Subir staging com PostgreSQL.
++8. Executar `03_STAGING_SMOKE.md`.
++9. Manter escrita e auto-apply desativados.
+--- /dev/null
++++ b/docs/evolution-intelligence-foundation-r15/01_SCOPE_AND_ARCHITECTURE.md
+@@ -0,0 +1,56 @@
++# Escopo e arquitetura
++
++## Estado anterior confirmado
++
++A plataforma já possuía:
++
++- `platform_evolution_metric_snapshots`;
++- `agent_capability_evaluations`;
++- `evolution_proposals`;
++- `admin_evolution_proposals`;
++- auditoria;
++- rotas de sinais;
++- governança proposal-only.
++
++Duplicar essas estruturas criaria contratos concorrentes.
++
++## Arquitetura escolhida
++
++```text
++sinais atuais
++→ catálogo KPI versionado
++→ metas por tenant/objetivo
++→ health preview
++→ diagnóstico
++→ prioridade
++→ proposal preview
++→ aprovação humana futura
++```
++
++## Entidades novas
++
++```text
++evolution_objectives
++evolution_kpi_targets
++evolution_health_snapshots
++```
++
++Os snapshots individuais continuam usando
++`platform_evolution_metric_snapshots`.
++
++As propostas continuam usando os contratos governados existentes; esta fase
++gera apenas previews não persistidos.
++
++A auditoria continua usando `audit_logs`, filtrada pelo prefixo
++`evolution_intelligence.`.
++
++## Decisões de segurança
++
++- `org_slug` em todas as consultas;
++- referência composta de objetivo + tenant no banco;
++- `scope_key` não nulo para impedir duplicidade de meta global no PostgreSQL;
++- `proposal_policy='proposal_only'`;
++- `human_approval_required=TRUE`;
++- `auto_apply_enabled=FALSE`;
++- máximo de cinco objetivos ativos por tenant;
++- nenhuma rota de apply, merge, deploy ou migration.
+--- /dev/null
++++ b/docs/evolution-intelligence-foundation-r15/02_API_CONTRACT.md
+@@ -0,0 +1,80 @@
++# Contrato de API R1
++
++Prefixo:
++
++```text
++/api/admin/evolution/intelligence
++```
++
++Todas as rotas exigem acesso administrativo e tenant canônico.
++
++## Readonly
++
++```http
++GET /runtime
++GET /inventory
++GET /objectives
++GET /objectives/{objective_id}
++GET /kpis
++GET /kpis/{kpi_code}
++GET /health/preview
++GET /diagnostics/preview
++GET /priorities/preview
++GET /health/snapshots
++GET /audit
++```
++
++## Escritas de configuração
++
++```http
++POST  /objectives
++PATCH /objectives/{objective_id}
++PUT   /targets
++```
++
++Requisitos:
++
++```text
++EVOLUTION_CONFIG_WRITE_ENABLED=true
++approved=true
++human_approval_required=true
++```
++
++## Snapshot composto
++
++```http
++POST /health/snapshots/capture
++```
++
++Requisitos:
++
++```text
++EVOLUTION_HEALTH_SNAPSHOT_WRITE_ENABLED=true
++approved=true
++```
++
++## Proposal preview
++
++```http
++POST /proposals/preview
++```
++
++Requisitos:
++
++```text
++EVOLUTION_PROPOSAL_GENERATION_ENABLED=true
++EVOLUTION_PROPOSAL_ONLY=true
++EVOLUTION_WRITE_ENABLED=false
++EVOLUTION_AUTO_APPLY_ENABLED=false
++```
++
++O retorno sempre contém:
++
++```text
++mode=proposal_only
++auto_apply=false
++write_executed=false
++```
++
++Uma proposta técnica só é sugerida quando a confiança é pelo menos 0,85.
++Mesmo assim, a causa raiz permanece `not_confirmed` até existir evidência.
+--- /dev/null
++++ b/docs/evolution-intelligence-foundation-r15/03_STAGING_SMOKE.md
+@@ -0,0 +1,154 @@
++# Staging smoke plan
++
++## 1. Ambiente
++
++Configuração inicial segura:
++
++```env
++APP_ENV=staging
++
++ALLOW_AUTOMATIC_MIGRATIONS=true
++ALLOW_ALEMBIC_VERSION_NORMALIZATION=false
++
++EVOLUTION_CENTER_ENABLED=true
++EVOLUTION_KPI_COLLECTION_ENABLED=true
++EVOLUTION_CONFIG_WRITE_ENABLED=false
++EVOLUTION_HEALTH_SNAPSHOT_WRITE_ENABLED=false
++EVOLUTION_PROPOSAL_GENERATION_ENABLED=false
++EVOLUTION_PROPOSAL_ONLY=true
++EVOLUTION_DIFF_PREVIEW_ENABLED=true
++EVOLUTION_WRITE_ENABLED=false
++EVOLUTION_AUTO_APPLY_ENABLED=false
++EVOLUTION_HUMAN_APPROVAL_REQUIRED=true
++EVOLUTION_ROLLBACK_REQUIRED=true
++```
++
++Se `alembic_version` precisar de normalização, habilitar
++`ALLOW_ALEMBIC_VERSION_NORMALIZATION=true` somente para o primeiro boot
++controlado e voltar para `false` após comprovação.
++
++## 2. Boot
++
++Confirmar:
++
++```text
++EVOLUTION_INTELLIGENCE_GOVERNANCE_OK
++ORKIO_BOOT_IDENTITY
++Application startup complete
++```
++
++Não pode existir:
++
++```text
++EVOLUTION_INTELLIGENCE_GOVERNANCE_FAILED
++ORKIO_BOOT_IDENTITY_FAILED
++```
++
++## 3. Migration
++
++Confirmar:
++
++```text
++alembic current = 0039_patch_evolution_intelligence_foundation
++migration_in_sync=true
++```
++
++Verificar tabelas:
++
++```text
++evolution_objectives
++evolution_kpi_targets
++evolution_health_snapshots
++```
++
++## 4. Readonly
++
++Como admin do tenant A:
++
++```http
++GET /api/admin/evolution/intelligence/runtime
++GET /api/admin/evolution/intelligence/inventory
++GET /api/admin/evolution/intelligence/health/preview
++GET /api/admin/evolution/intelligence/diagnostics/preview
++GET /api/admin/evolution/intelligence/priorities/preview
++```
++
++Critérios:
++
++```text
++write_executed=false
++auto_apply_enabled=false
++missing_dimensions inclui product enquanto não houver KPI real
++sem dados nunca aparece como healthy
++```
++
++## 5. Cross-tenant
++
++1. Criar objetivo no tenant A com config write temporariamente habilitado.
++2. Tentar buscar o mesmo ID como tenant B.
++3. Esperado: 404 ou 403.
++4. Tentar vincular meta do tenant B ao objetivo A.
++5. Esperado: bloqueio por serviço e constraint do banco.
++
++## 6. Config write controlado
++
++Habilitar temporariamente:
++
++```env
++EVOLUTION_CONFIG_WRITE_ENABLED=true
++```
++
++Criar no máximo cinco objetivos ativos. O sexto deve retornar:
++
++```text
++409 ACTIVE_OBJECTIVE_LIMIT_REACHED
++```
++
++Confirmar auditoria:
++
++```http
++GET /api/admin/evolution/intelligence/audit
++```
++
++Depois desabilitar novamente.
++
++## 7. Health snapshot controlado
++
++Habilitar temporariamente:
++
++```env
++EVOLUTION_HEALTH_SNAPSHOT_WRITE_ENABLED=true
++```
++
++Capturar com `approved=true`, confirmar hash/release identity e desabilitar.
++
++## 8. Proposal-only
++
++Habilitar temporariamente:
++
++```env
++EVOLUTION_PROPOSAL_GENERATION_ENABLED=true
++```
++
++Confirmar:
++
++```text
++mode=proposal_only
++auto_apply=false
++write_executed=false
++diff_preview=null quando causa raiz não está confirmada
++```
++
++## 9. Estado estacionário
++
++```env
++ALLOW_AUTOMATIC_MIGRATIONS=false
++ALLOW_ALEMBIC_VERSION_NORMALIZATION=false
++EVOLUTION_CONFIG_WRITE_ENABLED=false
++EVOLUTION_HEALTH_SNAPSHOT_WRITE_ENABLED=false
++EVOLUTION_PROPOSAL_GENERATION_ENABLED=false
++EVOLUTION_WRITE_ENABLED=false
++EVOLUTION_AUTO_APPLY_ENABLED=false
++```
++
++Reiniciar staging e confirmar boot.
+--- /dev/null
++++ b/docs/evolution-intelligence-foundation-r15/04_ROLLBACK.md
+@@ -0,0 +1,50 @@
++# Rollback
++
++## Código
++
++Reverter o commit da R1.5:
++
++```bash
++git revert <commit-r15>
++```
++
++## Flags imediatas
++
++```env
++EVOLUTION_CENTER_ENABLED=false
++EVOLUTION_CONFIG_WRITE_ENABLED=false
++EVOLUTION_HEALTH_SNAPSHOT_WRITE_ENABLED=false
++EVOLUTION_PROPOSAL_GENERATION_ENABLED=false
++EVOLUTION_WRITE_ENABLED=false
++EVOLUTION_AUTO_APPLY_ENABLED=false
++```
++
++## Banco
++
++A migration adiciona somente três tabelas novas.
++
++Antes do downgrade:
++
++1. exportar snapshots e objetivos;
++2. confirmar que nenhuma rota ainda usa as tabelas;
++3. executar em staging primeiro.
++
++Downgrade:
++
++```bash
++alembic downgrade 0038_patch_auth_password_reset_tokens
++```
++
++O rollback de código não desfaz automaticamente o banco.
++
++## Critério de abortar staging
++
++Abortar se ocorrer:
++
++- tenant leak;
++- migration inconsistente;
++- startup governance failed;
++- release identity inconsistente;
++- falso verde com fonte ausente;
++- proposal preview com `auto_apply=true`;
++- qualquer escrita com flags desabilitadas.
+--- /dev/null
++++ b/docs/evolution-intelligence-foundation-r15/05_ENV_FLAGS.example
+@@ -0,0 +1,18 @@
++# Evolution Intelligence Foundation R1
++EVOLUTION_CENTER_ENABLED=true
++EVOLUTION_KPI_COLLECTION_ENABLED=true
++
++# Configuration and snapshot writes are OFF by default.
++EVOLUTION_CONFIG_WRITE_ENABLED=false
++EVOLUTION_HEALTH_SNAPSHOT_WRITE_ENABLED=false
++
++# Proposal preview is OFF until staging validation.
++EVOLUTION_PROPOSAL_GENERATION_ENABLED=false
++EVOLUTION_PROPOSAL_ONLY=true
++EVOLUTION_DIFF_PREVIEW_ENABLED=true
++
++# Code/runtime mutation remains forbidden.
++EVOLUTION_WRITE_ENABLED=false
++EVOLUTION_AUTO_APPLY_ENABLED=false
++EVOLUTION_HUMAN_APPROVAL_REQUIRED=true
++EVOLUTION_ROLLBACK_REQUIRED=true
+--- /dev/null
++++ b/docs/evolution-intelligence-foundation-r15/06_VALIDATION_REPORT.md
+@@ -0,0 +1,74 @@
++# Validation report
++
++## Static and unit validation
++
++```text
++python_files_compiled=585
++compile_errors=0
++new_tests=20 passed
++existing_evolution_tests=34 passed, 2 skipped
++full_suite=316 passed, 7 failed, 4 skipped
++new_failures=0
++```
++
++The seven failures are the same pre-existing R1.4 failures:
++
++- 2 AO-01 route diagnostics;
++- 3 DOCIO payload/bridge;
++- 2 document artifact rendering.
++
++## KPI and governance validation
++
++```text
++registry_version=ORKIO-EVOLUTION-KPI-REGISTRY-R1
++registered_kpis=7
++definition_complete=7
++auto_apply_enabled=false
++write_enabled=false
++proposal_only=true
++governance_validator=PASS
++```
++
++## Migration validation
++
++```text
++source_revision=0038_patch_auth_password_reset_tokens
++target_revision=0039_patch_evolution_intelligence_foundation
++sqlite_targeted_upgrade=PASS
++tables_created=3
++tenant_composite_fk=PASS
++global_target_scope_unique=PASS
++objective_name_tenant_unique=PASS
++```
++
++The targeted SQLite upgrade validates the 0038→0039 migration syntax and
++constraints. The historical migration chain contains PostgreSQL-specific SQL,
++so a full SQLite upgrade from revision zero is not a valid test. PostgreSQL
++staging remains mandatory.
++
++## Runtime validation
++
++```text
++app.main_import=PASS
++fastapi_startup=PASS
++evolution_intelligence_status=validated
++runtime_identity_status=validated
++health_http=200
++route_count=268
++
++unsafe_EVOLUTION_WRITE_ENABLED=true
++startup=BLOCKED
++error=EVOLUTION_GOVERNANCE_INVALID:code_write_not_allowed_in_foundation_r1
++```
++
++## Limitations
++
++```text
++real_postgresql=NOT_EXECUTED
++railway=NOT_EXECUTED
++two_tenant_postgresql=NOT_EXECUTED
++live_sse_provider=NOT_EXECUTED
++frontend=NOT_INCLUDED
++deploy=NOT_EXECUTED
++migration_executed_on_real_environment=NO
++```
+--- /dev/null
++++ b/docs/evolution-intelligence-foundation-r15/07_PHASE_B_ROADMAP.md
+@@ -0,0 +1,43 @@
++# Phase B roadmap
++
++## B1 — entregue
++
++- formal KPI registry;
++- objective and target model;
++- health scoring;
++- confidence and coverage;
++- diagnostics preview;
++- priority preview;
++- proposal-only preview;
++- tenant isolation;
++- audit;
++- immutable health snapshots.
++
++## B2 — após PostgreSQL e frontend
++
++- frontend Evolution Center;
++- KPI detail drawer;
++- objective progress;
++- priority queue;
++- audit timeline;
++- historical trend engine;
++- real product and SSE KPIs;
++- confidence calibration with real sample freshness.
++
++## B3 — somente após 30 dias de calibração
++
++- persisted diagnostics;
++- proposal persistence through canonical proposal engine;
++- diff preview after confirmed root cause;
++- impact validation.
++
++## Fora de escopo até nova aprovação
++
++- branch creation;
++- file write;
++- commit;
++- PR;
++- merge;
++- migration execution by an agent;
++- deploy;
++- auto-apply.
+--- /dev/null
++++ b/docs/evolution-intelligence-foundation-r15/CHANGED_FILES.txt
+@@ -0,0 +1,46 @@
++# ORKIO Evolution Intelligence Foundation R1.5 — Changed files
++
++This list is relative to the backend repository root.
++
++## Modified
++
++- `main.py`
++- `scripts/validate_premium_package.py`
++
++## Added
++
++- `alembic/versions/0039_patch_evolution_intelligence_foundation.py`
++- `docs/evolution-intelligence-foundation-r15/00_README_FIRST.md`
++- `docs/evolution-intelligence-foundation-r15/01_SCOPE_AND_ARCHITECTURE.md`
++- `docs/evolution-intelligence-foundation-r15/02_API_CONTRACT.md`
++- `docs/evolution-intelligence-foundation-r15/03_STAGING_SMOKE.md`
++- `docs/evolution-intelligence-foundation-r15/04_ROLLBACK.md`
++- `docs/evolution-intelligence-foundation-r15/05_ENV_FLAGS.example`
++- `docs/evolution-intelligence-foundation-r15/06_VALIDATION_REPORT.md`
++- `docs/evolution-intelligence-foundation-r15/07_PHASE_B_ROADMAP.md`
++- `docs/evolution-intelligence-foundation-r15/VALIDATION_REPORT.json`
++- `evolution/intelligence/__init__.py`
++- `evolution/intelligence/diagnostics.py`
++- `evolution/intelligence/governance.py`
++- `evolution/intelligence/kpi_registry.py`
++- `evolution/intelligence/prioritization.py`
++- `evolution/intelligence/scoring.py`
++- `routes/evolution_intelligence.py`
++- `schemas/evolution_intelligence.py`
++- `scripts/evolution_validate_kpis.py`
++- `services/evolution_intelligence_service.py`
++- `tests/evolution_intelligence/test_diagnostics_priorities.py`
++- `tests/evolution_intelligence/test_governance.py`
++- `tests/evolution_intelligence/test_main_wiring.py`
++- `tests/evolution_intelligence/test_migration_contract.py`
++- `tests/evolution_intelligence/test_registry.py`
++- `tests/evolution_intelligence/test_routes.py`
++- `tests/evolution_intelligence/test_scoring.py`
++- `tests/evolution_intelligence/test_service_tenant_isolation.py`
++
++## Deleted
++
++- None.
++
++Generated package metadata (`PATCH_MANIFEST.json`, `SHA256SUMS.txt`, this file
++and `PREMIUM_R15.diff`) is regenerated after the final validation.
+--- /dev/null
++++ b/docs/evolution-intelligence-foundation-r15/VALIDATION_REPORT.json
+@@ -0,0 +1,62 @@
++{
++  "package": "ORKIO-EVOLUTION-INTELLIGENCE-FOUNDATION-R1.5",
++  "generated_at": "2026-07-21T00:00:00-03:00",
++  "baseline": {
++    "artifact": "ORKIO_BACKEND_PREMIUM_R14_ROOT_UPLOAD.zip",
++    "sha256": "5f75d055884eb67e2508f7740a1bf06a2eeb701ee1e5a0403ac45ccfead103bd",
++    "git_branch": "NOT_PROVEN",
++    "git_commit": "NOT_PROVEN"
++  },
++  "validation": {
++    "python_files_compiled": 585,
++    "compile_errors": 0,
++    "new_tests": {
++      "passed": 20,
++      "failed": 0
++    },
++    "existing_evolution_tests": {
++      "passed": 34,
++      "failed": 0,
++      "skipped": 2
++    },
++    "full_suite": {
++      "passed": 316,
++      "failed": 7,
++      "skipped": 4,
++      "new_failures": 0
++    },
++    "kpi_registry": {
++      "version": "ORKIO-EVOLUTION-KPI-REGISTRY-R1",
++      "count": 7,
++      "complete": 7
++    },
++    "runtime": {
++      "import": "PASS",
++      "startup": "PASS",
++      "route_count": 268,
++      "health_http": 200,
++      "health_status": "degraded_no_real_database"
++    },
++    "unsafe_governance": {
++      "EVOLUTION_WRITE_ENABLED_true": "BLOCKED",
++      "reason": "code_write_not_allowed_in_foundation_r1"
++    },
++    "migration": {
++      "from": "0038_patch_auth_password_reset_tokens",
++      "to": "0039_patch_evolution_intelligence_foundation",
++      "targeted_sqlite_upgrade": "PASS",
++      "postgresql": "NOT_EXECUTED"
++    }
++  },
++  "governance": {
++    "proposal_only": true,
++    "write_enabled": false,
++    "auto_apply": false,
++    "human_approval_required": true,
++    "write_executed": false,
++    "commit_executed": false,
++    "merge_executed": false,
++    "deploy_executed": false,
++    "migration_executed": false
++  }
++}
+--- /dev/null
++++ b/evolution/intelligence/__init__.py
+@@ -0,0 +1,27 @@
++"""Evolution Intelligence Foundation — proposal-only, tenant-isolated."""
++
++from .governance import (
++    EVOLUTION_INTELLIGENCE_VERSION,
++    EvolutionGovernanceError,
++    load_evolution_governance_config,
++    validate_evolution_governance_config,
++)
++from .kpi_registry import (
++    KPI_REGISTRY_VERSION,
++    KPIDefinition,
++    get_kpi_definition,
++    list_kpi_definitions,
++)
++from .scoring import build_project_health_preview
++
++__all__ = [
++    "EVOLUTION_INTELLIGENCE_VERSION",
++    "EvolutionGovernanceError",
++    "KPI_REGISTRY_VERSION",
++    "KPIDefinition",
++    "build_project_health_preview",
++    "get_kpi_definition",
++    "list_kpi_definitions",
++    "load_evolution_governance_config",
++    "validate_evolution_governance_config",
++]
+--- /dev/null
++++ b/evolution/intelligence/diagnostics.py
+@@ -0,0 +1,66 @@
++from __future__ import annotations
++
++from typing import Any, Mapping
++
++from .kpi_registry import get_kpi_definition
++
++
++DIAGNOSTIC_VERSION = "ORKIO-EVOLUTION-DIAGNOSTIC-R1"
++
++
++def build_diagnostic_preview(health: Mapping[str, Any]) -> dict[str, Any]:
++    diagnostics: list[dict[str, Any]] = []
++    for item in health.get("kpis") or []:
++        status = str(item.get("status") or "unknown")
++        if status == "healthy" or status == "disabled":
++            continue
++        code = str(item.get("code") or "")
++        definition = get_kpi_definition(code)
++        if definition is None:
++            continue
++        confidence = float(item.get("confidence") or 0.0)
++        if confidence < 0.50:
++            action = "collect_more_evidence"
++        elif confidence < 0.75:
++            action = "observability_proposal_only"
++        elif confidence < 0.85:
++            action = "diagnosis_allowed"
++        else:
++            action = "technical_proposal_allowed"
++
++        diagnostics.append(
++            {
++                "diagnostic_version": DIAGNOSTIC_VERSION,
++                "kpi": code,
++                "status": status,
++                "evidence": [
++                    {
++                        "classification": "evidência confirmada",
++                        "fact": str(item.get("summary") or "Métrica calculada."),
++                        "source": source,
++                    }
++                    for source in (item.get("source") or [])
++                ],
++                "hypotheses": [
++                    {
++                        "classification": "hipótese prioritária",
++                        "cause": hypothesis,
++                        "confidence": round(max(0.10, confidence * 0.70), 4),
++                    }
++                    for hypothesis in definition.diagnostic_playbook
++                ],
++                "root_cause_status": "not_confirmed",
++                "confidence": confidence,
++                "recommended_action": action,
++                "allowed_actions": list(definition.allowed_actions),
++                "forbidden_actions": list(definition.forbidden_actions),
++                "write_executed": False,
++            }
++        )
++    return {
++        "diagnostic_version": DIAGNOSTIC_VERSION,
++        "org_slug": str(health.get("org_slug") or ""),
++        "count": len(diagnostics),
++        "items": diagnostics,
++        "write_executed": False,
++    }
+--- /dev/null
++++ b/evolution/intelligence/governance.py
+@@ -0,0 +1,72 @@
++from __future__ import annotations
++
++import os
++from typing import Any
++
++
++EVOLUTION_INTELLIGENCE_VERSION = "ORKIO-EVOLUTION-INTELLIGENCE-R1"
++
++
++class EvolutionGovernanceError(RuntimeError):
++    pass
++
++
++def _flag(name: str, default: bool) -> bool:
++    raw = os.getenv(name)
++    if raw is None:
++        return default
++    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
++
++
++def load_evolution_governance_config() -> dict[str, Any]:
++    return {
++        "version": EVOLUTION_INTELLIGENCE_VERSION,
++        "environment": str(os.getenv("APP_ENV") or "unknown").strip().lower(),
++        "center_enabled": _flag("EVOLUTION_CENTER_ENABLED", True),
++        "kpi_collection_enabled": _flag("EVOLUTION_KPI_COLLECTION_ENABLED", True),
++        "config_write_enabled": _flag("EVOLUTION_CONFIG_WRITE_ENABLED", False),
++        "health_snapshot_write_enabled": _flag(
++            "EVOLUTION_HEALTH_SNAPSHOT_WRITE_ENABLED",
++            False,
++        ),
++        "proposal_generation_enabled": _flag(
++            "EVOLUTION_PROPOSAL_GENERATION_ENABLED",
++            False,
++        ),
++        "proposal_only": _flag("EVOLUTION_PROPOSAL_ONLY", True),
++        "diff_preview_enabled": _flag("EVOLUTION_DIFF_PREVIEW_ENABLED", True),
++        "write_enabled": _flag("EVOLUTION_WRITE_ENABLED", False),
++        "auto_apply_enabled": _flag("EVOLUTION_AUTO_APPLY_ENABLED", False),
++        "human_approval_required": _flag(
++            "EVOLUTION_HUMAN_APPROVAL_REQUIRED",
++            True,
++        ),
++        "rollback_required": _flag("EVOLUTION_ROLLBACK_REQUIRED", True),
++    }
++
++
++def validate_evolution_governance_config(
++    config: dict[str, Any] | None = None,
++) -> dict[str, Any]:
++    cfg = dict(config or load_evolution_governance_config())
++    violations: list[str] = []
++    if cfg["auto_apply_enabled"] and not cfg["write_enabled"]:
++        violations.append("auto_apply_requires_write_enabled")
++    if cfg["auto_apply_enabled"]:
++        violations.append("auto_apply_not_allowed_in_foundation_r1")
++    if cfg["write_enabled"]:
++        violations.append("code_write_not_allowed_in_foundation_r1")
++    if cfg["environment"] in {"production", "prod"}:
++        if not cfg["human_approval_required"]:
++            violations.append("production_requires_human_approval")
++        if not cfg["proposal_only"]:
++            violations.append("production_requires_proposal_only")
++        if not cfg["rollback_required"]:
++            violations.append("production_requires_rollback")
++    if violations:
++        raise EvolutionGovernanceError(
++            "EVOLUTION_GOVERNANCE_INVALID:" + ",".join(sorted(set(violations)))
++        )
++    cfg["valid"] = True
++    cfg["violations"] = []
++    return cfg
+--- /dev/null
++++ b/evolution/intelligence/kpi_registry.py
+@@ -0,0 +1,325 @@
++from __future__ import annotations
++
++from dataclasses import asdict, dataclass
++from typing import Any, Literal, Optional
++
++
++KPI_REGISTRY_VERSION = "ORKIO-EVOLUTION-KPI-REGISTRY-R1"
++
++KPIDirection = Literal["higher_is_better", "lower_is_better"]
++KPIDimension = Literal[
++    "technical",
++    "ai_runtime",
++    "product",
++    "experience",
++    "governance",
++    "evolution",
++]
++
++PROJECT_HEALTH_WEIGHTS: dict[str, float] = {
++    "technical": 0.25,
++    "ai_runtime": 0.20,
++    "product": 0.15,
++    "experience": 0.15,
++    "governance": 0.15,
++    "evolution": 0.10,
++}
++
++REQUIRED_KPI_FIELDS = (
++    "code",
++    "name",
++    "description",
++    "dimension",
++    "unit",
++    "direction",
++    "source",
++    "collector",
++    "aggregation",
++    "window",
++    "minimum_sample_size",
++    "target",
++    "warning_threshold",
++    "critical_threshold",
++    "weight",
++    "enabled",
++    "proposal_enabled",
++    "auto_apply_enabled",
++)
++
++
++@dataclass(frozen=True)
++class KPIDefinition:
++    code: str
++    name: str
++    description: str
++    dimension: KPIDimension
++    unit: str
++    direction: KPIDirection
++    source: tuple[str, ...]
++    collector: str
++    aggregation: str
++    window: str
++    minimum_sample_size: int
++    target: float
++    warning_threshold: float
++    critical_threshold: float
++    weight: float
++    enabled: bool = True
++    proposal_enabled: bool = True
++    auto_apply_enabled: bool = False
++    owner: str = "ORKIO Engineering"
++    data_freshness_limit_seconds: int = 86_400
++    confidence_method: str = "sample_freshness_source_consistency_v1"
++    business_impact: int = 70
++    technical_impact: int = 70
++    failure_domain: tuple[str, ...] = ()
++    allowed_actions: tuple[str, ...] = (
++        "generate_diagnostic",
++        "recommend_instrumentation",
++        "propose_patch",
++    )
++    forbidden_actions: tuple[str, ...] = (
++        "increase_timeout_without_root_cause",
++        "silence_errors",
++        "auto_apply",
++    )
++    diagnostic_playbook: tuple[str, ...] = ()
++    blocker: bool = False
++    definition_version: str = KPI_REGISTRY_VERSION
++
++    def definition_status(self) -> str:
++        payload = asdict(self)
++        missing = []
++        for field in REQUIRED_KPI_FIELDS:
++            value = payload.get(field)
++            if value is None or value == "" or value == () or value == []:
++                missing.append(field)
++        if self.minimum_sample_size < 0 or not 0 <= self.weight <= 1:
++            missing.append("invalid_numeric_contract")
++        if self.auto_apply_enabled:
++            missing.append("auto_apply_must_be_false")
++        return "complete" if not missing else "definition_incomplete"
++
++    def to_dict(self) -> dict[str, Any]:
++        payload = asdict(self)
++        payload["source"] = list(self.source)
++        payload["failure_domain"] = list(self.failure_domain)
++        payload["allowed_actions"] = list(self.allowed_actions)
++        payload["forbidden_actions"] = list(self.forbidden_actions)
++        payload["diagnostic_playbook"] = list(self.diagnostic_playbook)
++        payload["definition_status"] = self.definition_status()
++        return payload
++
++
++_DEFINITIONS: tuple[KPIDefinition, ...] = (
++    KPIDefinition(
++        code="security_governance",
++        name="Segurança e governança",
++        description="Avalia controles fail-closed e flags de mutação sem expor valores sensíveis.",
++        dimension="governance",
++        unit="score",
++        direction="higher_is_better",
++        source=("runtime_control_flags",),
++        collector="_security_metric",
++        aggregation="policy_check_ratio",
++        window="current_runtime",
++        minimum_sample_size=10,
++        target=100,
++        warning_threshold=92,
++        critical_threshold=80,
++        weight=0.35,
++        business_impact=100,
++        technical_impact=100,
++        failure_domain=("security", "governance", "runtime"),
++        diagnostic_playbook=(
++            "confirmar flags de mutação",
++            "confirmar human approval",
++            "confirmar tenant isolation",
++            "confirmar release identity",
++        ),
++        blocker=True,
++    ),
++    KPIDefinition(
++        code="operational_reliability",
++        name="Confiabilidade operacional",
++        description="Percentual de execuções terminais concluídas com sucesso.",
++        dimension="technical",
++        unit="percent",
++        direction="higher_is_better",
++        source=("admin_evolution_executions",),
++        collector="_reliability_metric",
++        aggregation="success_ratio",
++        window="30d",
++        minimum_sample_size=20,
++        target=99,
++        warning_threshold=95,
++        critical_threshold=90,
++        weight=0.55,
++        business_impact=90,
++        technical_impact=95,
++        failure_domain=("backend", "database", "infrastructure", "provider"),
++        diagnostic_playbook=(
++            "separar falhas por status terminal",
++            "correlacionar request_id e release_id",
++            "verificar migrations e pool",
++            "não aumentar timeout sem causa raiz",
++        ),
++    ),
++    KPIDefinition(
++        code="governed_autoevolution",
++        name="Autoevolução governada",
++        description="Verifica aprovação humana, rollback e ausência de execução real não autorizada.",
++        dimension="evolution",
++        unit="score",
++        direction="higher_is_better",
++        source=("admin_evolution_proposals", "admin_evolution_executions"),
++        collector="_autoevolution_metric",
++        aggregation="governance_check_ratio",
++        window="current_queue_and_30d_executions",
++        minimum_sample_size=5,
++        target=100,
++        warning_threshold=95,
++        critical_threshold=85,
++        weight=1.0,
++        business_impact=95,
++        technical_impact=95,
++        failure_domain=("governance", "repository", "deployment"),
++        diagnostic_playbook=(
++            "confirmar proposal_only",
++            "confirmar write flags false",
++            "confirmar rollback plan",
++            "confirmar approval receipt",
++        ),
++        blocker=True,
++    ),
++    KPIDefinition(
++        code="agent_knowledge",
++        name="Conhecimento dos agentes",
++        description="Qualidade ponderada das avaliações reais de capacidade dos agentes.",
++        dimension="ai_runtime",
++        unit="score",
++        direction="higher_is_better",
++        source=("agent_capability_evaluations", "agent_knowledge"),
++        collector="_agent_knowledge_metric",
++        aggregation="confidence_weighted_mean",
++        window="90d",
++        minimum_sample_size=10,
++        target=90,
++        warning_threshold=75,
++        critical_threshold=60,
++        weight=1.0,
++        business_impact=75,
++        technical_impact=70,
++        failure_domain=("agent_runtime", "knowledge", "evaluation"),
++        diagnostic_playbook=(
++            "verificar cobertura por capability",
++            "separar ausência de dados de falha",
++            "confirmar evidência não sensível",
++        ),
++    ),
++    KPIDefinition(
++        code="core_modules",
++        name="Módulos principais",
++        description="Completude estrutural das configurações essenciais dos agentes.",
++        dimension="technical",
++        unit="score",
++        direction="higher_is_better",
++        source=("agents",),
++        collector="_core_modules_metric",
++        aggregation="configuration_check_ratio",
++        window="current_configuration",
++        minimum_sample_size=3,
++        target=95,
++        warning_threshold=85,
++        critical_threshold=70,
++        weight=0.45,
++        business_impact=70,
++        technical_impact=85,
++        failure_domain=("configuration", "agent_runtime"),
++        diagnostic_playbook=(
++            "identificar campos ausentes por agente",
++            "confirmar provider e model",
++            "confirmar tool policy",
++        ),
++    ),
++    KPIDefinition(
++        code="evidence_observability",
++        name="Evidência e observabilidade",
++        description="Cobertura de request_id, ação, status, latência e execução rastreável.",
++        dimension="governance",
++        unit="score",
++        direction="higher_is_better",
++        source=("audit_logs", "admin_evolution_executions"),
++        collector="_evidence_metric",
++        aggregation="evidence_field_coverage",
++        window="24h_audit_and_30d_executions",
++        minimum_sample_size=30,
++        target=98,
++        warning_threshold=90,
++        critical_threshold=75,
++        weight=0.30,
++        business_impact=80,
++        technical_impact=90,
++        failure_domain=("observability", "audit", "backend"),
++        diagnostic_playbook=(
++            "localizar primeiro evento sem request_id",
++            "correlacionar action/path/status",
++            "confirmar evento terminal",
++        ),
++    ),
++    KPIDefinition(
++        code="premium_experience",
++        name="Experiência premium",
++        description="Completude dos elementos de apresentação e configuração premium dos agentes.",
++        dimension="experience",
++        unit="score",
++        direction="higher_is_better",
++        source=("agents",),
++        collector="_premium_experience_metric",
++        aggregation="configuration_check_ratio",
++        window="current_configuration",
++        minimum_sample_size=3,
++        target=90,
++        warning_threshold=75,
++        critical_threshold=60,
++        weight=1.0,
++        business_impact=85,
++        technical_impact=55,
++        failure_domain=("frontend", "product", "agent_configuration"),
++        diagnostic_playbook=(
++            "identificar descrição, voz, avatar ou modelo ausente",
++            "validar impacto real na jornada",
++        ),
++    ),
++)
++
++_BY_CODE = {definition.code: definition for definition in _DEFINITIONS}
++
++
++def list_kpi_definitions(*, enabled_only: bool = False) -> list[KPIDefinition]:
++    values = list(_DEFINITIONS)
++    if enabled_only:
++        values = [definition for definition in values if definition.enabled]
++    return values
++
++
++def get_kpi_definition(code: str) -> Optional[KPIDefinition]:
++    return _BY_CODE.get(str(code or "").strip())
++
++
++def registry_payload() -> dict[str, Any]:
++    definitions = [definition.to_dict() for definition in _DEFINITIONS]
++    incomplete = [
++        definition["code"]
++        for definition in definitions
++        if definition["definition_status"] != "complete"
++    ]
++    return {
++        "registry_version": KPI_REGISTRY_VERSION,
++        "definitions": definitions,
++        "count": len(definitions),
++        "definition_complete_count": len(definitions) - len(incomplete),
++        "definition_incomplete": incomplete,
++        "project_health_weights": dict(PROJECT_HEALTH_WEIGHTS),
++        "auto_apply_enabled": False,
++    }
+--- /dev/null
++++ b/evolution/intelligence/prioritization.py
+@@ -0,0 +1,98 @@
++from __future__ import annotations
++
++from typing import Any, Mapping
++
++from .kpi_registry import get_kpi_definition
++
++
++PRIORITIZATION_VERSION = "ORKIO-EVOLUTION-PRIORITY-R1"
++
++_STATUS_SEVERITY = {
++    "blocker": 100,
++    "critical": 95,
++    "warning": 70,
++    "recovering": 45,
++    "stale": 35,
++    "insufficient_data": 30,
++    "unknown": 20,
++    "healthy": 0,
++    "disabled": 0,
++}
++
++
++def _priority_class(score: float, *, blocker: bool) -> str:
++    if blocker:
++        return "P0"
++    if score >= 90:
++        return "P0"
++    if score >= 75:
++        return "P1"
++    if score >= 50:
++        return "P2"
++    if score >= 25:
++        return "P3"
++    return "observation"
++
++
++def build_priority_preview(
++    health: Mapping[str, Any],
++    *,
++    objective_priority: int = 80,
++) -> dict[str, Any]:
++    items: list[dict[str, Any]] = []
++    for metric in health.get("kpis") or []:
++        status = str(metric.get("status") or "unknown")
++        if status in {"healthy", "disabled"}:
++            continue
++        definition = get_kpi_definition(str(metric.get("code") or ""))
++        if definition is None:
++            continue
++        confidence = max(0.0, min(1.0, float(metric.get("confidence") or 0.0)))
++        severity = _STATUS_SEVERITY.get(status, 20)
++        business_impact = int(definition.business_impact)
++        user_impact = round((definition.business_impact + definition.technical_impact) / 2)
++        strategic_alignment = max(0, min(100, int(objective_priority)))
++        trend_deterioration = 0
++        fix_feasibility = 60
++        score = (
++            severity * 0.25
++            + business_impact * 0.20
++            + user_impact * 0.15
++            + strategic_alignment * 0.15
++            + confidence * 100 * 0.10
++            + trend_deterioration * 0.10
++            + fix_feasibility * 0.05
++        )
++        blocker = bool(metric.get("blocker")) and status == "critical"
++        if confidence < 0.50:
++            score = min(score, 24.0)
++        items.append(
++            {
++                "priority_version": PRIORITIZATION_VERSION,
++                "id": f"priority:{metric['code']}",
++                "kpi_code": metric["code"],
++                "severity": severity,
++                "business_impact": business_impact,
++                "user_impact": user_impact,
++                "strategic_alignment": strategic_alignment,
++                "confidence": round(confidence * 100, 2),
++                "trend_deterioration": trend_deterioration,
++                "trend_status": "unavailable",
++                "fix_feasibility": fix_feasibility,
++                "priority_score": round(score, 2),
++                "priority_class": _priority_class(score, blocker=blocker),
++                "blocker": blocker,
++                "production_go": not blocker,
++                "write_executed": False,
++            }
++        )
++    items.sort(key=lambda item: (-int(item["blocker"]), -float(item["priority_score"])))
++    return {
++        "priority_version": PRIORITIZATION_VERSION,
++        "org_slug": str(health.get("org_slug") or ""),
++        "count": len(items),
++        "items": items,
++        "production_go": bool(health.get("production_go", False))
++        and not any(item["blocker"] for item in items),
++        "write_executed": False,
++    }
+--- /dev/null
++++ b/evolution/intelligence/scoring.py
+@@ -0,0 +1,235 @@
++from __future__ import annotations
++
++from typing import Any, Mapping, Optional
++
++from .kpi_registry import (
++    PROJECT_HEALTH_WEIGHTS,
++    KPIDefinition,
++    get_kpi_definition,
++)
++
++
++HEALTH_FORMULA_VERSION = "ORKIO-EVOLUTION-HEALTH-R1"
++KPI_STATUSES = {
++    "unknown",
++    "insufficient_data",
++    "healthy",
++    "warning",
++    "critical",
++    "recovering",
++    "stale",
++    "disabled",
++}
++
++
++def _clamp(value: float, low: float = 0.0, high: float = 100.0) -> float:
++    return max(low, min(high, float(value)))
++
++
++def _target_values(
++    definition: KPIDefinition,
++    override: Optional[Mapping[str, Any]],
++) -> tuple[float, float, float, float, int, bool]:
++    data = dict(override or {})
++    return (
++        float(data.get("target_value", definition.target)),
++        float(data.get("warning_threshold", definition.warning_threshold)),
++        float(data.get("critical_threshold", definition.critical_threshold)),
++        float(data.get("weight", definition.weight)),
++        int(data.get("minimum_sample_size", definition.minimum_sample_size)),
++        bool(data.get("enabled", definition.enabled)),
++    )
++
++
++def evaluate_kpi(
++    metric: Mapping[str, Any],
++    definition: KPIDefinition,
++    *,
++    target_override: Optional[Mapping[str, Any]] = None,
++) -> dict[str, Any]:
++    target, warning, critical, weight, minimum_sample_size, enabled = _target_values(
++        definition,
++        target_override,
++    )
++    raw_score = metric.get("score")
++    confidence = _clamp(float(metric.get("confidence") or 0)) / 100.0
++    sample_size = max(0, int(metric.get("sample_count") or 0))
++    source_status = str(metric.get("signal_status") or "unknown").strip().lower()
++    missing_sources = list(metric.get("missing_sources") or [])
++
++    if not enabled:
++        status = "disabled"
++    elif raw_score is None or source_status == "source_unavailable":
++        status = "unknown"
++    elif sample_size < minimum_sample_size or confidence < 0.50:
++        status = "insufficient_data"
++    else:
++        score = _clamp(float(raw_score))
++        if definition.direction == "higher_is_better":
++            if score >= warning:
++                status = "healthy"
++            elif score >= critical:
++                status = "warning"
++            else:
++                status = "critical"
++        else:
++            if score <= warning:
++                status = "healthy"
++            elif score <= critical:
++                status = "warning"
++            else:
++                status = "critical"
++
++    normalized_score = None if raw_score is None else round(_clamp(float(raw_score)), 2)
++    return {
++        "code": definition.code,
++        "name": definition.name,
++        "dimension": definition.dimension,
++        "value": normalized_score,
++        "value_semantics": "normalized_score",
++        "score": normalized_score,
++        "confidence": round(confidence, 4),
++        "sample_size": sample_size,
++        "minimum_sample_size": minimum_sample_size,
++        "status": status,
++        "target": target,
++        "warning_threshold": warning,
++        "critical_threshold": critical,
++        "weight": weight,
++        "source": list(metric.get("source") or definition.source),
++        "source_status": source_status,
++        "missing_sources": missing_sources,
++        "summary": str(metric.get("summary") or ""),
++        "formula_version": str(metric.get("formula_version") or ""),
++        "definition_version": definition.definition_version,
++        "proposal_enabled": bool(definition.proposal_enabled),
++        "auto_apply_enabled": False,
++        "blocker": bool(definition.blocker),
++    }
++
++
++def _weighted(values: list[tuple[float, float]]) -> Optional[float]:
++    total_weight = sum(max(0.0, weight) for _, weight in values)
++    if total_weight <= 0:
++        return None
++    return sum(value * max(0.0, weight) for value, weight in values) / total_weight
++
++
++def build_project_health_preview(
++    current_snapshot: Mapping[str, Any],
++    *,
++    target_overrides: Optional[Mapping[str, Mapping[str, Any]]] = None,
++) -> dict[str, Any]:
++    overrides = target_overrides or {}
++    metrics_by_code = {
++        str(metric.get("key") or ""): metric
++        for metric in current_snapshot.get("metrics") or []
++    }
++
++    evaluated: list[dict[str, Any]] = []
++    missing_kpis: list[str] = []
++    blocker_kpis: list[str] = []
++    by_dimension: dict[str, list[dict[str, Any]]] = {
++        key: [] for key in PROJECT_HEALTH_WEIGHTS
++    }
++
++    for code, metric in metrics_by_code.items():
++        definition = get_kpi_definition(code)
++        if definition is None:
++            missing_kpis.append(code)
++            continue
++        item = evaluate_kpi(
++            metric,
++            definition,
++            target_override=overrides.get(code),
++        )
++        evaluated.append(item)
++        by_dimension[definition.dimension].append(item)
++        if item["status"] in {"unknown", "insufficient_data", "stale"}:
++            missing_kpis.append(code)
++        if item["blocker"] and item["status"] == "critical":
++            blocker_kpis.append(code)
++
++    dimensions: dict[str, dict[str, Any]] = {}
++    missing_dimensions: list[str] = []
++    dimension_values: list[tuple[float, float]] = []
++    confidence_values: list[tuple[float, float]] = []
++
++    for dimension, project_weight in PROJECT_HEALTH_WEIGHTS.items():
++        items = by_dimension.get(dimension) or []
++        usable = [
++            item
++            for item in items
++            if item["score"] is not None
++            and item["status"] not in {"unknown", "disabled"}
++        ]
++        score_values = [
++            (float(item["score"]), float(item["weight"]) * max(item["confidence"], 0.01))
++            for item in usable
++        ]
++        confidence_components = [
++            (float(item["confidence"]), float(item["weight"]))
++            for item in usable
++        ]
++        score = _weighted(score_values)
++        confidence = _weighted(confidence_components)
++        if score is None:
++            missing_dimensions.append(dimension)
++        else:
++            dimension_values.append((score, project_weight))
++            confidence_values.append((float(confidence or 0.0), project_weight))
++        dimensions[dimension] = {
++            "score": None if score is None else round(score, 2),
++            "confidence": 0.0 if confidence is None else round(confidence, 4),
++            "weight": project_weight,
++            "kpi_count": len(items),
++            "usable_kpi_count": len(usable),
++            "missing_kpis": [
++                item["code"]
++                for item in items
++                if item["status"] in {"unknown", "insufficient_data", "stale"}
++            ],
++        }
++
++    overall_score = _weighted(dimension_values)
++    overall_confidence = _weighted(confidence_values)
++    covered_weight = sum(
++        PROJECT_HEALTH_WEIGHTS[dimension]
++        for dimension in PROJECT_HEALTH_WEIGHTS
++        if dimension not in missing_dimensions
++    )
++    coverage = round(covered_weight / sum(PROJECT_HEALTH_WEIGHTS.values()), 4)
++
++    if blocker_kpis:
++        status = "blocker"
++        production_go = False
++    elif overall_score is None:
++        status = "unknown"
++        production_go = False
++    elif overall_score >= 90:
++        status = "healthy"
++        production_go = True
++    elif overall_score >= 75:
++        status = "warning"
++        production_go = True
++    else:
++        status = "critical"
++        production_go = False
++
++    return {
++        "formula_version": HEALTH_FORMULA_VERSION,
++        "org_slug": str(current_snapshot.get("org_slug") or ""),
++        "generated_at": int(current_snapshot.get("generated_at") or 0),
++        "score": None if overall_score is None else round(overall_score, 2),
++        "confidence": 0.0 if overall_confidence is None else round(overall_confidence, 4),
++        "coverage": coverage,
++        "status": status,
++        "production_go": production_go,
++        "dimensions": dimensions,
++        "kpis": evaluated,
++        "missing_kpis": sorted(set(missing_kpis)),
++        "missing_dimensions": missing_dimensions,
++        "blocker_kpis": sorted(set(blocker_kpis)),
++        "write_executed": False,
++        "auto_apply_enabled": False,
++    }
+--- a/main.py
++++ b/main.py
+@@ -760,6 +760,14 @@
+ from .routes.evolution_signals import (
+     EvolutionSignalsRouterDeps,
+     build_evolution_signals_router,
++)
++from .routes.evolution_intelligence import (
++    EvolutionIntelligenceRouterDeps,
++    build_evolution_intelligence_router,
++)
++from .evolution.intelligence.governance import (
++    load_evolution_governance_config,
++    validate_evolution_governance_config,
+ )
+ from .services.access_grant_service import (
+     access_gate_auth_required,
+@@ -5235,6 +5243,33 @@
+     app.state.runtime_identity_status = "validated"
+ 
+ 
++@app.on_event("startup")
++def _startup_evolution_intelligence_governance_r1():
++    """Fail closed on unsafe Evolution Intelligence configuration."""
++    app.state.evolution_intelligence_status = "initializing"
++    try:
++        config = validate_evolution_governance_config(
++            load_evolution_governance_config()
++        )
++    except Exception:
++        app.state.evolution_intelligence_status = "failed"
++        logger.exception("EVOLUTION_INTELLIGENCE_GOVERNANCE_FAILED")
++        raise
++    app.state.evolution_intelligence_config = config
++    app.state.evolution_intelligence_status = "validated"
++    logger.info(
++        "EVOLUTION_INTELLIGENCE_GOVERNANCE_OK version=%s center_enabled=%s "
++        "proposal_only=%s write_enabled=%s auto_apply_enabled=%s "
++        "human_approval_required=%s",
++        config["version"],
++        config["center_enabled"],
++        config["proposal_only"],
++        config["write_enabled"],
++        config["auto_apply_enabled"],
++        config["human_approval_required"],
++    )
++
++
+ 
+ 
+ # AO-13_PTE_ADMIN_EVOLUTION_PERSISTENCE
+@@ -6904,6 +6939,19 @@
+         )
+     )
+ )
++app.include_router(
++    build_evolution_intelligence_router(
++        EvolutionIntelligenceRouterDeps(
++            get_db=get_db,
++            require_admin_access=require_admin_access,
++            get_request_org=get_request_org,
++            new_id=new_id,
++            now_ts=now_ts,
++            actor_reference=actor_reference,
++            logger=logger,
++        )
++    )
++)
+ try:
+     _evolution_signals_module = sys.modules.get(build_evolution_signals_router.__module__)
+     logger.info(
+--- /dev/null
++++ b/routes/evolution_intelligence.py
+@@ -0,0 +1,687 @@
++from __future__ import annotations
++
++import json
++from dataclasses import dataclass
++from typing import Any, Callable, Optional
++
++from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
++from sqlalchemy import text
++from sqlalchemy.orm import Session
++
++from app.evolution.intelligence.governance import (
++    load_evolution_governance_config,
++    validate_evolution_governance_config,
++)
++from app.evolution.intelligence.kpi_registry import get_kpi_definition
++from app.schemas.evolution_intelligence import (
++    DiagnosticPreviewOut,
++    HealthPreviewOut,
++    HealthSnapshotCaptureIn,
++    HealthSnapshotListOut,
++    KPIRegistryOut,
++    KPITargetUpsertIn,
++    ObjectiveCreateIn,
++    ObjectiveListOut,
++    ObjectiveOut,
++    ObjectiveUpdateIn,
++    PriorityPreviewOut,
++    ProposalPreviewIn,
++    ProposalPreviewOut,
++)
++from app.services.evolution_intelligence_service import (
++    build_diagnostics_preview,
++    build_health_preview,
++    build_inventory,
++    build_priorities_preview,
++    build_proposal_previews,
++    capture_health_snapshot,
++    create_objective,
++    foundation_schema_status,
++    get_objective,
++    list_evolution_audit_events,
++    list_health_snapshots,
++    list_objectives,
++    update_objective,
++    upsert_target,
++)
++
++
++@dataclass(frozen=True)
++class EvolutionIntelligenceRouterDeps:
++    get_db: Callable[..., Any]
++    require_admin_access: Callable[..., Any]
++    get_request_org: Callable[[dict[str, Any], Optional[str]], str]
++    new_id: Callable[[], str]
++    now_ts: Callable[[], int]
++    actor_reference: Callable[[Any], str]
++    logger: Any
++
++
++def _actor_ref(admin: Any, deps: EvolutionIntelligenceRouterDeps) -> str:
++    if not isinstance(admin, dict):
++        return "actor:unknown"
++    value = (
++        admin.get("id")
++        or admin.get("user_id")
++        or admin.get("email")
++        or admin.get("sub")
++    )
++    return deps.actor_reference(value)
++
++
++def _governance() -> dict[str, Any]:
++    try:
++        return validate_evolution_governance_config(
++            load_evolution_governance_config()
++        )
++    except Exception as exc:
++        raise HTTPException(
++            status_code=503,
++            detail={
++                "code": "EVOLUTION_GOVERNANCE_INVALID",
++                "error_type": exc.__class__.__name__,
++            },
++        ) from exc
++
++
++def _ensure_center_enabled() -> dict[str, Any]:
++    cfg = _governance()
++    if not cfg["center_enabled"]:
++        raise HTTPException(status_code=404, detail="EVOLUTION_CENTER_DISABLED")
++    return cfg
++
++
++def _require_config_write(payload_approved: bool) -> dict[str, Any]:
++    cfg = _ensure_center_enabled()
++    if not payload_approved:
++        raise HTTPException(status_code=409, detail="HUMAN_APPROVAL_REQUIRED")
++    if not cfg["config_write_enabled"]:
++        raise HTTPException(
++            status_code=403,
++            detail="EVOLUTION_CONFIG_WRITE_DISABLED",
++        )
++    if not cfg["human_approval_required"]:
++        raise HTTPException(status_code=503, detail="EVOLUTION_GOVERNANCE_INVALID")
++    return cfg
++
++
++def _write_audit(
++    db: Session,
++    *,
++    deps: EvolutionIntelligenceRouterDeps,
++    request: Request,
++    org_slug: str,
++    actor_ref_value: str,
++    action: str,
++    meta: dict[str, Any],
++) -> None:
++    db.execute(
++        text(
++            """
++            INSERT INTO audit_logs (
++                id, org_slug, user_id, action, meta, request_id,
++                path, status_code, latency_ms, created_at
++            ) VALUES (
++                :id, :org_slug, :user_id, :action, :meta, :request_id,
++                :path, 200, 0, :created_at
++            )
++            """
++        ),
++        {
++            "id": deps.new_id(),
++            "org_slug": org_slug,
++            "user_id": actor_ref_value,
++            "action": action,
++            "meta": json.dumps(meta, ensure_ascii=False, sort_keys=True),
++            "request_id": (
++                request.headers.get("x-request-id")
++                or request.headers.get("x-railway-request-id")
++                or deps.new_id()
++            ),
++            "path": request.url.path,
++            "created_at": deps.now_ts(),
++        },
++    )
++
++
++def build_evolution_intelligence_router(
++    deps: EvolutionIntelligenceRouterDeps,
++) -> APIRouter:
++    router = APIRouter(
++        prefix="/api/admin/evolution/intelligence",
++        tags=["admin-evolution-intelligence"],
++    )
++
++    @router.get("/runtime")
++    def evolution_runtime(
++        x_org_slug: Optional[str] = Header(default=None),
++        admin=Depends(deps.require_admin_access),
++        db: Session = Depends(deps.get_db),
++    ):
++        cfg = _ensure_center_enabled()
++        org = deps.get_request_org(admin, x_org_slug)
++        return {
++            "org_slug": org,
++            "governance": cfg,
++            "schema": foundation_schema_status(db),
++            "write_executed": False,
++        }
++
++    @router.get("/inventory", response_model=KPIRegistryOut)
++    def inventory(
++        objective_id: Optional[str] = Query(default=None, max_length=96),
++        x_org_slug: Optional[str] = Header(default=None),
++        admin=Depends(deps.require_admin_access),
++        db: Session = Depends(deps.get_db),
++    ):
++        cfg = _ensure_center_enabled()
++        if not cfg["kpi_collection_enabled"]:
++            raise HTTPException(
++                status_code=403,
++                detail="EVOLUTION_KPI_COLLECTION_DISABLED",
++            )
++        org = deps.get_request_org(admin, x_org_slug)
++        return KPIRegistryOut(
++            **build_inventory(
++                db,
++                org_slug=org,
++                now_ts=deps.now_ts(),
++                objective_id=objective_id,
++            )
++        )
++
++    @router.get("/objectives", response_model=ObjectiveListOut)
++    def objectives(
++        status: Optional[str] = Query(default=None, max_length=24),
++        x_org_slug: Optional[str] = Header(default=None),
++        admin=Depends(deps.require_admin_access),
++        db: Session = Depends(deps.get_db),
++    ):
++        _ensure_center_enabled()
++        org = deps.get_request_org(admin, x_org_slug)
++        items = list_objectives(db, org_slug=org, status=status)
++        return ObjectiveListOut(
++            org_slug=org,
++            count=len(items),
++            items=[ObjectiveOut(**item, write_executed=False) for item in items],
++            write_executed=False,
++        )
++
++    @router.get("/objectives/{objective_id}", response_model=ObjectiveOut)
++    def objective_detail(
++        objective_id: str,
++        x_org_slug: Optional[str] = Header(default=None),
++        admin=Depends(deps.require_admin_access),
++        db: Session = Depends(deps.get_db),
++    ):
++        _ensure_center_enabled()
++        org = deps.get_request_org(admin, x_org_slug)
++        item = get_objective(db, org_slug=org, objective_id=objective_id)
++        if item is None:
++            raise HTTPException(status_code=404, detail="OBJECTIVE_NOT_FOUND")
++        return ObjectiveOut(**item, write_executed=False)
++
++    @router.post("/objectives", response_model=ObjectiveOut)
++    def objective_create(
++        payload: ObjectiveCreateIn,
++        request: Request,
++        x_org_slug: Optional[str] = Header(default=None),
++        admin=Depends(deps.require_admin_access),
++        db: Session = Depends(deps.get_db),
++    ):
++        _require_config_write(payload.approved)
++        org = deps.get_request_org(admin, x_org_slug)
++        actor = _actor_ref(admin, deps)
++        objective_id = f"eobj_{deps.new_id()[:20]}"
++        try:
++            item = create_objective(
++                db,
++                org_slug=org,
++                objective_id=objective_id,
++                payload=payload.model_dump(),
++                actor_ref=actor,
++                now_ts=deps.now_ts(),
++            )
++            _write_audit(
++                db,
++                deps=deps,
++                request=request,
++                org_slug=org,
++                actor_ref_value=actor,
++                action="evolution_intelligence.objective.created",
++                meta={
++                    "objective_id": objective_id,
++                    "category": payload.category,
++                    "priority": payload.priority,
++                    "proposal_policy": "proposal_only",
++                },
++            )
++            db.commit()
++        except ValueError as exc:
++            db.rollback()
++            raise HTTPException(status_code=409, detail=str(exc)) from exc
++        except HTTPException:
++            db.rollback()
++            raise
++        except Exception as exc:
++            db.rollback()
++            deps.logger.exception(
++                "EVOLUTION_OBJECTIVE_CREATE_FAILED org=%s actor=%s",
++                org,
++                actor,
++            )
++            raise HTTPException(
++                status_code=500,
++                detail="EVOLUTION_OBJECTIVE_CREATE_FAILED",
++            ) from exc
++        return ObjectiveOut(**item, write_executed=True)
++
++    @router.patch("/objectives/{objective_id}", response_model=ObjectiveOut)
++    def objective_update(
++        objective_id: str,
++        payload: ObjectiveUpdateIn,
++        request: Request,
++        x_org_slug: Optional[str] = Header(default=None),
++        admin=Depends(deps.require_admin_access),
++        db: Session = Depends(deps.get_db),
++    ):
++        _require_config_write(payload.approved)
++        org = deps.get_request_org(admin, x_org_slug)
++        actor = _actor_ref(admin, deps)
++        try:
++            item = update_objective(
++                db,
++                org_slug=org,
++                objective_id=objective_id,
++                payload=payload.model_dump(exclude_unset=True),
++                actor_ref=actor,
++                now_ts=deps.now_ts(),
++            )
++            if item is None:
++                raise HTTPException(status_code=404, detail="OBJECTIVE_NOT_FOUND")
++            _write_audit(
++                db,
++                deps=deps,
++                request=request,
++                org_slug=org,
++                actor_ref_value=actor,
++                action="evolution_intelligence.objective.updated",
++                meta={
++                    "objective_id": objective_id,
++                    "updated_fields": sorted(
++                        key
++                        for key in payload.model_fields_set
++                        if key != "approved"
++                    ),
++                },
++            )
++            db.commit()
++        except ValueError as exc:
++            db.rollback()
++            raise HTTPException(status_code=409, detail=str(exc)) from exc
++        except HTTPException:
++            db.rollback()
++            raise
++        except Exception as exc:
++            db.rollback()
++            deps.logger.exception(
++                "EVOLUTION_OBJECTIVE_UPDATE_FAILED org=%s objective=%s",
++                org,
++                objective_id,
++            )
++            raise HTTPException(
++                status_code=500,
++                detail="EVOLUTION_OBJECTIVE_UPDATE_FAILED",
++            ) from exc
++        return ObjectiveOut(**item, write_executed=True)
++
++    @router.get("/kpis", response_model=KPIRegistryOut)
++    def kpis(
++        objective_id: Optional[str] = Query(default=None, max_length=96),
++        x_org_slug: Optional[str] = Header(default=None),
++        admin=Depends(deps.require_admin_access),
++        db: Session = Depends(deps.get_db),
++    ):
++        _ensure_center_enabled()
++        org = deps.get_request_org(admin, x_org_slug)
++        return KPIRegistryOut(
++            **build_inventory(
++                db,
++                org_slug=org,
++                now_ts=deps.now_ts(),
++                objective_id=objective_id,
++            )
++        )
++
++    @router.get("/kpis/{kpi_code}")
++    def kpi_detail(
++        kpi_code: str,
++        objective_id: Optional[str] = Query(default=None, max_length=96),
++        x_org_slug: Optional[str] = Header(default=None),
++        admin=Depends(deps.require_admin_access),
++        db: Session = Depends(deps.get_db),
++    ):
++        _ensure_center_enabled()
++        org = deps.get_request_org(admin, x_org_slug)
++        inventory_payload = build_inventory(
++            db,
++            org_slug=org,
++            now_ts=deps.now_ts(),
++            objective_id=objective_id,
++        )
++        definition = get_kpi_definition(kpi_code)
++        if definition is None:
++            raise HTTPException(status_code=404, detail="KPI_NOT_FOUND")
++        target = next(
++            (
++                row
++                for row in inventory_payload["targets"]
++                if row["kpi_code"] == kpi_code
++            ),
++            None,
++        )
++        return {
++            "org_slug": org,
++            "definition": definition.to_dict(),
++            "target": target,
++            "write_executed": False,
++        }
++
++    @router.put("/targets")
++    def target_upsert(
++        payload: KPITargetUpsertIn,
++        request: Request,
++        x_org_slug: Optional[str] = Header(default=None),
++        admin=Depends(deps.require_admin_access),
++        db: Session = Depends(deps.get_db),
++    ):
++        _require_config_write(payload.approved)
++        org = deps.get_request_org(admin, x_org_slug)
++        actor = _actor_ref(admin, deps)
++        try:
++            item = upsert_target(
++                db,
++                org_slug=org,
++                target_id=f"etgt_{deps.new_id()[:20]}",
++                payload=payload.model_dump(),
++                actor_ref=actor,
++                now_ts=deps.now_ts(),
++            )
++            _write_audit(
++                db,
++                deps=deps,
++                request=request,
++                org_slug=org,
++                actor_ref_value=actor,
++                action="evolution_intelligence.target.upserted",
++                meta={
++                    "objective_id": payload.objective_id,
++                    "kpi_code": payload.kpi_code,
++                    "target_value": payload.target_value,
++                    "auto_apply_enabled": False,
++                },
++            )
++            db.commit()
++        except LookupError as exc:
++            db.rollback()
++            raise HTTPException(status_code=404, detail=str(exc)) from exc
++        except Exception as exc:
++            db.rollback()
++            deps.logger.exception(
++                "EVOLUTION_TARGET_UPSERT_FAILED org=%s kpi=%s",
++                org,
++                payload.kpi_code,
++            )
++            raise HTTPException(
++                status_code=500,
++                detail="EVOLUTION_TARGET_UPSERT_FAILED",
++            ) from exc
++        return {**item, "write_executed": True}
++
++    def _health(
++        *,
++        request: Request,
++        db: Session,
++        org: str,
++        objective_id: Optional[str],
++    ) -> dict[str, Any]:
++        identity = getattr(request.app.state, "runtime_identity", {}) or {}
++        return build_health_preview(
++            db,
++            org_slug=org,
++            now_ts=deps.now_ts(),
++            objective_id=objective_id,
++            release_identity=identity,
++        )
++
++    @router.get("/health/preview", response_model=HealthPreviewOut)
++    def health_preview(
++        request: Request,
++        objective_id: Optional[str] = Query(default=None, max_length=96),
++        x_org_slug: Optional[str] = Header(default=None),
++        admin=Depends(deps.require_admin_access),
++        db: Session = Depends(deps.get_db),
++    ):
++        cfg = _ensure_center_enabled()
++        if not cfg["kpi_collection_enabled"]:
++            raise HTTPException(
++                status_code=403,
++                detail="EVOLUTION_KPI_COLLECTION_DISABLED",
++            )
++        org = deps.get_request_org(admin, x_org_slug)
++        return HealthPreviewOut(
++            **_health(
++                request=request,
++                db=db,
++                org=org,
++                objective_id=objective_id,
++            )
++        )
++
++    @router.get("/diagnostics/preview", response_model=DiagnosticPreviewOut)
++    def diagnostics_preview(
++        request: Request,
++        objective_id: Optional[str] = Query(default=None, max_length=96),
++        x_org_slug: Optional[str] = Header(default=None),
++        admin=Depends(deps.require_admin_access),
++        db: Session = Depends(deps.get_db),
++    ):
++        _ensure_center_enabled()
++        org = deps.get_request_org(admin, x_org_slug)
++        health = _health(
++            request=request,
++            db=db,
++            org=org,
++            objective_id=objective_id,
++        )
++        result = build_diagnostics_preview(health)
++        return DiagnosticPreviewOut(org_slug=org, **result)
++
++    @router.get("/priorities/preview", response_model=PriorityPreviewOut)
++    def priorities_preview(
++        request: Request,
++        objective_id: Optional[str] = Query(default=None, max_length=96),
++        x_org_slug: Optional[str] = Header(default=None),
++        admin=Depends(deps.require_admin_access),
++        db: Session = Depends(deps.get_db),
++    ):
++        _ensure_center_enabled()
++        org = deps.get_request_org(admin, x_org_slug)
++        objective = (
++            get_objective(db, org_slug=org, objective_id=objective_id)
++            if objective_id
++            else None
++        )
++        if objective_id and objective is None:
++            raise HTTPException(status_code=404, detail="OBJECTIVE_NOT_FOUND")
++        health = _health(
++            request=request,
++            db=db,
++            org=org,
++            objective_id=objective_id,
++        )
++        result = build_priorities_preview(
++            health,
++            objective_priority=int((objective or {}).get("priority") or 80),
++        )
++        return PriorityPreviewOut(org_slug=org, **result)
++
++    @router.post("/proposals/preview", response_model=ProposalPreviewOut)
++    def proposals_preview(
++        payload: ProposalPreviewIn,
++        request: Request,
++        x_org_slug: Optional[str] = Header(default=None),
++        admin=Depends(deps.require_admin_access),
++        db: Session = Depends(deps.get_db),
++    ):
++        cfg = _ensure_center_enabled()
++        if not cfg["proposal_generation_enabled"]:
++            raise HTTPException(
++                status_code=403,
++                detail="EVOLUTION_PROPOSAL_GENERATION_DISABLED",
++            )
++        if not cfg["proposal_only"]:
++            raise HTTPException(status_code=503, detail="EVOLUTION_GOVERNANCE_INVALID")
++        org = deps.get_request_org(admin, x_org_slug)
++        objective = (
++            get_objective(db, org_slug=org, objective_id=payload.objective_id)
++            if payload.objective_id
++            else None
++        )
++        if payload.objective_id and objective is None:
++            raise HTTPException(status_code=404, detail="OBJECTIVE_NOT_FOUND")
++        health = _health(
++            request=request,
++            db=db,
++            org=org,
++            objective_id=payload.objective_id,
++        )
++        diagnostics = build_diagnostics_preview(health)
++        priorities = build_priorities_preview(
++            health,
++            objective_priority=int((objective or {}).get("priority") or 80),
++        )
++        result = build_proposal_previews(
++            diagnostics,
++            priorities,
++            objective_id=payload.objective_id,
++            selected_codes=set(payload.kpi_codes or []),
++        )
++        return ProposalPreviewOut(org_slug=org, **result)
++
++    @router.post("/health/snapshots/capture")
++    def health_snapshot_capture(
++        payload: HealthSnapshotCaptureIn,
++        request: Request,
++        x_org_slug: Optional[str] = Header(default=None),
++        admin=Depends(deps.require_admin_access),
++        db: Session = Depends(deps.get_db),
++    ):
++        cfg = _ensure_center_enabled()
++        if not payload.approved:
++            raise HTTPException(status_code=409, detail="HUMAN_APPROVAL_REQUIRED")
++        if not cfg["health_snapshot_write_enabled"]:
++            raise HTTPException(
++                status_code=403,
++                detail="EVOLUTION_HEALTH_SNAPSHOT_WRITE_DISABLED",
++            )
++        org = deps.get_request_org(admin, x_org_slug)
++        if payload.objective_id and get_objective(
++            db,
++            org_slug=org,
++            objective_id=payload.objective_id,
++        ) is None:
++            raise HTTPException(status_code=404, detail="OBJECTIVE_NOT_FOUND")
++        actor = _actor_ref(admin, deps)
++        health = _health(
++            request=request,
++            db=db,
++            org=org,
++            objective_id=payload.objective_id,
++        )
++        snapshot_id = f"ehs_{deps.new_id()[:20]}"
++        try:
++            result = capture_health_snapshot(
++                db,
++                snapshot_id=snapshot_id,
++                org_slug=org,
++                objective_id=payload.objective_id,
++                health=health,
++                actor_ref=actor,
++                reason=payload.reason,
++                now_ts=deps.now_ts(),
++            )
++            _write_audit(
++                db,
++                deps=deps,
++                request=request,
++                org_slug=org,
++                actor_ref_value=actor,
++                action="evolution_intelligence.health_snapshot.captured",
++                meta={
++                    "snapshot_id": snapshot_id,
++                    "objective_id": payload.objective_id,
++                    "score": health.get("score"),
++                    "confidence": health.get("confidence"),
++                    "coverage": health.get("coverage"),
++                    "production_go": health.get("production_go"),
++                },
++            )
++            db.commit()
++        except Exception as exc:
++            db.rollback()
++            deps.logger.exception(
++                "EVOLUTION_HEALTH_SNAPSHOT_CAPTURE_FAILED org=%s",
++                org,
++            )
++            raise HTTPException(
++                status_code=500,
++                detail="EVOLUTION_HEALTH_SNAPSHOT_CAPTURE_FAILED",
++            ) from exc
++        return result
++
++    @router.get("/health/snapshots", response_model=HealthSnapshotListOut)
++    def health_snapshots(
++        objective_id: Optional[str] = Query(default=None, max_length=96),
++        limit: int = Query(default=100, ge=1, le=1000),
++        x_org_slug: Optional[str] = Header(default=None),
++        admin=Depends(deps.require_admin_access),
++        db: Session = Depends(deps.get_db),
++    ):
++        _ensure_center_enabled()
++        org = deps.get_request_org(admin, x_org_slug)
++        items = list_health_snapshots(
++            db,
++            org_slug=org,
++            objective_id=objective_id,
++            limit=limit,
++        )
++        return HealthSnapshotListOut(
++            org_slug=org,
++            count=len(items),
++            items=items,
++            write_executed=False,
++        )
++
++    @router.get("/audit")
++    def audit_events(
++        limit: int = Query(default=200, ge=1, le=2000),
++        x_org_slug: Optional[str] = Header(default=None),
++        admin=Depends(deps.require_admin_access),
++        db: Session = Depends(deps.get_db),
++    ):
++        _ensure_center_enabled()
++        org = deps.get_request_org(admin, x_org_slug)
++        items = list_evolution_audit_events(
++            db,
++            org_slug=org,
++            limit=limit,
++        )
++        return {
++            "org_slug": org,
++            "count": len(items),
++            "items": items,
++            "write_executed": False,
++        }
++
++    return router
+--- /dev/null
++++ b/schemas/evolution_intelligence.py
+@@ -0,0 +1,198 @@
++from __future__ import annotations
++
++from typing import Any, Literal, Optional
++
++from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
++
++
++ObjectiveStatus = Literal["draft", "active", "paused", "completed"]
++ProposalPolicy = Literal["proposal_only"]
++
++
++class ObjectiveCreateIn(BaseModel):
++    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
++
++    approved: bool
++    name: str = Field(min_length=3, max_length=180)
++    description: str = Field(min_length=8, max_length=4000)
++    category: str = Field(min_length=3, max_length=64)
++    priority: int = Field(default=50, ge=0, le=100)
++    status: ObjectiveStatus = "draft"
++    starts_at: Optional[int] = Field(default=None, ge=0)
++    ends_at: Optional[int] = Field(default=None, ge=0)
++    owner_ref: str = Field(min_length=2, max_length=180)
++    success_definition: str = Field(min_length=8, max_length=2000)
++    proposal_policy: ProposalPolicy = "proposal_only"
++    human_approval_required: bool = True
++
++    @model_validator(mode="after")
++    def validate_governance(self):
++        if not self.approved:
++            raise ValueError("human approval is required")
++        if not self.human_approval_required:
++            raise ValueError("human_approval_required must remain true")
++        if self.ends_at is not None and self.starts_at is not None:
++            if self.ends_at <= self.starts_at:
++                raise ValueError("ends_at must be greater than starts_at")
++        return self
++
++
++class ObjectiveUpdateIn(BaseModel):
++    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
++
++    approved: bool
++    name: Optional[str] = Field(default=None, min_length=3, max_length=180)
++    description: Optional[str] = Field(default=None, min_length=8, max_length=4000)
++    category: Optional[str] = Field(default=None, min_length=3, max_length=64)
++    priority: Optional[int] = Field(default=None, ge=0, le=100)
++    status: Optional[ObjectiveStatus] = None
++    starts_at: Optional[int] = Field(default=None, ge=0)
++    ends_at: Optional[int] = Field(default=None, ge=0)
++    owner_ref: Optional[str] = Field(default=None, min_length=2, max_length=180)
++    success_definition: Optional[str] = Field(
++        default=None,
++        min_length=8,
++        max_length=2000,
++    )
++    proposal_policy: Optional[ProposalPolicy] = None
++    human_approval_required: Optional[bool] = None
++
++    @model_validator(mode="after")
++    def validate_governance(self):
++        if not self.approved:
++            raise ValueError("human approval is required")
++        if self.human_approval_required is False:
++            raise ValueError("human_approval_required must remain true")
++        return self
++
++
++class KPITargetUpsertIn(BaseModel):
++    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
++
++    approved: bool
++    objective_id: Optional[str] = Field(default=None, max_length=96)
++    kpi_code: str = Field(min_length=3, max_length=128)
++    target_value: float = Field(ge=0, le=100)
++    warning_threshold: float = Field(ge=0, le=100)
++    critical_threshold: float = Field(ge=0, le=100)
++    weight: float = Field(gt=0, le=1)
++    minimum_sample_size: int = Field(ge=0, le=10_000_000)
++    enabled: bool = True
++    proposal_enabled: bool = True
++    auto_apply_enabled: bool = False
++
++    @model_validator(mode="after")
++    def validate_target(self):
++        if not self.approved:
++            raise ValueError("human approval is required")
++        if self.auto_apply_enabled:
++            raise ValueError("auto_apply_enabled must remain false")
++        if self.critical_threshold > self.warning_threshold:
++            raise ValueError("critical_threshold must be <= warning_threshold")
++        if self.warning_threshold > self.target_value:
++            raise ValueError("warning_threshold must be <= target_value")
++        return self
++
++
++class HealthSnapshotCaptureIn(BaseModel):
++    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
++
++    approved: bool
++    reason: str = Field(min_length=8, max_length=300)
++    objective_id: Optional[str] = Field(default=None, max_length=96)
++
++    @field_validator("approved")
++    @classmethod
++    def approval_required(cls, value: bool) -> bool:
++        if not value:
++            raise ValueError("human approval is required")
++        return value
++
++
++class ProposalPreviewIn(BaseModel):
++    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
++
++    objective_id: Optional[str] = Field(default=None, max_length=96)
++    kpi_codes: list[str] = Field(default_factory=list, max_length=50)
++
++
++class GenericEvolutionOut(BaseModel):
++    model_config = ConfigDict(extra="allow")
++
++    org_slug: str
++    write_executed: bool = False
++
++
++class ObjectiveOut(GenericEvolutionOut):
++    id: str
++    name: str
++    description: str
++    category: str
++    priority: int
++    status: ObjectiveStatus
++    starts_at: Optional[int] = None
++    ends_at: Optional[int] = None
++    owner_ref: str
++    success_definition: str
++    proposal_policy: ProposalPolicy
++    human_approval_required: bool
++    version: int
++    created_at: int
++    updated_at: int
++
++
++class ObjectiveListOut(GenericEvolutionOut):
++    count: int
++    items: list[ObjectiveOut] = Field(default_factory=list)
++
++
++class KPIRegistryOut(GenericEvolutionOut):
++    registry_version: str
++    count: int
++    definition_complete_count: int
++    definition_incomplete: list[str] = Field(default_factory=list)
++    definitions: list[dict[str, Any]] = Field(default_factory=list)
++    project_health_weights: dict[str, float] = Field(default_factory=dict)
++    targets: list[dict[str, Any]] = Field(default_factory=list)
++
++
++class HealthPreviewOut(GenericEvolutionOut):
++    formula_version: str
++    generated_at: int
++    score: Optional[float] = None
++    confidence: float
++    coverage: float
++    status: str
++    production_go: bool
++    dimensions: dict[str, Any] = Field(default_factory=dict)
++    kpis: list[dict[str, Any]] = Field(default_factory=list)
++    missing_kpis: list[str] = Field(default_factory=list)
++    missing_dimensions: list[str] = Field(default_factory=list)
++    blocker_kpis: list[str] = Field(default_factory=list)
++    release_identity: dict[str, Any] = Field(default_factory=dict)
++
++
++class DiagnosticPreviewOut(GenericEvolutionOut):
++    diagnostic_version: str
++    count: int
++    items: list[dict[str, Any]] = Field(default_factory=list)
++
++
++class PriorityPreviewOut(GenericEvolutionOut):
++    priority_version: str
++    count: int
++    items: list[dict[str, Any]] = Field(default_factory=list)
++    production_go: bool
++
++
++class ProposalPreviewOut(GenericEvolutionOut):
++    proposal_mode: Literal["proposal_only"] = "proposal_only"
++    count: int
++    items: list[dict[str, Any]] = Field(default_factory=list)
++    human_approval_required: bool = True
++    auto_apply: bool = False
++
++
++class HealthSnapshotListOut(GenericEvolutionOut):
++    count: int
++    items: list[dict[str, Any]] = Field(default_factory=list)
+--- /dev/null
++++ b/scripts/evolution_validate_kpis.py
+@@ -0,0 +1,46 @@
++"""Readonly validation for the Evolution Intelligence KPI registry."""
++
++from __future__ import annotations
++
++import json
++
++from app.evolution.intelligence.governance import (
++    load_evolution_governance_config,
++    validate_evolution_governance_config,
++)
++from app.evolution.intelligence.kpi_registry import registry_payload
++
++
++def main() -> int:
++    registry = registry_payload()
++    try:
++        governance = validate_evolution_governance_config(
++            load_evolution_governance_config()
++        )
++        governance_error = None
++    except Exception as exc:
++        governance = None
++        governance_error = {
++            "error_type": exc.__class__.__name__,
++            "reason": str(exc),
++        }
++
++    passed = (
++        not registry["definition_incomplete"]
++        and registry["auto_apply_enabled"] is False
++        and governance_error is None
++    )
++    result = {
++        "package": "ORKIO-EVOLUTION-INTELLIGENCE-R1",
++        "registry": registry,
++        "governance": governance,
++        "governance_error": governance_error,
++        "write_executed": False,
++        "passed": passed,
++    }
++    print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
++    return 0 if passed else 1
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+--- a/scripts/validate_premium_package.py
++++ b/scripts/validate_premium_package.py
+@@ -1,4 +1,4 @@
+-"""Offline integrity and contract validation for ORKIO premium package R1.4."""
++"""Offline integrity and contract validation for ORKIO premium package R1.5."""
+ 
+ from __future__ import annotations
+ 
+@@ -10,11 +10,25 @@
+ 
+ 
+ ROOT = Path(__file__).resolve().parents[1]
+-EXPECTED_CONTRACT = "ORKIO-REL-ID-R1.1"
++EXPECTED_RELEASE_CONTRACT = "ORKIO-REL-ID-R1.1"
++EXPECTED_EVOLUTION_VERSION = "ORKIO-EVOLUTION-INTELLIGENCE-R1"
++EXPECTED_MIGRATION = "0039_patch_evolution_intelligence_foundation"
+ 
+ 
+ def _sha256(path: Path) -> str:
+     return hashlib.sha256(path.read_bytes()).hexdigest()
++
++
++def _assignment(path: Path, name: str) -> Any:
++    tree = ast.parse(path.read_text(encoding="utf-8-sig"))
++    for node in tree.body:
++        if not isinstance(node, ast.Assign):
++            continue
++        if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
++            continue
++        if node.targets[0].id == name:
++            return ast.literal_eval(node.value)
++    return None
+ 
+ 
+ def _verify_checksums() -> dict[str, Any]:
+@@ -31,21 +45,13 @@
+         checked += 1
+         if not target.is_file():
+             mismatches.append(
+-                {
+-                    "path": relative_path,
+-                    "expected": expected,
+-                    "actual": "missing",
+-                }
++                {"path": relative_path, "expected": expected, "actual": "missing"}
+             )
+             continue
+         actual = _sha256(target)
+         if actual != expected:
+             mismatches.append(
+-                {
+-                    "path": relative_path,
+-                    "expected": expected,
+-                    "actual": actual,
+-                }
++                {"path": relative_path, "expected": expected, "actual": actual}
+             )
+ 
+     return {
+@@ -61,48 +67,64 @@
+     docker_path = ROOT / "Dockerfile"
+     migration_plan_path = ROOT / "scripts" / "preflight_migration_plan.py"
+     normalization_path = ROOT / "scripts" / "preflight_alembic_version.py"
+-
+-    ast.parse(main_path.read_text(encoding="utf-8-sig"))
+-    release_tree = ast.parse(release_path.read_text(encoding="utf-8-sig"))
+-    ast.parse(migration_plan_path.read_text(encoding="utf-8-sig"))
+-    ast.parse(normalization_path.read_text(encoding="utf-8-sig"))
+-
+-    contract_value = None
+-    for node in release_tree.body:
+-        if not isinstance(node, ast.Assign):
+-            continue
+-        if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+-            continue
+-        if node.targets[0].id != "CONTRACT_VERSION":
+-            continue
+-        contract_value = ast.literal_eval(node.value)
+-        break
++    evolution_governance_path = (
++        ROOT / "evolution" / "intelligence" / "governance.py"
++    )
++    evolution_registry_path = (
++        ROOT / "evolution" / "intelligence" / "kpi_registry.py"
++    )
++    evolution_route_path = ROOT / "routes" / "evolution_intelligence.py"
++    evolution_service_path = ROOT / "services" / "evolution_intelligence_service.py"
++    evolution_migration_path = (
++        ROOT
++        / "alembic"
++        / "versions"
++        / "0039_patch_evolution_intelligence_foundation.py"
++    )
++
++    paths = [
++        main_path,
++        release_path,
++        migration_plan_path,
++        normalization_path,
++        evolution_governance_path,
++        evolution_registry_path,
++        evolution_route_path,
++        evolution_service_path,
++        evolution_migration_path,
++    ]
++    for path in paths:
++        ast.parse(path.read_text(encoding="utf-8-sig"))
+ 
+     docker_source = docker_path.read_text(encoding="utf-8")
+     main_source = main_path.read_text(encoding="utf-8-sig")
+     migration_source = migration_plan_path.read_text(encoding="utf-8")
+     normalization_source = normalization_path.read_text(encoding="utf-8")
++    governance_source = evolution_governance_path.read_text(encoding="utf-8")
++    registry_source = evolution_registry_path.read_text(encoding="utf-8")
++    route_source = evolution_route_path.read_text(encoding="utf-8")
++    service_source = evolution_service_path.read_text(encoding="utf-8")
++    evolution_migration_source = evolution_migration_path.read_text(
++        encoding="utf-8"
++    )
+ 
+     plan_command = "python scripts/preflight_migration_plan.py"
+     normalization_command = "python scripts/preflight_alembic_version.py"
+     upgrade_command = "alembic upgrade head"
+ 
+     checks = {
+-        "release_identity_contract": contract_value == EXPECTED_CONTRACT,
+-        "main_contract_enforcement": (
+-            "CONTRACT_VERSION as _RELID_MODULE_CONTRACT_VERSION"
+-            in main_source
++        "release_identity_contract": (
++            _assignment(release_path, "CONTRACT_VERSION")
++            == EXPECTED_RELEASE_CONTRACT
++        ),
++        "main_release_contract_enforcement": (
++            "CONTRACT_VERSION as _RELID_MODULE_CONTRACT_VERSION" in main_source
+             and "release_identity_contract_incompatible" in main_source
+         ),
+         "dual_pythonpath": "ENV PYTHONPATH=/:/app" in docker_source,
+         "startup_fail_closed": (
+             'logger.exception("ORKIO_BOOT_IDENTITY_FAILED")' in main_source
+             and 'app.state.runtime_identity_status = "failed"' in main_source
+-        ),
+-        "admin_runtime_identity_gate": (
+-            '"runtime_identity_validated": bool(' in main_source
+-            and '"runtime_identity_status": str(' in main_source
+-            and '"boot_release_identity_source": str(' in main_source
+         ),
+         "readonly_plan_is_first_database_gate": (
+             plan_command in docker_source
+@@ -120,34 +142,87 @@
+         "production_requires_explicit_migration_policy": (
+             "automatic_migration_policy_not_explicit" in migration_source
+             and "production_policy_missing" in migration_source
+-            and "_automatic_migration_policy_explicit" in migration_source
+         ),
+         "alembic_normalization_requires_explicit_permission": (
+             "ALLOW_ALEMBIC_VERSION_NORMALIZATION" in normalization_source
+             and "normalization_required_but_not_allowed" in normalization_source
+-            and 'return False, "default_false"' in normalization_source
+-        ),
+-        "module_fallback_parity_test": (
+-            ROOT / "tests" / "test_release_identity_module_fallback_parity.py"
+-        ).is_file(),
+-        "readonly_and_normalization_governance_tests": (
+-            ROOT / "tests" / "test_migration_plan_governance.py"
++        ),
++        "evolution_version": (
++            _assignment(
++                evolution_governance_path,
++                "EVOLUTION_INTELLIGENCE_VERSION",
++            )
++            == EXPECTED_EVOLUTION_VERSION
++        ),
++        "evolution_fail_closed_governance": (
++            "auto_apply_not_allowed_in_foundation_r1" in governance_source
++            and "code_write_not_allowed_in_foundation_r1" in governance_source
++            and "production_requires_human_approval" in governance_source
++            and "production_requires_proposal_only" in governance_source
++        ),
++        "formal_kpi_registry": (
++            "KPI_REGISTRY_VERSION" in registry_source
++            and "REQUIRED_KPI_FIELDS" in registry_source
++            and "auto_apply_enabled: bool = False" in registry_source
++            and "PROJECT_HEALTH_WEIGHTS" in registry_source
++        ),
++        "tenant_scoped_routes": (
++            "deps.get_request_org(admin, x_org_slug)" in route_source
++            and "/api/admin/evolution/intelligence" in route_source
++            and "EVOLUTION_CONFIG_WRITE_DISABLED" in route_source
++            and "HUMAN_APPROVAL_REQUIRED" in route_source
++        ),
++        "tenant_scoped_queries": (
++            "WHERE id = :objective_id AND org_slug = :org_slug" in service_source
++            and "WHERE org_slug = :org_slug" in service_source
++            and "OBJECTIVE_NOT_FOUND" in service_source
++        ),
++        "proposal_only_preview": (
++            '"mode": "proposal_only"' in service_source
++            and '"auto_apply": False' in service_source
++            and '"write_executed": False' in service_source
++        ),
++        "migration_chain": (
++            _assignment(evolution_migration_path, "revision")
++            == EXPECTED_MIGRATION
++            and _assignment(evolution_migration_path, "down_revision")
++            == "0038_patch_auth_password_reset_tokens"
++        ),
++        "database_tenant_constraints": (
++            "scope_key" in evolution_migration_source
++            and "fk_evolution_kpi_target_objective_org"
++            in evolution_migration_source
++            and "fk_evolution_health_objective_org"
++            in evolution_migration_source
++            and "ux_evolution_objective_org_name"
++            in evolution_migration_source
++        ),
++        "main_evolution_wiring": (
++            "build_evolution_intelligence_router" in main_source
++            and "_startup_evolution_intelligence_governance_r1" in main_source
++            and "EVOLUTION_INTELLIGENCE_GOVERNANCE_FAILED" in main_source
++            and "actor_reference=actor_reference" in main_source
++        ),
++        "evolution_test_suite_present": (
++            ROOT / "tests" / "evolution_intelligence" / "test_registry.py"
++        ).is_file()
++        and (
++            ROOT / "tests" / "evolution_intelligence" / "test_routes.py"
+         ).is_file()
+         and (
+             ROOT
+             / "tests"
+-            / "test_alembic_version_normalization_governance.py"
++            / "evolution_intelligence"
++            / "test_service_tenant_isolation.py"
+         ).is_file(),
+     }
+-    return {
+-        "checks": checks,
+-        "passed": all(checks.values()),
+-    }
++
++    return {"checks": checks, "passed": all(checks.values())}
+ 
+ 
+ def main() -> int:
+     result = {
+-        "package": "ORKIO-PREMIUM-BOOT-RELID-MIGRATION-R1.4",
++        "package": "ORKIO-EVOLUTION-INTELLIGENCE-FOUNDATION-R1.5",
+         "integrity": _verify_checksums(),
+         "contracts": _verify_contracts(),
+     }
+--- /dev/null
++++ b/services/evolution_intelligence_service.py
+@@ -0,0 +1,670 @@
++from __future__ import annotations
++
++import json
++from typing import Any, Mapping, Optional
++
++from sqlalchemy import inspect, text
++from sqlalchemy.orm import Session
++
++from app.evolution.intelligence.diagnostics import build_diagnostic_preview
++from app.evolution.intelligence.kpi_registry import (
++    get_kpi_definition,
++    registry_payload,
++)
++from app.evolution.intelligence.prioritization import build_priority_preview
++from app.evolution.intelligence.scoring import build_project_health_preview
++from app.services.evolution_signal_service import build_current_snapshot
++
++
++OBJECTIVES_TABLE = "evolution_objectives"
++TARGETS_TABLE = "evolution_kpi_targets"
++HEALTH_SNAPSHOTS_TABLE = "evolution_health_snapshots"
++
++
++def _tables(db: Session) -> set[str]:
++    return set(inspect(db.connection()).get_table_names())
++
++
++def foundation_schema_status(db: Session) -> dict[str, Any]:
++    names = _tables(db)
++    required = {OBJECTIVES_TABLE, TARGETS_TABLE, HEALTH_SNAPSHOTS_TABLE}
++    missing = sorted(required - names)
++    return {
++        "available": not missing,
++        "missing_tables": missing,
++        "required_tables": sorted(required),
++    }
++
++
++def list_objectives(
++    db: Session,
++    *,
++    org_slug: str,
++    status: Optional[str] = None,
++) -> list[dict[str, Any]]:
++    if OBJECTIVES_TABLE not in _tables(db):
++        return []
++    clauses = ["org_slug = :org_slug"]
++    params: dict[str, Any] = {"org_slug": org_slug}
++    if status:
++        clauses.append("status = :status")
++        params["status"] = status
++    rows = db.execute(
++        text(
++            f"""
++            SELECT id, org_slug, name, description, category, priority, status,
++                   starts_at, ends_at, owner_ref, success_definition,
++                   proposal_policy, human_approval_required, version,
++                   created_at, updated_at
++            FROM {OBJECTIVES_TABLE}
++            WHERE {' AND '.join(clauses)}
++            ORDER BY priority DESC, updated_at DESC
++            """
++        ),
++        params,
++    ).mappings().all()
++    return [dict(row) for row in rows]
++
++
++def count_active_objectives(db: Session, *, org_slug: str) -> int:
++    if OBJECTIVES_TABLE not in _tables(db):
++        return 0
++    return int(
++        db.execute(
++            text(
++                f"""
++                SELECT COUNT(*)
++                FROM {OBJECTIVES_TABLE}
++                WHERE org_slug = :org_slug AND status = 'active'
++                """
++            ),
++            {"org_slug": org_slug},
++        ).scalar_one()
++        or 0
++    )
++
++
++def get_objective(
++    db: Session,
++    *,
++    org_slug: str,
++    objective_id: str,
++) -> Optional[dict[str, Any]]:
++    if OBJECTIVES_TABLE not in _tables(db):
++        return None
++    row = db.execute(
++        text(
++            f"""
++            SELECT id, org_slug, name, description, category, priority, status,
++                   starts_at, ends_at, owner_ref, success_definition,
++                   proposal_policy, human_approval_required, version,
++                   created_at, updated_at
++            FROM {OBJECTIVES_TABLE}
++            WHERE id = :objective_id AND org_slug = :org_slug
++            LIMIT 1
++            """
++        ),
++        {"objective_id": objective_id, "org_slug": org_slug},
++    ).mappings().first()
++    return dict(row) if row else None
++
++
++def create_objective(
++    db: Session,
++    *,
++    org_slug: str,
++    objective_id: str,
++    payload: Mapping[str, Any],
++    actor_ref: str,
++    now_ts: int,
++) -> dict[str, Any]:
++    if OBJECTIVES_TABLE not in _tables(db):
++        raise RuntimeError("EVOLUTION_INTELLIGENCE_SCHEMA_UNAVAILABLE")
++    if str(payload.get("status") or "draft") == "active":
++        if count_active_objectives(db, org_slug=org_slug) >= 5:
++            raise ValueError("ACTIVE_OBJECTIVE_LIMIT_REACHED")
++    db.execute(
++        text(
++            f"""
++            INSERT INTO {OBJECTIVES_TABLE} (
++                id, org_slug, name, description, category, priority, status,
++                starts_at, ends_at, owner_ref, success_definition,
++                proposal_policy, human_approval_required, version,
++                created_by, updated_by, created_at, updated_at
++            ) VALUES (
++                :id, :org_slug, :name, :description, :category, :priority, :status,
++                :starts_at, :ends_at, :owner_ref, :success_definition,
++                'proposal_only', TRUE, 1,
++                :actor_ref, :actor_ref, :created_at, :updated_at
++            )
++            """
++        ),
++        {
++            "id": objective_id,
++            "org_slug": org_slug,
++            "name": payload["name"],
++            "description": payload["description"],
++            "category": payload["category"],
++            "priority": payload["priority"],
++            "status": payload["status"],
++            "starts_at": payload.get("starts_at"),
++            "ends_at": payload.get("ends_at"),
++            "owner_ref": payload["owner_ref"],
++            "success_definition": payload["success_definition"],
++            "actor_ref": actor_ref,
++            "created_at": now_ts,
++            "updated_at": now_ts,
++        },
++    )
++    result = get_objective(db, org_slug=org_slug, objective_id=objective_id)
++    if result is None:
++        raise RuntimeError("EVOLUTION_OBJECTIVE_CREATE_FAILED")
++    return result
++
++
++def update_objective(
++    db: Session,
++    *,
++    org_slug: str,
++    objective_id: str,
++    payload: Mapping[str, Any],
++    actor_ref: str,
++    now_ts: int,
++) -> Optional[dict[str, Any]]:
++    current = get_objective(db, org_slug=org_slug, objective_id=objective_id)
++    if current is None:
++        return None
++    allowed = {
++        "name",
++        "description",
++        "category",
++        "priority",
++        "status",
++        "starts_at",
++        "ends_at",
++        "owner_ref",
++        "success_definition",
++    }
++    values = {key: value for key, value in payload.items() if key in allowed and value is not None}
++    if not values:
++        return current
++    if values.get("status") == "active" and current.get("status") != "active":
++        if count_active_objectives(db, org_slug=org_slug) >= 5:
++            raise ValueError("ACTIVE_OBJECTIVE_LIMIT_REACHED")
++    assignments = [f"{key} = :{key}" for key in values]
++    params = {
++        **values,
++        "org_slug": org_slug,
++        "objective_id": objective_id,
++        "updated_by": actor_ref,
++        "updated_at": now_ts,
++    }
++    assignments.extend(
++        ["version = version + 1", "updated_by = :updated_by", "updated_at = :updated_at"]
++    )
++    db.execute(
++        text(
++            f"""
++            UPDATE {OBJECTIVES_TABLE}
++            SET {', '.join(assignments)}
++            WHERE id = :objective_id AND org_slug = :org_slug
++            """
++        ),
++        params,
++    )
++    return get_objective(db, org_slug=org_slug, objective_id=objective_id)
++
++
++def list_target_overrides(
++    db: Session,
++    *,
++    org_slug: str,
++    objective_id: Optional[str] = None,
++) -> list[dict[str, Any]]:
++    if TARGETS_TABLE not in _tables(db):
++        return []
++    clauses = ["org_slug = :org_slug"]
++    params: dict[str, Any] = {"org_slug": org_slug}
++    if objective_id:
++        clauses.append("objective_id = :objective_id")
++        params["objective_id"] = objective_id
++    else:
++        clauses.append("objective_id IS NULL")
++    rows = db.execute(
++        text(
++            f"""
++            SELECT id, org_slug, objective_id, scope_key, kpi_code, target_value,
++                   warning_threshold, critical_threshold, weight,
++                   minimum_sample_size, enabled, proposal_enabled,
++                   auto_apply_enabled, version, starts_at, ends_at,
++                   created_at, updated_at
++            FROM {TARGETS_TABLE}
++            WHERE {' AND '.join(clauses)}
++            ORDER BY kpi_code ASC
++            """
++        ),
++        params,
++    ).mappings().all()
++    return [dict(row) for row in rows]
++
++
++def target_override_map(
++    db: Session,
++    *,
++    org_slug: str,
++    objective_id: Optional[str],
++) -> dict[str, dict[str, Any]]:
++    defaults = {
++        row["kpi_code"]: row
++        for row in list_target_overrides(db, org_slug=org_slug, objective_id=None)
++    }
++    if objective_id:
++        defaults.update(
++            {
++                row["kpi_code"]: row
++                for row in list_target_overrides(
++                    db,
++                    org_slug=org_slug,
++                    objective_id=objective_id,
++                )
++            }
++        )
++    return defaults
++
++
++def upsert_target(
++    db: Session,
++    *,
++    org_slug: str,
++    target_id: str,
++    payload: Mapping[str, Any],
++    actor_ref: str,
++    now_ts: int,
++) -> dict[str, Any]:
++    if TARGETS_TABLE not in _tables(db):
++        raise RuntimeError("EVOLUTION_INTELLIGENCE_SCHEMA_UNAVAILABLE")
++    objective_id = payload.get("objective_id")
++    if objective_id and get_objective(
++        db,
++        org_slug=org_slug,
++        objective_id=str(objective_id),
++    ) is None:
++        raise LookupError("OBJECTIVE_NOT_FOUND")
++    if get_kpi_definition(str(payload["kpi_code"])) is None:
++        raise LookupError("KPI_NOT_FOUND")
++
++    existing = db.execute(
++        text(
++            f"""
++            SELECT id FROM {TARGETS_TABLE}
++            WHERE org_slug = :org_slug
++              AND kpi_code = :kpi_code
++              AND scope_key = :scope_key
++            LIMIT 1
++            """
++        ),
++        {
++            "org_slug": org_slug,
++            "kpi_code": payload["kpi_code"],
++            "objective_id": objective_id,
++            "scope_key": str(objective_id or "__global__"),
++        },
++    ).scalar_one_or_none()
++
++    params = {
++        "id": existing or target_id,
++        "org_slug": org_slug,
++        "objective_id": objective_id,
++        "scope_key": str(objective_id or "__global__"),
++        "kpi_code": payload["kpi_code"],
++        "target_value": payload["target_value"],
++        "warning_threshold": payload["warning_threshold"],
++        "critical_threshold": payload["critical_threshold"],
++        "weight": payload["weight"],
++        "minimum_sample_size": payload["minimum_sample_size"],
++        "enabled": bool(payload["enabled"]),
++        "proposal_enabled": bool(payload["proposal_enabled"]),
++        "auto_apply_enabled": False,
++        "actor_ref": actor_ref,
++        "now_ts": now_ts,
++    }
++    if existing:
++        db.execute(
++            text(
++                f"""
++                UPDATE {TARGETS_TABLE}
++                SET target_value=:target_value,
++                    warning_threshold=:warning_threshold,
++                    critical_threshold=:critical_threshold,
++                    weight=:weight,
++                    minimum_sample_size=:minimum_sample_size,
++                    enabled=:enabled,
++                    proposal_enabled=:proposal_enabled,
++                    auto_apply_enabled=FALSE,
++                    version=version+1,
++                    updated_by=:actor_ref,
++                    updated_at=:now_ts
++                WHERE id=:id AND org_slug=:org_slug
++                """
++            ),
++            params,
++        )
++    else:
++        db.execute(
++            text(
++                f"""
++                INSERT INTO {TARGETS_TABLE} (
++                    id, org_slug, objective_id, scope_key, kpi_code, target_value,
++                    warning_threshold, critical_threshold, weight,
++                    minimum_sample_size, enabled, proposal_enabled,
++                    auto_apply_enabled, version, starts_at, ends_at,
++                    created_by, updated_by, created_at, updated_at
++                ) VALUES (
++                    :id, :org_slug, :objective_id, :scope_key, :kpi_code, :target_value,
++                    :warning_threshold, :critical_threshold, :weight,
++                    :minimum_sample_size, :enabled, :proposal_enabled,
++                    FALSE, 1, NULL, NULL,
++                    :actor_ref, :actor_ref, :now_ts, :now_ts
++                )
++                """
++            ),
++            params,
++        )
++    row = db.execute(
++        text(
++            f"""
++            SELECT id, org_slug, objective_id, scope_key, kpi_code, target_value,
++                   warning_threshold, critical_threshold, weight,
++                   minimum_sample_size, enabled, proposal_enabled,
++                   auto_apply_enabled, version, starts_at, ends_at,
++                   created_at, updated_at
++            FROM {TARGETS_TABLE}
++            WHERE id=:id AND org_slug=:org_slug
++            """
++        ),
++        {"id": params["id"], "org_slug": org_slug},
++    ).mappings().one()
++    return dict(row)
++
++
++def build_inventory(
++    db: Session,
++    *,
++    org_slug: str,
++    now_ts: int,
++    objective_id: Optional[str] = None,
++) -> dict[str, Any]:
++    current = build_current_snapshot(db, org_slug=org_slug, now_ts=now_ts)
++    registry = registry_payload()
++    targets = sorted(
++        target_override_map(
++            db,
++            org_slug=org_slug,
++            objective_id=objective_id,
++        ).values(),
++        key=lambda row: str(row.get("kpi_code") or ""),
++    )
++    current_codes = {str(metric.get("key") or "") for metric in current.get("metrics") or []}
++    registry_codes = {definition["code"] for definition in registry["definitions"]}
++    return {
++        **registry,
++        "org_slug": org_slug,
++        "targets": targets,
++        "current_metric_codes": sorted(current_codes),
++        "registry_without_current_signal": sorted(registry_codes - current_codes),
++        "unregistered_current_signals": sorted(current_codes - registry_codes),
++        "schema": foundation_schema_status(db),
++        "write_executed": False,
++    }
++
++
++def build_health_preview(
++    db: Session,
++    *,
++    org_slug: str,
++    now_ts: int,
++    objective_id: Optional[str],
++    release_identity: Optional[Mapping[str, Any]] = None,
++) -> dict[str, Any]:
++    current = build_current_snapshot(db, org_slug=org_slug, now_ts=now_ts)
++    health = build_project_health_preview(
++        current,
++        target_overrides=target_override_map(
++            db,
++            org_slug=org_slug,
++            objective_id=objective_id,
++        ),
++    )
++    health["objective_id"] = objective_id
++    health["release_identity"] = {
++        key: (release_identity or {}).get(key)
++        for key in (
++            "release_id",
++            "commit_sha",
++            "deployment_id",
++            "runtime_main_sha256",
++            "migration_in_sync",
++        )
++    }
++    return health
++
++
++def build_diagnostics_preview(health: Mapping[str, Any]) -> dict[str, Any]:
++    return build_diagnostic_preview(health)
++
++
++def build_priorities_preview(
++    health: Mapping[str, Any],
++    *,
++    objective_priority: int,
++) -> dict[str, Any]:
++    return build_priority_preview(health, objective_priority=objective_priority)
++
++
++def build_proposal_previews(
++    diagnostics: Mapping[str, Any],
++    priorities: Mapping[str, Any],
++    *,
++    objective_id: Optional[str],
++    selected_codes: Optional[set[str]] = None,
++) -> dict[str, Any]:
++    priorities_by_code = {
++        item["kpi_code"]: item for item in priorities.get("items") or []
++    }
++    items: list[dict[str, Any]] = []
++    for diagnostic in diagnostics.get("items") or []:
++        code = str(diagnostic.get("kpi") or "")
++        if selected_codes and code not in selected_codes:
++            continue
++        if diagnostic.get("recommended_action") != "technical_proposal_allowed":
++            continue
++        definition = get_kpi_definition(code)
++        if definition is None or not definition.proposal_enabled:
++            continue
++        priority = priorities_by_code.get(code, {})
++        items.append(
++            {
++                "id": f"preview:{code}",
++                "title": f"Diagnosticar e corrigir {definition.name}",
++                "status": "diagnostic_pending",
++                "mode": "proposal_only",
++                "objective_id": objective_id,
++                "triggered_by_kpis": [code],
++                "diagnosis": {
++                    "root_cause": None,
++                    "root_cause_status": diagnostic.get("root_cause_status"),
++                    "confidence": diagnostic.get("confidence"),
++                    "evidence": diagnostic.get("evidence"),
++                    "hypotheses": diagnostic.get("hypotheses"),
++                },
++                "priority": priority,
++                "expected_impact": {
++                    code: f"aproximar de {definition.target:g} {definition.unit}"
++                },
++                "risk": "not_assessed",
++                "files": [],
++                "functions": [],
++                "patch_minimum": "pending_root_cause_confirmation",
++                "patch_premium": "pending_root_cause_confirmation",
++                "diff_preview": None,
++                "rollback": "Obrigatório antes de ready_for_review.",
++                "tests": [],
++                "success_criterion": f"{code} atinge meta com confiança suficiente.",
++                "abort_criterion": "regressão, tenant leak, stream sem done ou migration inconsistente",
++                "human_approval_required": True,
++                "auto_apply": False,
++                "write_executed": False,
++            }
++        )
++    return {
++        "proposal_mode": "proposal_only",
++        "count": len(items),
++        "items": items,
++        "human_approval_required": True,
++        "auto_apply": False,
++        "write_executed": False,
++    }
++
++
++def capture_health_snapshot(
++    db: Session,
++    *,
++    snapshot_id: str,
++    org_slug: str,
++    objective_id: Optional[str],
++    health: Mapping[str, Any],
++    actor_ref: str,
++    reason: str,
++    now_ts: int,
++) -> dict[str, Any]:
++    if HEALTH_SNAPSHOTS_TABLE not in _tables(db):
++        raise RuntimeError("EVOLUTION_INTELLIGENCE_SCHEMA_UNAVAILABLE")
++    release = dict(health.get("release_identity") or {})
++    db.execute(
++        text(
++            f"""
++            INSERT INTO {HEALTH_SNAPSHOTS_TABLE} (
++                id, org_slug, objective_id, captured_at, window_start, window_end,
++                project_health_score, confidence, data_coverage, status,
++                production_go, dimensions_json, missing_kpis_json,
++                blocker_kpis_json, release_id, commit_sha, deployment_id,
++                runtime_main_sha256, formula_version, captured_by,
++                capture_reason, created_at
++            ) VALUES (
++                :id, :org_slug, :objective_id, :captured_at, :window_start, :window_end,
++                :project_health_score, :confidence, :data_coverage, :status,
++                :production_go, :dimensions_json, :missing_kpis_json,
++                :blocker_kpis_json, :release_id, :commit_sha, :deployment_id,
++                :runtime_main_sha256, :formula_version, :captured_by,
++                :capture_reason, :created_at
++            )
++            """
++        ),
++        {
++            "id": snapshot_id,
++            "org_slug": org_slug,
++            "objective_id": objective_id,
++            "captured_at": now_ts,
++            "window_start": now_ts,
++            "window_end": now_ts,
++            "project_health_score": health.get("score"),
++            "confidence": health.get("confidence", 0),
++            "data_coverage": health.get("coverage", 0),
++            "status": health.get("status", "unknown"),
++            "production_go": bool(health.get("production_go", False)),
++            "dimensions_json": json.dumps(health.get("dimensions") or {}, sort_keys=True),
++            "missing_kpis_json": json.dumps(health.get("missing_kpis") or [], sort_keys=True),
++            "blocker_kpis_json": json.dumps(health.get("blocker_kpis") or [], sort_keys=True),
++            "release_id": release.get("release_id"),
++            "commit_sha": release.get("commit_sha"),
++            "deployment_id": release.get("deployment_id"),
++            "runtime_main_sha256": release.get("runtime_main_sha256"),
++            "formula_version": health.get("formula_version"),
++            "captured_by": actor_ref,
++            "capture_reason": reason,
++            "created_at": now_ts,
++        },
++    )
++    return {
++        "id": snapshot_id,
++        "org_slug": org_slug,
++        "objective_id": objective_id,
++        "captured_at": now_ts,
++        "write_executed": True,
++    }
++
++
++def list_health_snapshots(
++    db: Session,
++    *,
++    org_slug: str,
++    objective_id: Optional[str],
++    limit: int,
++) -> list[dict[str, Any]]:
++    if HEALTH_SNAPSHOTS_TABLE not in _tables(db):
++        return []
++    clauses = ["org_slug=:org_slug"]
++    params: dict[str, Any] = {"org_slug": org_slug, "limit": limit}
++    if objective_id:
++        clauses.append("objective_id=:objective_id")
++        params["objective_id"] = objective_id
++    rows = db.execute(
++        text(
++            f"""
++            SELECT id, org_slug, objective_id, captured_at, window_start, window_end,
++                   project_health_score, confidence, data_coverage, status,
++                   production_go, dimensions_json, missing_kpis_json,
++                   blocker_kpis_json, release_id, commit_sha, deployment_id,
++                   runtime_main_sha256, formula_version, captured_by,
++                   capture_reason, created_at
++            FROM {HEALTH_SNAPSHOTS_TABLE}
++            WHERE {' AND '.join(clauses)}
++            ORDER BY captured_at DESC
++            LIMIT :limit
++            """
++        ),
++        params,
++    ).mappings().all()
++    result = []
++    for row in rows:
++        item = dict(row)
++        for key in ("dimensions_json", "missing_kpis_json", "blocker_kpis_json"):
++            try:
++                item[key.removesuffix("_json")] = json.loads(item.pop(key) or "{}")
++            except Exception:
++                item[key.removesuffix("_json")] = {} if key == "dimensions_json" else []
++        result.append(item)
++    return result
++
++
++def list_evolution_audit_events(
++    db: Session,
++    *,
++    org_slug: str,
++    limit: int,
++) -> list[dict[str, Any]]:
++    if "audit_logs" not in _tables(db):
++        return []
++    rows = db.execute(
++        text(
++            """
++            SELECT id, org_slug, user_id AS actor_ref, action, meta,
++                   request_id, path, status_code, latency_ms, created_at
++            FROM audit_logs
++            WHERE org_slug = :org_slug
++              AND action LIKE 'evolution_intelligence.%'
++            ORDER BY created_at DESC
++            LIMIT :limit
++            """
++        ),
++        {"org_slug": org_slug, "limit": limit},
++    ).mappings().all()
++    result: list[dict[str, Any]] = []
++    for row in rows:
++        item = dict(row)
++        try:
++            item["metadata"] = json.loads(item.pop("meta") or "{}")
++        except Exception:
++            item["metadata"] = {}
++        result.append(item)
++    return result
+--- /dev/null
++++ b/tests/evolution_intelligence/test_diagnostics_priorities.py
+@@ -0,0 +1,54 @@
++from app.evolution.intelligence.diagnostics import build_diagnostic_preview
++from app.evolution.intelligence.prioritization import build_priority_preview
++from app.services.evolution_intelligence_service import build_proposal_previews
++
++
++def _health(confidence=0.9, status="critical"):
++    return {
++        "org_slug": "tenant-a",
++        "kpis": [
++            {
++                "code": "operational_reliability",
++                "status": status,
++                "confidence": confidence,
++                "summary": "5 falhas em 100 execuções.",
++                "source": ["admin_evolution_executions"],
++                "blocker": False,
++            }
++        ],
++    }
++
++
++def test_diagnostic_separates_evidence_from_hypothesis():
++    result = build_diagnostic_preview(_health())
++    item = result["items"][0]
++    assert item["evidence"][0]["classification"] == "evidência confirmada"
++    assert item["hypotheses"][0]["classification"] == "hipótese prioritária"
++    assert item["root_cause_status"] == "not_confirmed"
++    assert item["recommended_action"] == "technical_proposal_allowed"
++
++
++def test_low_confidence_does_not_generate_technical_proposal():
++    diagnostics = build_diagnostic_preview(_health(confidence=0.4))
++    priorities = build_priority_preview(_health(confidence=0.4))
++    proposals = build_proposal_previews(
++        diagnostics,
++        priorities,
++        objective_id=None,
++    )
++    assert proposals["count"] == 0
++    assert proposals["write_executed"] is False
++
++
++def test_preview_never_enables_auto_apply():
++    health = _health()
++    diagnostics = build_diagnostic_preview(health)
++    priorities = build_priority_preview(health)
++    proposals = build_proposal_previews(
++        diagnostics,
++        priorities,
++        objective_id="obj-1",
++    )
++    assert proposals["count"] == 1
++    assert proposals["items"][0]["auto_apply"] is False
++    assert proposals["items"][0]["mode"] == "proposal_only"
+--- /dev/null
++++ b/tests/evolution_intelligence/test_governance.py
+@@ -0,0 +1,43 @@
++import pytest
++
++from app.evolution.intelligence.governance import (
++    EvolutionGovernanceError,
++    load_evolution_governance_config,
++    validate_evolution_governance_config,
++)
++
++
++def test_safe_defaults_are_proposal_only(monkeypatch):
++    names = [
++        "APP_ENV",
++        "EVOLUTION_WRITE_ENABLED",
++        "EVOLUTION_AUTO_APPLY_ENABLED",
++        "EVOLUTION_HUMAN_APPROVAL_REQUIRED",
++        "EVOLUTION_PROPOSAL_ONLY",
++    ]
++    for name in names:
++        monkeypatch.delenv(name, raising=False)
++    config = validate_evolution_governance_config(
++        load_evolution_governance_config()
++    )
++    assert config["proposal_only"] is True
++    assert config["write_enabled"] is False
++    assert config["auto_apply_enabled"] is False
++    assert config["human_approval_required"] is True
++
++
++def test_code_write_is_blocked_in_foundation(monkeypatch):
++    monkeypatch.setenv("EVOLUTION_WRITE_ENABLED", "true")
++    with pytest.raises(EvolutionGovernanceError, match="code_write_not_allowed"):
++        validate_evolution_governance_config(
++            load_evolution_governance_config()
++        )
++
++
++def test_production_requires_human_approval(monkeypatch):
++    monkeypatch.setenv("APP_ENV", "production")
++    monkeypatch.setenv("EVOLUTION_HUMAN_APPROVAL_REQUIRED", "false")
++    with pytest.raises(EvolutionGovernanceError, match="production_requires_human"):
++        validate_evolution_governance_config(
++            load_evolution_governance_config()
++        )
+--- /dev/null
++++ b/tests/evolution_intelligence/test_main_wiring.py
+@@ -0,0 +1,15 @@
++from pathlib import Path
++
++
++ROOT = Path(__file__).resolve().parents[2]
++SOURCE = (ROOT / "main.py").read_text(encoding="utf-8")
++
++
++def test_router_and_startup_governance_are_wired():
++    assert "build_evolution_intelligence_router" in SOURCE
++    assert "EvolutionIntelligenceRouterDeps" in SOURCE
++    assert "_startup_evolution_intelligence_governance_r1" in SOURCE
++    assert "EVOLUTION_INTELLIGENCE_GOVERNANCE_FAILED" in SOURCE
++    assert "EVOLUTION_INTELLIGENCE_GOVERNANCE_OK" in SOURCE
++    assert "actor_reference=actor_reference" in SOURCE
++    assert "/api/admin/evolution/intelligence" not in SOURCE  # route path stays modular
+--- /dev/null
++++ b/tests/evolution_intelligence/test_migration_contract.py
+@@ -0,0 +1,40 @@
++import ast
++from pathlib import Path
++
++
++ROOT = Path(__file__).resolve().parents[2]
++MIGRATION = ROOT / "alembic" / "versions" / "0039_patch_evolution_intelligence_foundation.py"
++
++
++def _assignments():
++    tree = ast.parse(MIGRATION.read_text(encoding="utf-8"))
++    values = {}
++    for node in tree.body:
++        if not isinstance(node, ast.Assign):
++            continue
++        if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
++            continue
++        if node.targets[0].id in {"revision", "down_revision"}:
++            values[node.targets[0].id] = ast.literal_eval(node.value)
++    return values
++
++
++def test_migration_extends_current_head():
++    values = _assignments()
++    assert values["revision"] == "0039_patch_evolution_intelligence_foundation"
++    assert values["down_revision"] == "0038_patch_auth_password_reset_tokens"
++
++
++def test_migration_is_proposal_only_and_tenant_scoped():
++    source = MIGRATION.read_text(encoding="utf-8")
++    assert '"org_slug"' in source
++    assert "proposal_policy = 'proposal_only'" in source
++    assert "auto_apply_enabled = FALSE" in source
++    assert "human_approval_required = TRUE" in source
++    assert "evolution_objectives" in source
++    assert "evolution_kpi_targets" in source
++    assert "evolution_health_snapshots" in source
++    assert "scope_key" in source
++    assert "fk_evolution_kpi_target_objective_org" in source
++    assert "fk_evolution_health_objective_org" in source
++    assert "ux_evolution_objective_org_name" in source
+--- /dev/null
++++ b/tests/evolution_intelligence/test_registry.py
+@@ -0,0 +1,19 @@
++from app.evolution.intelligence.kpi_registry import (
++    PROJECT_HEALTH_WEIGHTS,
++    registry_payload,
++)
++
++
++def test_registry_is_complete_and_auto_apply_is_disabled():
++    payload = registry_payload()
++    assert payload["registry_version"] == "ORKIO-EVOLUTION-KPI-REGISTRY-R1"
++    assert payload["count"] == 7
++    assert payload["definition_incomplete"] == []
++    assert payload["definition_complete_count"] == payload["count"]
++    assert payload["auto_apply_enabled"] is False
++    assert round(sum(PROJECT_HEALTH_WEIGHTS.values()), 6) == 1.0
++    for definition in payload["definitions"]:
++        assert definition["definition_status"] == "complete"
++        assert definition["auto_apply_enabled"] is False
++        assert definition["allowed_actions"]
++        assert definition["forbidden_actions"]
+--- /dev/null
++++ b/tests/evolution_intelligence/test_routes.py
+@@ -0,0 +1,203 @@
++from contextlib import contextmanager
++
++from fastapi import FastAPI, HTTPException
++from fastapi.testclient import TestClient
++from sqlalchemy import create_engine, text
++from sqlalchemy.orm import Session
++from sqlalchemy.pool import StaticPool
++
++from app.routes.evolution_intelligence import (
++    EvolutionIntelligenceRouterDeps,
++    build_evolution_intelligence_router,
++)
++
++
++def _engine():
++    engine = create_engine(
++        "sqlite+pysqlite:///:memory:",
++        connect_args={"check_same_thread": False},
++        poolclass=StaticPool,
++    )
++    with engine.begin() as conn:
++        conn.execute(text("""
++            CREATE TABLE evolution_objectives (
++                id TEXT PRIMARY KEY, org_slug TEXT NOT NULL, name TEXT NOT NULL,
++                description TEXT NOT NULL, category TEXT NOT NULL,
++                priority INTEGER NOT NULL, status TEXT NOT NULL,
++                starts_at INTEGER, ends_at INTEGER, owner_ref TEXT NOT NULL,
++                success_definition TEXT NOT NULL, proposal_policy TEXT NOT NULL,
++                human_approval_required BOOLEAN NOT NULL, version INTEGER NOT NULL,
++                created_by TEXT NOT NULL, updated_by TEXT NOT NULL,
++                created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
++            )
++        """))
++        conn.execute(text("""
++            CREATE TABLE evolution_kpi_targets (
++                id TEXT PRIMARY KEY, org_slug TEXT NOT NULL, objective_id TEXT,
++                scope_key TEXT NOT NULL,
++                kpi_code TEXT NOT NULL, target_value REAL NOT NULL,
++                warning_threshold REAL NOT NULL, critical_threshold REAL NOT NULL,
++                weight REAL NOT NULL, minimum_sample_size INTEGER NOT NULL,
++                enabled BOOLEAN NOT NULL, proposal_enabled BOOLEAN NOT NULL,
++                auto_apply_enabled BOOLEAN NOT NULL, version INTEGER NOT NULL,
++                starts_at INTEGER, ends_at INTEGER, created_by TEXT NOT NULL,
++                updated_by TEXT NOT NULL, created_at INTEGER NOT NULL,
++                updated_at INTEGER NOT NULL
++            )
++        """))
++        conn.execute(text("""
++            CREATE TABLE evolution_health_snapshots (
++                id TEXT PRIMARY KEY, org_slug TEXT NOT NULL, objective_id TEXT,
++                captured_at INTEGER NOT NULL, window_start INTEGER NOT NULL,
++                window_end INTEGER NOT NULL, project_health_score REAL,
++                confidence REAL NOT NULL, data_coverage REAL NOT NULL,
++                status TEXT NOT NULL, production_go BOOLEAN NOT NULL,
++                dimensions_json TEXT NOT NULL, missing_kpis_json TEXT NOT NULL,
++                blocker_kpis_json TEXT NOT NULL, release_id TEXT, commit_sha TEXT,
++                deployment_id TEXT, runtime_main_sha256 TEXT,
++                formula_version TEXT NOT NULL, captured_by TEXT NOT NULL,
++                capture_reason TEXT NOT NULL, created_at INTEGER NOT NULL
++            )
++        """))
++        conn.execute(text("""
++            CREATE TABLE audit_logs (
++                id TEXT PRIMARY KEY, org_slug TEXT NOT NULL, user_id TEXT,
++                action TEXT, meta TEXT, request_id TEXT, path TEXT,
++                status_code INTEGER, latency_ms INTEGER, created_at INTEGER
++            )
++        """))
++    return engine
++
++
++def _app():
++    engine = _engine()
++    sequence = iter(range(1000))
++
++    def get_db():
++        db = Session(engine)
++        try:
++            yield db
++        finally:
++            db.close()
++
++    def require_admin_access():
++        return {"sub": "admin-a", "org_slug": "tenant-a", "role": "admin"}
++
++    def get_request_org(admin, requested):
++        canonical = admin["org_slug"]
++        if requested and requested != canonical:
++            raise HTTPException(status_code=403, detail="TENANT_SCOPE_MISMATCH")
++        return canonical
++
++    app = FastAPI()
++    app.state.runtime_identity = {
++        "release_id": "orkio-test",
++        "commit_sha": "a" * 40,
++        "deployment_id": "deploy-test",
++        "runtime_main_sha256": "b" * 64,
++        "migration_in_sync": True,
++    }
++    app.include_router(
++        build_evolution_intelligence_router(
++            EvolutionIntelligenceRouterDeps(
++                get_db=get_db,
++                require_admin_access=require_admin_access,
++                get_request_org=get_request_org,
++                new_id=lambda: f"id{next(sequence):08d}",
++                now_ts=lambda: 1_700_000_000,
++                actor_reference=lambda value: f"actor:{value or 'unknown'}",
++                logger=__import__("logging").getLogger("test"),
++            )
++        )
++    )
++    return app, engine
++
++
++def test_readonly_inventory_and_health(monkeypatch):
++    monkeypatch.setenv("EVOLUTION_CONFIG_WRITE_ENABLED", "false")
++    app, _ = _app()
++    with TestClient(app) as client:
++        inventory = client.get("/api/admin/evolution/intelligence/inventory")
++        assert inventory.status_code == 200
++        assert inventory.json()["count"] == 7
++        assert inventory.json()["write_executed"] is False
++
++        health = client.get("/api/admin/evolution/intelligence/health/preview")
++        assert health.status_code == 200
++        assert health.json()["release_identity"]["release_id"] == "orkio-test"
++        assert health.json()["write_executed"] is False
++
++
++def test_tenant_header_mismatch_is_blocked():
++    app, _ = _app()
++    with TestClient(app) as client:
++        response = client.get(
++            "/api/admin/evolution/intelligence/objectives",
++            headers={"X-Org-Slug": "tenant-b"},
++        )
++        assert response.status_code == 403
++
++
++def test_config_write_disabled_by_default():
++    app, _ = _app()
++    with TestClient(app) as client:
++        response = client.post(
++            "/api/admin/evolution/intelligence/objectives",
++            json={
++                "approved": True,
++                "name": "Confiabilidade operacional",
++                "description": "Aumentar a confiabilidade operacional da plataforma.",
++                "category": "technical_reliability",
++                "priority": 100,
++                "status": "active",
++                "owner_ref": "CTO",
++                "success_definition": "Saúde técnica acima de 90 por 30 dias.",
++                "proposal_policy": "proposal_only",
++                "human_approval_required": True,
++            },
++        )
++        assert response.status_code == 403
++        assert response.json()["detail"] == "EVOLUTION_CONFIG_WRITE_DISABLED"
++
++
++def test_objective_write_requires_flag_and_is_audited(monkeypatch):
++    monkeypatch.setenv("EVOLUTION_CONFIG_WRITE_ENABLED", "true")
++    app, engine = _app()
++    with TestClient(app) as client:
++        response = client.post(
++            "/api/admin/evolution/intelligence/objectives",
++            json={
++                "approved": True,
++                "name": "Confiabilidade operacional",
++                "description": "Aumentar a confiabilidade operacional da plataforma.",
++                "category": "technical_reliability",
++                "priority": 100,
++                "status": "active",
++                "owner_ref": "CTO",
++                "success_definition": "Saúde técnica acima de 90 por 30 dias.",
++                "proposal_policy": "proposal_only",
++                "human_approval_required": True,
++            },
++        )
++        assert response.status_code == 200
++        body = response.json()
++        assert body["org_slug"] == "tenant-a"
++        assert body["write_executed"] is True
++        with engine.connect() as conn:
++            audit_count = conn.execute(
++                text(
++                    "SELECT COUNT(*) FROM audit_logs "
++                    "WHERE org_slug='tenant-a' "
++                    "AND action='evolution_intelligence.objective.created'"
++                )
++            ).scalar_one()
++        assert audit_count == 1
++        audit_response = client.get(
++            "/api/admin/evolution/intelligence/audit"
++        )
++        assert audit_response.status_code == 200
++        assert audit_response.json()["count"] == 1
++        assert (
++            audit_response.json()["items"][0]["action"]
++            == "evolution_intelligence.objective.created"
++        )
+--- /dev/null
++++ b/tests/evolution_intelligence/test_scoring.py
+@@ -0,0 +1,68 @@
++from app.evolution.intelligence.scoring import build_project_health_preview
++
++
++def _metric(key, score, confidence=90, sample=100, status="measured"):
++    return {
++        "key": key,
++        "score": score,
++        "confidence": confidence,
++        "sample_count": sample,
++        "signal_status": status,
++        "source": ["test"],
++        "summary": f"{key} summary",
++        "formula_version": "test-v1",
++        "missing_sources": [],
++    }
++
++
++def test_missing_product_dimension_is_reported_not_green():
++    snapshot = {
++        "org_slug": "tenant-a",
++        "generated_at": 100,
++        "metrics": [
++            _metric("security_governance", 100),
++            _metric("operational_reliability", 99),
++            _metric("governed_autoevolution", 100),
++            _metric("agent_knowledge", 90),
++            _metric("core_modules", 95),
++            _metric("evidence_observability", 98),
++            _metric("premium_experience", 90),
++        ],
++    }
++    health = build_project_health_preview(snapshot)
++    assert "product" in health["missing_dimensions"]
++    assert health["coverage"] == 0.85
++    assert health["score"] is not None
++    assert health["write_executed"] is False
++
++
++def test_blocker_cannot_be_compensated_by_average():
++    snapshot = {
++        "org_slug": "tenant-a",
++        "generated_at": 100,
++        "metrics": [
++            _metric("security_governance", 10),
++            _metric("operational_reliability", 100),
++            _metric("governed_autoevolution", 100),
++            _metric("agent_knowledge", 100),
++            _metric("core_modules", 100),
++            _metric("evidence_observability", 100),
++            _metric("premium_experience", 100),
++        ],
++    }
++    health = build_project_health_preview(snapshot)
++    assert health["status"] == "blocker"
++    assert health["production_go"] is False
++    assert "security_governance" in health["blocker_kpis"]
++
++
++def test_low_sample_is_insufficient_data():
++    snapshot = {
++        "org_slug": "tenant-a",
++        "generated_at": 100,
++        "metrics": [_metric("operational_reliability", 99, sample=1)],
++    }
++    health = build_project_health_preview(snapshot)
++    item = health["kpis"][0]
++    assert item["status"] == "insufficient_data"
++    assert "operational_reliability" in health["missing_kpis"]
+--- /dev/null
++++ b/tests/evolution_intelligence/test_service_tenant_isolation.py
+@@ -0,0 +1,171 @@
++from sqlalchemy import create_engine, text
++from sqlalchemy.orm import Session
++
++from app.services.evolution_intelligence_service import (
++    create_objective,
++    get_objective,
++    list_objectives,
++    upsert_target,
++)
++
++
++def _db():
++    engine = create_engine(
++        "sqlite+pysqlite:///:memory:",
++        connect_args={"check_same_thread": False},
++    )
++    with engine.begin() as conn:
++        conn.execute(text("""
++            CREATE TABLE evolution_objectives (
++                id TEXT PRIMARY KEY,
++                org_slug TEXT NOT NULL,
++                name TEXT NOT NULL,
++                description TEXT NOT NULL,
++                category TEXT NOT NULL,
++                priority INTEGER NOT NULL,
++                status TEXT NOT NULL,
++                starts_at INTEGER,
++                ends_at INTEGER,
++                owner_ref TEXT NOT NULL,
++                success_definition TEXT NOT NULL,
++                proposal_policy TEXT NOT NULL,
++                human_approval_required BOOLEAN NOT NULL,
++                version INTEGER NOT NULL,
++                created_by TEXT NOT NULL,
++                updated_by TEXT NOT NULL,
++                created_at INTEGER NOT NULL,
++                updated_at INTEGER NOT NULL
++            )
++        """))
++        conn.execute(text("""
++            CREATE TABLE evolution_kpi_targets (
++                id TEXT PRIMARY KEY,
++                org_slug TEXT NOT NULL,
++                objective_id TEXT,
++                scope_key TEXT NOT NULL,
++                kpi_code TEXT NOT NULL,
++                target_value REAL NOT NULL,
++                warning_threshold REAL NOT NULL,
++                critical_threshold REAL NOT NULL,
++                weight REAL NOT NULL,
++                minimum_sample_size INTEGER NOT NULL,
++                enabled BOOLEAN NOT NULL,
++                proposal_enabled BOOLEAN NOT NULL,
++                auto_apply_enabled BOOLEAN NOT NULL,
++                version INTEGER NOT NULL,
++                starts_at INTEGER,
++                ends_at INTEGER,
++                created_by TEXT NOT NULL,
++                updated_by TEXT NOT NULL,
++                created_at INTEGER NOT NULL,
++                updated_at INTEGER NOT NULL
++            )
++        """))
++        conn.execute(text("""
++            CREATE TABLE evolution_health_snapshots (
++                id TEXT PRIMARY KEY,
++                org_slug TEXT NOT NULL
++            )
++        """))
++    return Session(engine)
++
++
++def _payload(name):
++    return {
++        "name": name,
++        "description": "Descrição suficientemente detalhada.",
++        "category": "technical_reliability",
++        "priority": 90,
++        "status": "active",
++        "starts_at": None,
++        "ends_at": None,
++        "owner_ref": "CTO",
++        "success_definition": "Saúde técnica acima de 90.",
++    }
++
++
++def test_objectives_are_tenant_isolated():
++    db = _db()
++    create_objective(
++        db,
++        org_slug="tenant-a",
++        objective_id="obj-a",
++        payload=_payload("Objetivo A"),
++        actor_ref="actor:a",
++        now_ts=1,
++    )
++    create_objective(
++        db,
++        org_slug="tenant-b",
++        objective_id="obj-b",
++        payload=_payload("Objetivo B"),
++        actor_ref="actor:b",
++        now_ts=1,
++    )
++    db.commit()
++    assert [row["id"] for row in list_objectives(db, org_slug="tenant-a")] == ["obj-a"]
++    assert get_objective(db, org_slug="tenant-b", objective_id="obj-a") is None
++
++
++def test_target_cannot_bind_cross_tenant_objective():
++    db = _db()
++    create_objective(
++        db,
++        org_slug="tenant-a",
++        objective_id="obj-a",
++        payload=_payload("Objetivo A"),
++        actor_ref="actor:a",
++        now_ts=1,
++    )
++    db.commit()
++    payload = {
++        "objective_id": "obj-a",
++        "kpi_code": "operational_reliability",
++        "target_value": 99,
++        "warning_threshold": 95,
++        "critical_threshold": 90,
++        "weight": 0.5,
++        "minimum_sample_size": 20,
++        "enabled": True,
++        "proposal_enabled": True,
++    }
++    try:
++        upsert_target(
++            db,
++            org_slug="tenant-b",
++            target_id="target-b",
++            payload=payload,
++            actor_ref="actor:b",
++            now_ts=2,
++        )
++    except LookupError as exc:
++        assert str(exc) == "OBJECTIVE_NOT_FOUND"
++    else:
++        raise AssertionError("cross-tenant target binding should be blocked")
++
++
++def test_active_objective_limit_is_five_per_tenant():
++    db = _db()
++    for index in range(5):
++        create_objective(
++            db,
++            org_slug="tenant-a",
++            objective_id=f"obj-{index}",
++            payload=_payload(f"Objetivo {index}"),
++            actor_ref="actor:a",
++            now_ts=index + 1,
++        )
++        db.commit()
++    try:
++        create_objective(
++            db,
++            org_slug="tenant-a",
++            objective_id="obj-6",
++            payload=_payload("Objetivo 6"),
++            actor_ref="actor:a",
++            now_ts=7,
++        )
++    except ValueError as exc:
++        assert str(exc) == "ACTIVE_OBJECTIVE_LIMIT_REACHED"
++    else:
++        raise AssertionError("sixth active objective should be blocked")

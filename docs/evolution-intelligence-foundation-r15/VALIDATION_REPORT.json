@@ -1,0 +1,62 @@
+{
+  "package": "ORKIO-EVOLUTION-INTELLIGENCE-FOUNDATION-R1.5",
+  "generated_at": "2026-07-21T00:00:00-03:00",
+  "baseline": {
+    "artifact": "ORKIO_BACKEND_PREMIUM_R14_ROOT_UPLOAD.zip",
+    "sha256": "5f75d055884eb67e2508f7740a1bf06a2eeb701ee1e5a0403ac45ccfead103bd",
+    "git_branch": "NOT_PROVEN",
+    "git_commit": "NOT_PROVEN"
+  },
+  "validation": {
+    "python_files_compiled": 585,
+    "compile_errors": 0,
+    "new_tests": {
+      "passed": 20,
+      "failed": 0
+    },
+    "existing_evolution_tests": {
+      "passed": 34,
+      "failed": 0,
+      "skipped": 2
+    },
+    "full_suite": {
+      "passed": 316,
+      "failed": 7,
+      "skipped": 4,
+      "new_failures": 0
+    },
+    "kpi_registry": {
+      "version": "ORKIO-EVOLUTION-KPI-REGISTRY-R1",
+      "count": 7,
+      "complete": 7
+    },
+    "runtime": {
+      "import": "PASS",
+      "startup": "PASS",
+      "route_count": 268,
+      "health_http": 200,
+      "health_status": "degraded_no_real_database"
+    },
+    "unsafe_governance": {
+      "EVOLUTION_WRITE_ENABLED_true": "BLOCKED",
+      "reason": "code_write_not_allowed_in_foundation_r1"
+    },
+    "migration": {
+      "from": "0038_patch_auth_password_reset_tokens",
+      "to": "0039_patch_evolution_intelligence_foundation",
+      "targeted_sqlite_upgrade": "PASS",
+      "postgresql": "NOT_EXECUTED"
+    }
+  },
+  "governance": {
+    "proposal_only": true,
+    "write_enabled": false,
+    "auto_apply": false,
+    "human_approval_required": true,
+    "write_executed": false,
+    "commit_executed": false,
+    "merge_executed": false,
+    "deploy_executed": false,
+    "migration_executed": false
+  }
+}

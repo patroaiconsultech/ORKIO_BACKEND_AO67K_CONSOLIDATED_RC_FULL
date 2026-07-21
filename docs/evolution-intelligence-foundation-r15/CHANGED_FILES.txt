@@ -1,0 +1,46 @@
+# ORKIO Evolution Intelligence Foundation R1.5 — Changed files
+
+This list is relative to the backend repository root.
+
+## Modified
+
+- `main.py`
+- `scripts/validate_premium_package.py`
+
+## Added
+
+- `alembic/versions/0039_patch_evolution_intelligence_foundation.py`
+- `docs/evolution-intelligence-foundation-r15/00_README_FIRST.md`
+- `docs/evolution-intelligence-foundation-r15/01_SCOPE_AND_ARCHITECTURE.md`
+- `docs/evolution-intelligence-foundation-r15/02_API_CONTRACT.md`
+- `docs/evolution-intelligence-foundation-r15/03_STAGING_SMOKE.md`
+- `docs/evolution-intelligence-foundation-r15/04_ROLLBACK.md`
+- `docs/evolution-intelligence-foundation-r15/05_ENV_FLAGS.example`
+- `docs/evolution-intelligence-foundation-r15/06_VALIDATION_REPORT.md`
+- `docs/evolution-intelligence-foundation-r15/07_PHASE_B_ROADMAP.md`
+- `docs/evolution-intelligence-foundation-r15/VALIDATION_REPORT.json`
+- `evolution/intelligence/__init__.py`
+- `evolution/intelligence/diagnostics.py`
+- `evolution/intelligence/governance.py`
+- `evolution/intelligence/kpi_registry.py`
+- `evolution/intelligence/prioritization.py`
+- `evolution/intelligence/scoring.py`
+- `routes/evolution_intelligence.py`
+- `schemas/evolution_intelligence.py`
+- `scripts/evolution_validate_kpis.py`
+- `services/evolution_intelligence_service.py`
+- `tests/evolution_intelligence/test_diagnostics_priorities.py`
+- `tests/evolution_intelligence/test_governance.py`
+- `tests/evolution_intelligence/test_main_wiring.py`
+- `tests/evolution_intelligence/test_migration_contract.py`
+- `tests/evolution_intelligence/test_registry.py`
+- `tests/evolution_intelligence/test_routes.py`
+- `tests/evolution_intelligence/test_scoring.py`
+- `tests/evolution_intelligence/test_service_tenant_isolation.py`
+
+## Deleted
+
+- None.
+
+Generated package metadata (`PATCH_MANIFEST.json`, `SHA256SUMS.txt`, this file
+and `PREMIUM_R15.diff`) is regenerated after the final validation.

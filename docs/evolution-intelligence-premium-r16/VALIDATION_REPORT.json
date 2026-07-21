@@ -1,0 +1,52 @@
+{
+  "package": "ORKIO-EVOLUTION-INTELLIGENCE-PREMIUM-R1.6",
+  "cumulative_base": "ORKIO_BACKEND_PREMIUM_R14_ROOT_UPLOAD.zip",
+  "includes_r15": true,
+  "versions": {
+    "evolution_intelligence": "ORKIO-EVOLUTION-INTELLIGENCE-R1.1",
+    "kpi_registry": "ORKIO-EVOLUTION-KPI-REGISTRY-R2",
+    "collector_version": "ORKIO-EVOLUTION-COLLECTORS-R2",
+    "source_version": "ORKIO-EVOLUTION-SOURCES-R2"
+  },
+  "validation": {
+    "python_files_compiled": 588,
+    "compile_errors": 0,
+    "focused_r16_tests": {
+      "passed": 27,
+      "failed": 0
+    },
+    "existing_evolution_tests": {
+      "passed": 34,
+      "failed": 0,
+      "skipped": 2
+    },
+    "full_suite": {
+      "passed": 323,
+      "failed_preexisting": 7,
+      "skipped": 4,
+      "new_failures": 0
+    },
+    "migration_0038_to_0040": "PASS",
+    "migration_0040_to_0039": "PASS",
+    "safe_startup": "PASS",
+    "unsafe_write_startup": "BLOCKED"
+  },
+  "governance": {
+    "proposal_only": true,
+    "write_enabled": false,
+    "auto_apply_enabled": false,
+    "human_approval_required": true,
+    "write_executed": false,
+    "commit_executed": false,
+    "merge_executed": false,
+    "deploy_executed": false,
+    "migration_executed_on_real_environment": false
+  },
+  "limitations": [
+    "real_postgresql",
+    "railway",
+    "two_tenant_postgresql",
+    "live_sse_provider",
+    "production_deploy"
+  ]
+}

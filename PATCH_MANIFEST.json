@@ -1,130 +1,412 @@
 {
-  "archive_entry_policy": {
-    "PATCH_MANIFEST.json": "describes payload; no recursive self-hash",
-    "SHA256SUMS.txt": "hashes every regular file except itself",
-    "archive_sha256": "provided in an external sibling .sha256.txt file"
-  },
-  "archive_structure": "repository_files_at_zip_root_no_wrapper_directory",
-  "candidate": {
-    "alembic_version_normalization_default": false,
-    "alembic_version_normalization_requires_explicit_permission": true,
-    "database_writes_during_package_generation": false,
-    "ddl_before_migration_gate": false,
-    "first_database_access_readonly": true,
-    "main_sha256": "e293881eea25c976a4b9bbb433dda84752442d3ea4571b2c8b728c97449c32af",
-    "migration_files_changed": false,
-    "module_fallback_parity_test": true,
-    "nonproduction_automatic_migrations_default": true,
-    "production_requires_explicit_automatic_migration_policy": true,
-    "pythonpath_contract": "/:/app",
-    "release_identity_contract": "ORKIO-REL-ID-R1.1",
-    "release_identity_sha256": "ee5f032652e14d8e226ca1edb710d74721ca2dacf2a6ee152bc6241f0246af03",
-    "runtime_identity_gate": true
-  },
-  "functional_changed_files": [
-    "Dockerfile",
-    "scripts/preflight_migration_plan.py",
-    "scripts/preflight_alembic_version.py",
-    "scripts/validate_premium_package.py",
-    "tests/test_migration_plan_governance.py",
-    "tests/test_alembic_version_normalization_governance.py"
+  "package": "ORKIO_BACKEND_EVOLUTION_INTELLIGENCE_R16_CUMULATIVE_DELTA",
+  "release": "R1.6",
+  "phase": "B1_premium_lineage_and_governance",
+  "cumulative": true,
+  "includes_releases": [
+    "R1.5",
+    "R1.6"
   ],
-  "generated_at": "2026-07-21T00:00:00-03:00",
-  "governance": {
-    "commit_executed": false,
-    "deploy_executed": false,
-    "execution_allowed": false,
-    "human_approval_required": true,
-    "merge_executed": false,
-    "migration_executed": false,
-    "write_executed": false
-  },
-  "mode": "proposal_only",
-  "patch_id": "ORKIO-PREMIUM-BOOT-RELID-MIGRATION-R1.4",
-  "payload_sha256": {
-    "Dockerfile": "a149bd9546b4b37c53439eba7c3883032bdfb8ba4fe1e78f32b844ff29ab4b57",
-    "docs/premium-release-r14/00_README_FIRST.md": "bd7c998abe43c808dd09f72c64eb55125b82b392e8077c92b5071c526b8928e3",
-    "docs/premium-release-r14/01_CHANGES.md": "4e340cc633410461d0c6fc3d46c5527149d1b46960dda410fe94ed9fc8e1e9f6",
-    "docs/premium-release-r14/02_VALIDATION_REPORT.md": "5102a73137a69a6bc2087426c5b7c43ab2a7e8ad371b9cc5db97831191d064ca",
-    "docs/premium-release-r14/03_STAGING_SMOKE.md": "914ff6e762b0d5b4b649d1eede906f503391f578ffb451dbb5e6db6e060afbb5",
-    "docs/premium-release-r14/04_ROLLBACK.md": "a9424387954fd61794b92d34a2da6493ad1abd01b2f8150fa06d4ad530203a98",
-    "docs/premium-release-r14/05_MIGRATION_POLICY.md": "5aec852c62a2215542606268824b6b97bb8243476f0912eee7c82cc59b417ebf",
-    "docs/premium-release-r14/CHANGED_FILES.txt": "f3ecfbede521e47981e55bf296e107484af020563539a7a2bbd6255f59c5e841",
-    "docs/premium-release-r14/MIGRATION_GOVERNANCE.env.example": "722ff14af5103296b44f53a3dd03025903f894c0e6e064f3ed1c56f1f4414205",
-    "docs/premium-release-r14/PREMIUM_R14.diff": "037da3d337c4849f126b07d23b54a3a0003a555cdf2a3ab0a5e0056dcafdf1fd",
-    "docs/premium-release-r14/VALIDATION_REPORT.json": "e6e4f80a6264d3512edcc4aefd4809c85fb9c3dc450e1ae70c20ba8401b12c8f",
-    "main.py": "e293881eea25c976a4b9bbb433dda84752442d3ea4571b2c8b728c97449c32af",
-    "runtime/release_identity.py": "ee5f032652e14d8e226ca1edb710d74721ca2dacf2a6ee152bc6241f0246af03",
-    "scripts/preflight_alembic_version.py": "b7b4a0c7ce18f90b700d18126fb4013fe0d339cef071997a20987fb4e37610a1",
-    "scripts/preflight_migration_plan.py": "95aa561df3f9edd019a53cd3ec78f7bc2c522704c36418942dab2d315dad00cc",
-    "scripts/validate_premium_package.py": "2c3c193d07561970b54e5243efe9dd6f1b26e2bd5e78b6d4900274d681bccc29",
-    "tests/test_alembic_version_normalization_governance.py": "ecb692b484638f5a66b4edf4e70a46aae06d9b8a1ed4dfc3eeed4e168a0f52fd",
-    "tests/test_migration_plan_governance.py": "85d8d7940acfb57d23ffaeedb29c096ea01eef2bba3b5d1e6effc6400a5abcfa",
-    "tests/test_release_identity_module_fallback_parity.py": "4cb5d12431e736cd3deda6a809c5fcb221fcb4c5e88567aa7f55f51b0ae6c1ec",
-    "tests/test_release_identity_premium_contract.py": "896f3340dd7a4b313ffc7303f24758aecdeed82b69fb1975b3ae1bc83655c986"
-  },
   "repository": "patroaiconsultech/ORKIO_BACKEND_AO67K_CONSOLIDATED_RC_FULL",
-  "source_artifact": {
+  "apply_at": "repository_root",
+  "wrapper_directory": false,
+  "base": {
+    "release": "R1.4",
+    "artifact": "ORKIO_BACKEND_PREMIUM_R14_ROOT_UPLOAD.zip",
+    "sha256": "5f75d055884eb67e2508f7740a1bf06a2eeb701ee1e5a0403ac45ccfead103bd",
     "branch": "NOT_PROVEN",
-    "deployed_commit": "NOT_PROVEN",
-    "filename": "ORKIO_BACKEND_PREMIUM_R13_ROOT_UPLOAD.zip",
-    "git_metadata_present": false,
-    "head": "NOT_PROVEN",
-    "sha256": "e2b0bfbe974b4081337af6a194f2e13db85c514803fac0ad8c8538e8502522d6"
+    "commit": "NOT_PROVEN"
+  },
+  "contracts": {
+    "evolution_intelligence_version": "ORKIO-EVOLUTION-INTELLIGENCE-R1.1",
+    "kpi_registry_version": "ORKIO-EVOLUTION-KPI-REGISTRY-R2",
+    "collector_version": "ORKIO-EVOLUTION-COLLECTORS-R2",
+    "source_version": "ORKIO-EVOLUTION-SOURCES-R2",
+    "proposal_only": true,
+    "write_enabled": false,
+    "auto_apply_enabled": false,
+    "human_approval_required": true
+  },
+  "migrations": {
+    "from": "0038_patch_auth_password_reset_tokens",
+    "through": [
+      "0039_patch_evolution_intelligence_foundation"
+    ],
+    "to": "0040_patch_evolution_intelligence_premium_lineage",
+    "real_environment_executed": false
+  },
+  "summary": {
+    "files_added": 45,
+    "files_modified": 4,
+    "files_deleted": 0,
+    "files_total_in_cumulative_delta": 49,
+    "manifest_and_checksum_generated": true
   },
   "validation": {
-    "compile": {
-      "passed": true,
-      "python_files": 566
+    "python_files_compiled": 588,
+    "compile_errors": 0,
+    "focused_r16_tests": {
+      "passed": 27,
+      "failed": 0
     },
-    "generated_at": "2026-07-21T00:00:00-03:00",
-    "governance": {
-      "commit_executed": false,
-      "deploy_executed": false,
-      "execution_allowed": false,
-      "human_approval_required": true,
-      "merge_executed": false,
-      "migration_executed": false,
-      "write_executed": false
+    "existing_evolution_tests": {
+      "passed": 34,
+      "failed": 0,
+      "skipped": 2
     },
-    "limitations": {
-      "git_baseline_correlation": "NOT_PROVEN",
-      "live_sse_provider": "NOT_EXECUTED",
-      "railway_runtime": "NOT_EXECUTED",
-      "real_postgresql": "NOT_EXECUTED",
-      "two_tenant_postgresql": "NOT_EXECUTED"
+    "full_suite": {
+      "passed": 323,
+      "failed_preexisting": 7,
+      "skipped": 4,
+      "new_failures": 0
     },
-    "migration_governance": {
-      "first_database_gate": "READONLY",
-      "normalization_explicit_permission": "PASS_CONTROLLED_WRITE",
-      "normalization_missing_permission": "PASS_BLOCK_WITHOUT_DDL",
-      "production_missing_policy": "PASS_BLOCK_WITHOUT_DDL",
-      "production_synchronized_false": "PASS_READONLY_CONTINUE"
-    },
-    "package": "ORKIO-PREMIUM-BOOT-RELID-MIGRATION-R1.4",
-    "runtime": {
-      "app_main_import": "PASS_SIMULATED_LAYOUT",
-      "fastapi_startup": "PASS",
-      "health_http": 200,
-      "health_status": "degraded_without_database",
-      "route_count": 253,
-      "runtime_identity_status": "validated",
-      "runtime_identity_validated": true
-    },
-    "source": {
-      "branch": "NOT_PROVEN",
-      "commit": "NOT_PROVEN",
-      "deployed_commit": "NOT_PROVEN",
-      "git_metadata_present": false,
-      "parent_artifact": "ORKIO_BACKEND_PREMIUM_R13_ROOT_UPLOAD.zip",
-      "parent_sha256": "e2b0bfbe974b4081337af6a194f2e13db85c514803fac0ad8c8538e8502522d6"
-    },
-    "tests": {
-      "focused": "37 passed",
-      "full": "296 passed, 7 failed, 4 skipped",
-      "new_failures": 0,
-      "preexisting_failures": 7
-    }
+    "migration_0038_to_0040": "PASS_LOCAL_SQLITE_TARGETED",
+    "migration_0040_to_0039": "PASS_LOCAL_SQLITE_TARGETED",
+    "safe_startup": "PASS_LOCAL",
+    "unsafe_write_startup": "BLOCKED_LOCAL",
+    "postgresql_real": "NOT_EXECUTED",
+    "railway_real": "NOT_EXECUTED"
   },
-  "version": "R1.4"
+  "governance": {
+    "write_executed": false,
+    "commit_executed": false,
+    "merge_executed": false,
+    "deploy_executed": false,
+    "migration_executed": false,
+    "execution_allowed": false,
+    "human_approval_required": true
+  },
+  "files": [
+    {
+      "path": "alembic/versions/0039_patch_evolution_intelligence_foundation.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "7bce3a989aab70d1b3f22a87287670f642dd69adfb149fa3191a45496afbc8d7",
+      "size_bytes": 10649
+    },
+    {
+      "path": "alembic/versions/0040_patch_evolution_intelligence_premium_lineage.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "835ad342da9b2495f5a10872651742670d6cca859b01dd6497a35607e525c246",
+      "size_bytes": 10200
+    },
+    {
+      "path": "docs/evolution-intelligence-foundation-r15/00_README_FIRST.md",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "6df3227d1f189a2b9d26b16b9af4eedac56c7c4f563f19cfc9d82e5ddafad3a2",
+      "size_bytes": 1745
+    },
+    {
+      "path": "docs/evolution-intelligence-foundation-r15/01_SCOPE_AND_ARCHITECTURE.md",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "5962f8384e80e4cfc846e8e436fa0ddf9e626499d9d427f69aea26124667a790",
+      "size_bytes": 1341
+    },
+    {
+      "path": "docs/evolution-intelligence-foundation-r15/02_API_CONTRACT.md",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "c8b76d1b7607dc8837f343dd52b2605d48367506df5b7b1568d8ed1a6081b151",
+      "size_bytes": 1217
+    },
+    {
+      "path": "docs/evolution-intelligence-foundation-r15/03_STAGING_SMOKE.md",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "c0c1c25e6ed181a6b48966b3b3baa53a85079278c8d860ce8743039929d8ee26",
+      "size_bytes": 3088
+    },
+    {
+      "path": "docs/evolution-intelligence-foundation-r15/04_ROLLBACK.md",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "e34ce0db3ef77f62394ac308c07c4391756890d7888b9cb40ed83e0b1e19df22",
+      "size_bytes": 966
+    },
+    {
+      "path": "docs/evolution-intelligence-foundation-r15/05_ENV_FLAGS.example",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "035c5ab99d815a5bd2a9f3101e9e2dfae5ca6227b400bbca1d7b124b97007b67",
+      "size_bytes": 590
+    },
+    {
+      "path": "docs/evolution-intelligence-foundation-r15/06_VALIDATION_REPORT.md",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "f489ea7ee00009a35b02fe0389f1d6beb885a874b3dd3d1eec9d83f59b8c21b6",
+      "size_bytes": 1695
+    },
+    {
+      "path": "docs/evolution-intelligence-foundation-r15/07_PHASE_B_ROADMAP.md",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "0256603f4b64deb7bfb1a80556c18562c9f5e5e898c863cf4d802dc1299ac983",
+      "size_bytes": 877
+    },
+    {
+      "path": "docs/evolution-intelligence-foundation-r15/CHANGED_FILES.txt",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "e87455e9c51c64c63a60e5bddcbee463ced9de07c8de90bd0562e911a5c7c181",
+      "size_bytes": 1900
+    },
+    {
+      "path": "docs/evolution-intelligence-foundation-r15/PREMIUM_R15.diff",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "cc914a5b6aed812f67245bf2676e1b1f9dd0beaadcf0c56e41f9411d15cf212b",
+      "size_bytes": 148411
+    },
+    {
+      "path": "docs/evolution-intelligence-foundation-r15/VALIDATION_REPORT.json",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "8457bf5b134aa233a9819e0d6feab520c9775939eb83ae8b7b0da08d4424414e",
+      "size_bytes": 1636
+    },
+    {
+      "path": "docs/evolution-intelligence-premium-r16/00_README_FIRST.md",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "930562424bb47b9a1a3edf0b8eb864919a84c58ace03e52ca31dd9482804d64b",
+      "size_bytes": 1128
+    },
+    {
+      "path": "docs/evolution-intelligence-premium-r16/01_CUMULATIVE_SCOPE.md",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "3f596a212b84a02d91b4e4505cc64910d1b73a533abcfd32f345a872826fa324",
+      "size_bytes": 1241
+    },
+    {
+      "path": "docs/evolution-intelligence-premium-r16/02_ARCHITECTURE_AND_GOVERNANCE.md",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "e8c45d71492ed1f46f36e688e0a031274f5236c722b9cdf869f0fefc63946133",
+      "size_bytes": 1856
+    },
+    {
+      "path": "docs/evolution-intelligence-premium-r16/03_API_CONTRACT.md",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "3ffc6c7533aba28d500f70692e8a8f497284b9fa3dd18c2b1e6b10273d7669b5",
+      "size_bytes": 1112
+    },
+    {
+      "path": "docs/evolution-intelligence-premium-r16/04_MIGRATIONS_AND_ROLLBACK.md",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "cc6368399920bf4d9ab739d5abba2c0306c2f1dc139af2d3f505439449bac062",
+      "size_bytes": 1522
+    },
+    {
+      "path": "docs/evolution-intelligence-premium-r16/05_STAGING_SMOKE.md",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "607260b3aeded72538d5938a59bf688a6ffe03d046ee050a6dcf5e19c6ae38d0",
+      "size_bytes": 2158
+    },
+    {
+      "path": "docs/evolution-intelligence-premium-r16/06_ENV_FLAGS.example",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "295f18ab9435951595499c2afa9b76e9545a1038fb46cad662db60ef0cd4d0a5",
+      "size_bytes": 564
+    },
+    {
+      "path": "docs/evolution-intelligence-premium-r16/07_VALIDATION_REPORT.md",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "e7eb1ad1c398861282320b5bc0197c572a801ed833cfd2c1455c174d36d3c4df",
+      "size_bytes": 1400
+    },
+    {
+      "path": "docs/evolution-intelligence-premium-r16/08_RELEASE_GATES.md",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "0bb315d35443ae61f3d8497e92a7bf6ce63c3d7d6c2521ee02f97708fc7ecce1",
+      "size_bytes": 783
+    },
+    {
+      "path": "docs/evolution-intelligence-premium-r16/CHANGED_FILES.txt",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "190a1c424dbf782b35a990180577bd865c748b0f6c9891aa380d4140733eaf2d",
+      "size_bytes": 2691
+    },
+    {
+      "path": "docs/evolution-intelligence-premium-r16/PREMIUM_R16.diff",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "55538eb736252996efa6cd5f641059f75ee4bbdea052372a7aa458414750bf96",
+      "size_bytes": 377451
+    },
+    {
+      "path": "docs/evolution-intelligence-premium-r16/VALIDATION_REPORT.json",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "488002aece6e3c3d747f69bd4b1cd54ffc46ca30de47b7241a2b19bde21b7bea",
+      "size_bytes": 1379
+    },
+    {
+      "path": "evolution/intelligence/__init__.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "421cea578b872ae3d9bebece23812f1846a06760eee7c996228e5e59ad566102",
+      "size_bytes": 734
+    },
+    {
+      "path": "evolution/intelligence/diagnostics.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "ed7dce3045b32d0ded834373304f1396d6e99b87a2e3365c543016afd438a07f",
+      "size_bytes": 2392
+    },
+    {
+      "path": "evolution/intelligence/governance.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "eb21bf69e45bcc833acb1af750543bdb16fa3dcfc18c6dbe5f6f6c01e7172e30",
+      "size_bytes": 2675
+    },
+    {
+      "path": "evolution/intelligence/kpi_registry.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "b1dfcc304126495595aa56eb827bc4fba17bc4625e91378ec424a6ab2ad807e2",
+      "size_bytes": 10887
+    },
+    {
+      "path": "evolution/intelligence/prioritization.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "82af37589395d70a6d51f00f377461deb022776cee79e706d1c010aace88da2f",
+      "size_bytes": 3246
+    },
+    {
+      "path": "evolution/intelligence/scoring.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "d4dfc59232ce7de4d2c68a00ad7dd1b643635bc64933f58b669d698934a074e6",
+      "size_bytes": 8944
+    },
+    {
+      "path": "routes/evolution_intelligence.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "04258f9d3f1d560c90b9976245447627d142efa19c954daa39a209f202e4bf27",
+      "size_bytes": 30143
+    },
+    {
+      "path": "schemas/evolution_intelligence.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "6c5635de947ed12cd729e6baabca94bbe13f16e77a1c98de3f48aface85cedcb",
+      "size_bytes": 7821
+    },
+    {
+      "path": "scripts/evolution_validate_kpis.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "2efe0adf3d057cbb9cf7976cec95c08e27aedd2dceff5818fedcb2980731068a",
+      "size_bytes": 1279
+    },
+    {
+      "path": "services/evolution_intelligence_service.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "9fc6ec1c2147b7e3c6f6f4290cf594e91b88eba3fae06db82cdb34af3060a21b",
+      "size_bytes": 38930
+    },
+    {
+      "path": "tests/evolution_intelligence/test_diagnostics_priorities.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "bd141267bd492a9c464cf93c6b0b9f9210b3cef6a5b33abd4f7f893a38039c99",
+      "size_bytes": 1924
+    },
+    {
+      "path": "tests/evolution_intelligence/test_governance.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "c51d8c98c23b45cad967ae4e5220e56c17e8fa5c85040672a81afb1c79439708",
+      "size_bytes": 1459
+    },
+    {
+      "path": "tests/evolution_intelligence/test_main_wiring.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "c75f4dcab90293a8890865c764af86592fc6bab987beab21cec8224b262c6458",
+      "size_bytes": 631
+    },
+    {
+      "path": "tests/evolution_intelligence/test_migration_0040_contract.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "a1e9e7e3106f33290d98baec607afcc83dfc6b24080cb1631a927e8bc014394b",
+      "size_bytes": 1576
+    },
+    {
+      "path": "tests/evolution_intelligence/test_migration_contract.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "d3415a3dfabd04042b3c8f143c8d8ab872b9511fdbe9afb3a66e6ee637f136a0",
+      "size_bytes": 1500
+    },
+    {
+      "path": "tests/evolution_intelligence/test_registry.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "3ad01a8fff862933e450cdd9233850efa42e0050ceef8eb6437903337d9c60ff",
+      "size_bytes": 799
+    },
+    {
+      "path": "tests/evolution_intelligence/test_routes.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "498dac9b2a2c0c9b4f424c0cb1005620ed9a9ec0dfd3172b24fa96506f02c8d9",
+      "size_bytes": 14477
+    },
+    {
+      "path": "tests/evolution_intelligence/test_scoring.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "e3ca75c2f360f7f2460eb53870c117e500f53e55113029b4bfa86cd83e372adb",
+      "size_bytes": 2654
+    },
+    {
+      "path": "tests/evolution_intelligence/test_service_tenant_isolation.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "99a85d85901459272b2ebb5c4fb2b1c9f8227ad19be0b23de48d046752d1f295",
+      "size_bytes": 7953
+    },
+    {
+      "path": "tests/evolution_intelligence/test_snapshot_immutability_provenance.py",
+      "action": "add",
+      "base_sha256": null,
+      "target_sha256": "e68aa54bc37d83b63ebf4c2519963c7af3c95c4c16cebf00891d0828d8675409",
+      "size_bytes": 7115
+    },
+    {
+      "path": "main.py",
+      "action": "modify",
+      "base_sha256": "e293881eea25c976a4b9bbb433dda84752442d3ea4571b2c8b728c97449c32af",
+      "target_sha256": "b7054090e67e8bee673b3b9c0a2a230c4db330a4694082b7e0f0065ecf702686",
+      "size_bytes": 2643230
+    },
+    {
+      "path": "scripts/validate_premium_package.py",
+      "action": "modify",
+      "base_sha256": "2c3c193d07561970b54e5243efe9dd6f1b26e2bd5e78b6d4900274d681bccc29",
+      "target_sha256": "23e210f1d29e85b5caece8c040dc0f177a977f1f0bf31d0e9b38990a9af2f359",
+      "size_bytes": 11994
+    }
+  ],
+  "files_to_delete": [],
+  "note": "PATCH_MANIFEST.json and SHA256SUMS.txt are generated integrity metadata and are intentionally not self-hashed in this manifest."
 }
