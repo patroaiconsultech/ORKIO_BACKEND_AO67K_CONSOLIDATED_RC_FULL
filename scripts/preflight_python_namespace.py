@@ -4,13 +4,40 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import os
 import sys
+from pathlib import Path
 from types import ModuleType
 from typing import Final
 
 
 REQUIRED_MODULE: Final[str] = "app.runtime.direct_chat_persistence"
 REQUIRED_CALLABLE: Final[str] = "persist_direct_assistant_message"
+REPOSITORY_ROOT: Final[Path] = Path(__file__).resolve().parents[1]
+PACKAGE_PARENT: Final[Path] = REPOSITORY_ROOT.parent
+
+
+def _normalized_sys_path() -> set[str]:
+    """Resolve sys.path entries, including the empty current-directory entry."""
+    normalized: set[str] = set()
+    for entry in sys.path:
+        candidate = entry or os.getcwd()
+        try:
+            normalized.add(str(Path(candidate).resolve()))
+        except Exception:
+            continue
+    return normalized
+
+
+def _validate_required_paths() -> None:
+    """Fail with an actionable error if package and legacy roots are missing."""
+    normalized = _normalized_sys_path()
+    required = {str(PACKAGE_PARENT.resolve()), str(REPOSITORY_ROOT.resolve())}
+    missing = sorted(required - normalized)
+    if missing:
+        raise RuntimeError(
+            "python_namespace_required_paths_missing:" + ",".join(missing)
+        )
 
 
 def _find_spec(module_name: str):
@@ -27,6 +54,10 @@ def main() -> int:
     print("PYTHON_NAMESPACE_PREFLIGHT_START", flush=True)
     print(f"python_executable={sys.executable!r}", flush=True)
     print(f"working_sys_path={sys.path!r}", flush=True)
+    print(f"repository_root={str(REPOSITORY_ROOT)!r}", flush=True)
+    print(f"package_parent={str(PACKAGE_PARENT)!r}", flush=True)
+
+    _validate_required_paths()
 
     app_spec = _find_spec("app")
     runtime_spec = _find_spec("app.runtime")

@@ -271,6 +271,9 @@ def build_release_identity(
             max_length=64,
         ),
         "governance_flags": governance_flags,
+        "release_identity_source": "runtime_module",
+        "release_identity_import_error_type": "none",
+        "release_identity_fallback_reason": "not_applicable",
     }
 
 
@@ -298,6 +301,8 @@ def emit_boot_identity(
         "deployment_id=%s migration_code_heads=%s migration_database_revisions=%s "
         "migration_database_status=%s migration_in_sync=%s route_count=%s "
         "runtime_main_path=%s runtime_main_sha256=%s "
+        "release_identity_source=%s release_identity_import_error_type=%s "
+        "release_identity_fallback_reason=%s "
         "marco_zero_preview_enabled=%s marco_zero_write_enabled=%s "
         "signals_snapshot_write_enabled=%s agent_eval_write_enabled=%s",
         identity["contract_version"],
@@ -312,6 +317,9 @@ def emit_boot_identity(
         identity["route_count"],
         identity["runtime_main_path"],
         identity["runtime_main_sha256"],
+        identity["release_identity_source"],
+        identity["release_identity_import_error_type"],
+        identity["release_identity_fallback_reason"],
         identity["governance_flags"]["EVOLUTION_MARCO_ZERO_PREVIEW_ENABLED"],
         identity["governance_flags"]["EVOLUTION_MARCO_ZERO_WRITE_ENABLED"],
         identity["governance_flags"]["EVOLUTION_SIGNALS_SNAPSHOT_WRITE_ENABLED"],

@@ -71,7 +71,7 @@ def test_complex_prompts_create_binding_full_runtime_decision() -> None:
         assert route["block_executive_templates"] is True
         assert route["block_public_deterministic_fastpaths"] is True
         assert route["block_governed_evolution_fastpath"] is True
-        assert route["guard_version"] == "AO01_SINGLE_ROUTE_AUTHORITY_PATCH_V1"
+        assert route["guard_version"] == "AO01_EXECUTIVE_GUARD_COMPOUND_V3"
         assert route["guard_source_file"].endswith("orkio_executive_guard.py")
         assert len(route["guard_source_sha256"]) == 64
 

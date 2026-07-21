@@ -1,0 +1,54 @@
+{
+  "compile": {
+    "passed": true,
+    "python_files": 566
+  },
+  "generated_at": "2026-07-21T00:00:00-03:00",
+  "governance": {
+    "commit_executed": false,
+    "deploy_executed": false,
+    "execution_allowed": false,
+    "human_approval_required": true,
+    "merge_executed": false,
+    "migration_executed": false,
+    "write_executed": false
+  },
+  "limitations": {
+    "git_baseline_correlation": "NOT_PROVEN",
+    "live_sse_provider": "NOT_EXECUTED",
+    "railway_runtime": "NOT_EXECUTED",
+    "real_postgresql": "NOT_EXECUTED",
+    "two_tenant_postgresql": "NOT_EXECUTED"
+  },
+  "migration_governance": {
+    "first_database_gate": "READONLY",
+    "normalization_explicit_permission": "PASS_CONTROLLED_WRITE",
+    "normalization_missing_permission": "PASS_BLOCK_WITHOUT_DDL",
+    "production_missing_policy": "PASS_BLOCK_WITHOUT_DDL",
+    "production_synchronized_false": "PASS_READONLY_CONTINUE"
+  },
+  "package": "ORKIO-PREMIUM-BOOT-RELID-MIGRATION-R1.4",
+  "runtime": {
+    "app_main_import": "PASS_SIMULATED_LAYOUT",
+    "fastapi_startup": "PASS",
+    "health_http": 200,
+    "health_status": "degraded_without_database",
+    "route_count": 253,
+    "runtime_identity_status": "validated",
+    "runtime_identity_validated": true
+  },
+  "source": {
+    "branch": "NOT_PROVEN",
+    "commit": "NOT_PROVEN",
+    "deployed_commit": "NOT_PROVEN",
+    "git_metadata_present": false,
+    "parent_artifact": "ORKIO_BACKEND_PREMIUM_R13_ROOT_UPLOAD.zip",
+    "parent_sha256": "e2b0bfbe974b4081337af6a194f2e13db85c514803fac0ad8c8538e8502522d6"
+  },
+  "tests": {
+    "focused": "37 passed",
+    "full": "296 passed, 7 failed, 4 skipped",
+    "new_failures": 0,
+    "preexisting_failures": 7
+  }
+}

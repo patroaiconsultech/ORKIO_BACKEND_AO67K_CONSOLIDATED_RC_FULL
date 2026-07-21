@@ -55,15 +55,33 @@ from typing import Any, Dict, List, Optional
 # ORKIO-REL-ID-R1.1 — prefer the modular implementation, but keep a
 # self-contained fallback so a main.py-only deployment does not lose
 # /api/admin/system/version or fail during import.
+_RELID_REQUIRED_CONTRACT_VERSION = "ORKIO-REL-ID-R1.1"
 try:
     from app.runtime.release_identity import (
+        CONTRACT_VERSION as _RELID_MODULE_CONTRACT_VERSION,
         actor_reference,
         build_release_identity,
         emit_boot_identity,
     )
+    if _RELID_MODULE_CONTRACT_VERSION != _RELID_REQUIRED_CONTRACT_VERSION:
+        raise ImportError("release_identity_contract_incompatible")
 except Exception as _release_identity_import_exc:
-    _RELID_CONTRACT_VERSION = "ORKIO-REL-ID-R1.1"
+    _RELID_CONTRACT_VERSION = _RELID_REQUIRED_CONTRACT_VERSION
     _RELID_IMPORT_ERROR_TYPE = _release_identity_import_exc.__class__.__name__
+    if (
+        isinstance(_release_identity_import_exc, ModuleNotFoundError)
+        and getattr(_release_identity_import_exc, "name", None)
+        == "app.runtime.release_identity"
+    ):
+        _RELID_FALLBACK_REASON = "module_missing"
+    elif (
+        isinstance(_release_identity_import_exc, ImportError)
+        and str(_release_identity_import_exc)
+        == "release_identity_contract_incompatible"
+    ):
+        _RELID_FALLBACK_REASON = "contract_incompatible"
+    else:
+        _RELID_FALLBACK_REASON = "runtime_import_error"
     _RELID_COMMIT_RE = re.compile(r"^[0-9a-fA-F]{7,64}$")
     _RELID_SAFE_TEXT_RE = re.compile(r"[^A-Za-z0-9._/@:+-]+")
     _RELID_COMMIT_ENV_KEYS = (
@@ -322,6 +340,7 @@ except Exception as _release_identity_import_exc:
             "governance_flags": governance_flags,
             "release_identity_source": "main_fallback",
             "release_identity_import_error_type": _RELID_IMPORT_ERROR_TYPE,
+            "release_identity_fallback_reason": _RELID_FALLBACK_REASON,
         }
 
     def emit_boot_identity(
@@ -349,6 +368,8 @@ except Exception as _release_identity_import_exc:
             "migration_database_revisions=%s migration_database_status=%s "
             "migration_in_sync=%s route_count=%s runtime_main_path=%s "
             "runtime_main_sha256=%s release_identity_source=%s "
+            "release_identity_import_error_type=%s "
+            "release_identity_fallback_reason=%s "
             "marco_zero_preview_enabled=%s marco_zero_write_enabled=%s "
             "signals_snapshot_write_enabled=%s agent_eval_write_enabled=%s",
             identity["contract_version"],
@@ -364,6 +385,8 @@ except Exception as _release_identity_import_exc:
             identity["runtime_main_path"],
             identity["runtime_main_sha256"],
             identity["release_identity_source"],
+            identity["release_identity_import_error_type"],
+            identity["release_identity_fallback_reason"],
             identity["governance_flags"][
                 "EVOLUTION_MARCO_ZERO_PREVIEW_ENABLED"
             ],
@@ -5191,15 +5214,25 @@ app = FastAPI(title="Patroai API", version=APP_VERSION)
 
 @app.on_event("startup")
 def _startup_release_identity_r11():
-    """Emit sanitized code and database release identity after import."""
-    emit_boot_identity(
-        logger,
-        app,
-        app_version=APP_VERSION,
-        repo_root=Path(__file__).resolve().parent,
-        runtime_main_path=Path(__file__).resolve(),
-        database=ENGINE,
-    )
+    """Emit sanitized release identity and fail closed if it cannot be built."""
+    app.state.runtime_identity_validated = False
+    app.state.runtime_identity_status = "initializing"
+    try:
+        identity = emit_boot_identity(
+            logger,
+            app,
+            app_version=APP_VERSION,
+            repo_root=Path(__file__).resolve().parent,
+            runtime_main_path=Path(__file__).resolve(),
+            database=ENGINE,
+        )
+    except Exception:
+        app.state.runtime_identity_status = "failed"
+        logger.exception("ORKIO_BOOT_IDENTITY_FAILED")
+        raise
+    app.state.runtime_identity = identity
+    app.state.runtime_identity_validated = True
+    app.state.runtime_identity_status = "validated"
 
 
 
@@ -29051,6 +29084,34 @@ def admin_system_version(
         database=db,
         authenticated_org=org,
         authority_scope=authority_scope,
+    )
+    boot_identity = getattr(app.state, "runtime_identity", None)
+    if not isinstance(boot_identity, dict):
+        boot_identity = {}
+    identity.update(
+        {
+            "runtime_identity_validated": bool(
+                getattr(app.state, "runtime_identity_validated", False)
+            ),
+            "runtime_identity_status": str(
+                getattr(app.state, "runtime_identity_status", "unavailable")
+            ),
+            "boot_release_identity_source": str(
+                boot_identity.get("release_identity_source") or "unavailable"
+            ),
+            "boot_release_id": str(
+                boot_identity.get("release_id") or "unavailable"
+            ),
+            "boot_runtime_main_sha256": str(
+                boot_identity.get("runtime_main_sha256") or "unavailable"
+            ),
+            "runtime_identity_consistent": bool(
+                boot_identity
+                and boot_identity.get("runtime_main_sha256")
+                == identity.get("runtime_main_sha256")
+                and boot_identity.get("release_id") == identity.get("release_id")
+            ),
+        }
     )
     try:
         logger.info(
