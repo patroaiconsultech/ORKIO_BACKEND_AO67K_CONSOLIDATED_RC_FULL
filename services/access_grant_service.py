@@ -40,6 +40,8 @@ class AccessGrantInvalidError(ValueError):
 class AccessGrantConfig:
     enabled: bool
     require_for_auth: bool
+    require_for_register: bool
+    require_for_login: bool
     signing_key: str
     cookie_name: str
     ttl_seconds: int
@@ -74,7 +76,20 @@ def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
 
 def load_access_grant_config(*, require_signing_key: bool = False) -> AccessGrantConfig:
     enabled = _env_bool("ACCESS_GATE_SERVER_SIDE_ONLY", False)
+
+    # Backward compatibility:
+    # - ACCESS_GATE_REQUIRE_FOR_AUTH remains the legacy fallback.
+    # - Registration inherits the legacy behavior unless explicitly overridden.
+    # - Login is open by default and must be explicitly re-enabled.
     require_for_auth = _env_bool("ACCESS_GATE_REQUIRE_FOR_AUTH", enabled)
+    require_for_register = _env_bool(
+        "ACCESS_GATE_REQUIRE_FOR_REGISTER",
+        require_for_auth,
+    )
+    require_for_login = _env_bool(
+        "ACCESS_GATE_REQUIRE_FOR_LOGIN",
+        False,
+    )
     signing_key = _clean_env(os.getenv("ACCESS_GATE_SIGNING_KEY"), "")
     cookie_name = _clean_env(os.getenv("ACCESS_GATE_COOKIE_NAME"), "orkio_access_grant")
     if not _COOKIE_NAME_RE.fullmatch(cookie_name):
@@ -94,6 +109,8 @@ def load_access_grant_config(*, require_signing_key: bool = False) -> AccessGran
     config = AccessGrantConfig(
         enabled=enabled,
         require_for_auth=require_for_auth,
+        require_for_register=require_for_register,
+        require_for_login=require_for_login,
         signing_key=signing_key,
         cookie_name=cookie_name,
         ttl_seconds=_env_int("ACCESS_GRANT_TTL_SECONDS", 86400, 300, 604800),
@@ -106,7 +123,13 @@ def load_access_grant_config(*, require_signing_key: bool = False) -> AccessGran
         audit_enabled=_env_bool("ACCESS_AUDIT_ENABLED", True),
     )
 
-    if require_signing_key or enabled or require_for_auth:
+    if (
+        require_signing_key
+        or enabled
+        or require_for_auth
+        or require_for_register
+        or require_for_login
+    ):
         if len(signing_key.encode("utf-8")) < 32:
             raise AccessGrantConfigurationError(
                 "ACCESS_GATE_SIGNING_KEY must contain at least 32 bytes"
@@ -115,7 +138,18 @@ def load_access_grant_config(*, require_signing_key: bool = False) -> AccessGran
 
 
 def access_gate_auth_required() -> bool:
+    """Legacy compatibility accessor. Prefer the route-specific helpers."""
     return load_access_grant_config().require_for_auth
+
+
+def access_gate_register_required() -> bool:
+    """Return whether a server-side access grant is required for registration."""
+    return load_access_grant_config().require_for_register
+
+
+def access_gate_login_required() -> bool:
+    """Return whether a server-side access grant is required for login."""
+    return load_access_grant_config().require_for_login
 
 
 def normalize_access_code(value: Optional[str]) -> str:

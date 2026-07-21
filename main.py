@@ -411,6 +411,8 @@ from .routes.evolution_signals import (
 )
 from .services.access_grant_service import (
     access_gate_auth_required,
+    access_gate_register_required,
+    access_gate_login_required,
     find_signup_code_by_id,
     load_access_grant_config,
     require_request_access_grant,
@@ -7380,7 +7382,13 @@ def register(inp: RegisterIn, request: Request = None, x_org_slug: Optional[str]
     is_admin_email = email in admin_emails()
 
     access_grant_claims = None
-    if access_gate_auth_required():
+    logger.info(
+        "AUTH_ACCESS_GATE_DECISION route=register required=%s org=%s request_id=%s",
+        access_gate_register_required(),
+        org,
+        request_id,
+    )
+    if access_gate_register_required():
         if request is None:
             raise HTTPException(status_code=403, detail="ACCESS_GRANT_REQUIRED")
         access_grant_claims = require_request_access_grant(
@@ -7646,7 +7654,13 @@ def login(inp: LoginIn, x_org_slug: Optional[str] = Header(default=None), db: Se
         raise HTTPException(status_code=429, detail="Muitas tentativas de login. Aguarde 1 minuto.")
 
     org = (get_org(x_org_slug) if x_org_slug else (inp.tenant or default_tenant())).strip()
-    if access_gate_auth_required():
+    logger.info(
+        "AUTH_ACCESS_GATE_DECISION route=login required=%s org=%s request_id=%s",
+        access_gate_login_required(),
+        org,
+        request_id,
+    )
+    if access_gate_login_required():
         if request is None:
             raise HTTPException(status_code=403, detail="ACCESS_GRANT_REQUIRED")
         require_request_access_grant(
@@ -50439,54 +50453,269 @@ def investor_access_validate(inp: SignupCodeIn, x_org_slug: Optional[str] = Head
 def forgot_password(inp: ForgotPasswordIn, x_org_slug: Optional[str] = Header(default=None), request: Request = None, db: Session = Depends(get_db)):
     ip = (request.client.host if request and request.client else "unknown")
     org = (get_org(x_org_slug) if x_org_slug else (inp.tenant or default_tenant())).strip()
-    if not _rate_limit_check(_rl_otp_lock, _rl_otp_calls, f"pwdreset:{ip}", _OTP_MAX_PER_MINUTE):
-        raise HTTPException(status_code=429, detail="Too many password reset attempts. Please try again later.")
     email = inp.email.lower().strip()
     email_ref = _ao79a_email_ref(email)
-    u = db.execute(select(User).where(User.org_slug == org, User.email == email)).scalar_one_or_none()
-    if u:
-        try:
-            db.execute(text("UPDATE password_reset_tokens SET used_at = :ts WHERE lead_id = :uid AND used_at IS NULL"), {"ts": now_ts(), "uid": u.id})
-            raw = _generate_reset_token()
-            db.add(PasswordResetToken(
-                id=new_id(), lead_id=u.id, token_hash=_hash_text(raw),
-                expires_at=now_ts() + PASSWORD_RESET_EXPIRES_MINUTES * 60,
-                used_at=None, created_at=now_ts(),
-            ))
+    request_id = _ao79a_request_id(request, "forgot_password")
+
+    # Apply independent limits by network origin and normalized e-mail reference.
+    # The public response remains generic to prevent account enumeration.
+    if not _rate_limit_check(
+        _rl_otp_lock,
+        _rl_otp_calls,
+        f"pwdreset_ip:{ip}",
+        _OTP_MAX_PER_MINUTE,
+    ):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many password reset attempts. Please try again later.",
+        )
+    if not _rate_limit_check(
+        _rl_otp_lock,
+        _rl_otp_calls,
+        f"pwdreset_email:{email_ref}",
+        _OTP_MAX_PER_MINUTE,
+    ):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many password reset attempts. Please try again later.",
+        )
+
+    logger.info(
+        "FORGOT_PASSWORD_REQUEST_RECEIVED request_id=%s org=%s email_ref=%s",
+        request_id,
+        org,
+        email_ref,
+    )
+
+    u = db.execute(
+        select(User).where(User.org_slug == org, User.email == email)
+    ).scalar_one_or_none()
+
+    if not u:
+        logger.info(
+            "FORGOT_PASSWORD_GENERIC_COMPLETED request_id=%s org=%s email_ref=%s account_found=false",
+            request_id,
+            org,
+            email_ref,
+        )
+        return {
+            "ok": True,
+            "message": "If this e-mail is registered, a reset link has been sent.",
+        }
+
+    token_id = None
+    try:
+        issued_at = now_ts()
+
+        # Only one active reset link is valid per account.
+        db.execute(
+            text(
+                "UPDATE password_reset_tokens "
+                "SET used_at = :ts "
+                "WHERE lead_id = :uid AND used_at IS NULL"
+            ),
+            {"ts": issued_at, "uid": u.id},
+        )
+
+        raw = _generate_reset_token()
+        token_id = new_id()
+        db.add(
+            PasswordResetToken(
+                id=token_id,
+                lead_id=u.id,
+                token_hash=_hash_text(raw),
+                expires_at=issued_at + PASSWORD_RESET_EXPIRES_MINUTES * 60,
+                used_at=None,
+                created_at=issued_at,
+            )
+        )
+        db.commit()
+
+        logger.info(
+            "FORGOT_PASSWORD_TOKEN_PERSISTED request_id=%s org=%s email_ref=%s",
+            request_id,
+            org,
+            email_ref,
+        )
+
+        sent = bool(_send_password_reset_email(email, raw))
+        if not sent:
+            # A token that was not delivered must not remain usable.
+            db.execute(
+                text(
+                    "UPDATE password_reset_tokens "
+                    "SET used_at = :ts "
+                    "WHERE id = :token_id AND used_at IS NULL"
+                ),
+                {"ts": now_ts(), "token_id": token_id},
+            )
             db.commit()
-            sent = _send_password_reset_email(email, raw)
-            logger.info("FORGOT_PASSWORD_EMAIL email_ref=%s sent=%s", email_ref, sent)
-            try:
-                audit(db, org, u.id, "auth.forgot_password", request_id="forgot", path="/api/auth/forgot-password", status_code=200, latency_ms=0, meta={"email_ref": email_ref})
-            except Exception:
-                pass
+            logger.warning(
+                "FORGOT_PASSWORD_PROVIDER_REJECTED request_id=%s org=%s email_ref=%s token_invalidated=true",
+                request_id,
+                org,
+                email_ref,
+            )
+        else:
+            logger.info(
+                "FORGOT_PASSWORD_PROVIDER_ACCEPTED request_id=%s org=%s email_ref=%s",
+                request_id,
+                org,
+                email_ref,
+            )
+
+        try:
+            audit(
+                db,
+                org,
+                u.id,
+                "auth.forgot_password",
+                request_id=request_id,
+                path="/api/auth/forgot-password",
+                status_code=200,
+                latency_ms=0,
+                meta={
+                    "email_ref": email_ref,
+                    "provider_accepted": sent,
+                },
+            )
         except Exception:
-            try: db.rollback()
-            except Exception: pass
-            logger.exception("FORGOT_PASSWORD_FAILED email_ref=%s", email_ref)
-    return {"ok": True, "message": "If this e-mail is registered, a reset link has been sent."}
+            logger.exception(
+                "FORGOT_PASSWORD_AUDIT_FAILED request_id=%s email_ref=%s",
+                request_id,
+                email_ref,
+            )
+
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+        # If persistence succeeded but a later internal stage failed, revoke the
+        # freshly issued token on a clean transaction whenever possible.
+        if token_id:
+            try:
+                db.execute(
+                    text(
+                        "UPDATE password_reset_tokens "
+                        "SET used_at = :ts "
+                        "WHERE id = :token_id AND used_at IS NULL"
+                    ),
+                    {"ts": now_ts(), "token_id": token_id},
+                )
+                db.commit()
+            except Exception:
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+                logger.exception(
+                    "FORGOT_PASSWORD_TOKEN_REVOCATION_FAILED request_id=%s email_ref=%s",
+                    request_id,
+                    email_ref,
+                )
+
+        logger.exception(
+            "FORGOT_PASSWORD_FAILED request_id=%s org=%s email_ref=%s",
+            request_id,
+            org,
+            email_ref,
+        )
+
+    return {
+        "ok": True,
+        "message": "If this e-mail is registered, a reset link has been sent.",
+    }
 
 @app.post("/api/auth/reset-password")
 def reset_password(inp: ResetPasswordIn, x_org_slug: Optional[str] = Header(default=None), db: Session = Depends(get_db)):
     org = (get_org(x_org_slug) if x_org_slug else (inp.tenant or default_tenant())).strip()
     if inp.password != inp.password_confirm:
-        raise HTTPException(status_code=400, detail="Password confirmation does not match.")
+        raise HTTPException(
+            status_code=400,
+            detail="Password confirmation does not match.",
+        )
+
     token_hash = _hash_text(inp.token.strip())
-    prt = db.execute(select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash, PasswordResetToken.used_at.is_(None), PasswordResetToken.expires_at > now_ts())).scalar_one_or_none()
+    reset_at = now_ts()
+
+    # Row locking makes token consumption atomic across concurrent replicas.
+    prt = db.execute(
+        select(PasswordResetToken)
+        .where(
+            PasswordResetToken.token_hash == token_hash,
+            PasswordResetToken.used_at.is_(None),
+            PasswordResetToken.expires_at > reset_at,
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+
     if not prt:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset token.")
-    u = db.execute(select(User).where(User.id == prt.lead_id, User.org_slug == org)).scalar_one_or_none()
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid or expired reset token.",
+        )
+
+    u = db.execute(
+        select(User).where(
+            User.id == prt.lead_id,
+            User.org_slug == org,
+        )
+    ).scalar_one_or_none()
+
     if not u:
-        raise HTTPException(status_code=400, detail="Invalid reset request.")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid reset request.",
+        )
+
     salt = new_salt()
     u.salt = salt
     u.pw_hash = pbkdf2_hash(inp.password, salt)
-    prt.used_at = now_ts()
-    db.add(u); db.add(prt); db.commit()
+
+    # Revoke every outstanding reset link for the account, including the
+    # current one, in the same transaction as the password update.
+    db.execute(
+        text(
+            "UPDATE password_reset_tokens "
+            "SET used_at = :ts "
+            "WHERE lead_id = :uid AND used_at IS NULL"
+        ),
+        {"ts": reset_at, "uid": u.id},
+    )
+    db.add(u)
+    db.commit()
+
+    email_ref = _ao79a_email_ref(u.email)
+    logger.info(
+        "RESET_PASSWORD_COMPLETED org=%s email_ref=%s all_tokens_revoked=true",
+        org,
+        email_ref,
+    )
+
     try:
-        audit(db, org, u.id, "auth.reset_password", request_id="reset", path="/api/auth/reset-password", status_code=200, latency_ms=0, meta={"email_ref": _ao79a_email_ref(u.email)})
+        audit(
+            db,
+            org,
+            u.id,
+            "auth.reset_password",
+            request_id="reset",
+            path="/api/auth/reset-password",
+            status_code=200,
+            latency_ms=0,
+            meta={
+                "email_ref": email_ref,
+                "all_reset_tokens_revoked": True,
+            },
+        )
     except Exception:
-        pass
+        logger.exception(
+            "RESET_PASSWORD_AUDIT_FAILED org=%s email_ref=%s",
+            org,
+            email_ref,
+        )
+
     try:
         usage_tier = getattr(u, "usage_tier", None) or "summit_standard"
         auth_payload = _build_fresh_auth_response(
@@ -50500,7 +50729,10 @@ def reset_password(inp: ResetPasswordIn, x_org_slug: Optional[str] = Header(defa
         auth_payload["message"] = "Password updated successfully."
         return auth_payload
     except Exception:
-        return {"ok": True, "message": "Password updated successfully."}
+        return {
+            "ok": True,
+            "message": "Password updated successfully.",
+        }
 
 
 @app.post("/api/auth/change-password")
