@@ -1,50 +1,10 @@
 {
-  "release": "ORION_PREMIUM_PHASE2",
-  "files": [
-    {
-      "path": "INSTALL.md",
-      "sha256": "ed1deeab3acef48526e890f9877b9d2b9bb79c68bd1cf233ba899ec19011c573",
-      "bytes": 1109
-    },
-    {
-      "path": "ORION_PREMIUM_PHASE2.patch",
-      "sha256": "85f118878bbce902feb59cbb070c6e00366f5964f907f4e2b7c3de1501a7d8c6",
-      "bytes": 13898
-    },
-    {
-      "path": "ROLLBACK.md",
-      "sha256": "2cacd8d1e63c90839a5a7c0ea549821545d0224b78551932b16a972357dbcacd",
-      "bytes": 401
-    },
-    {
-      "path": "services/file_upload_indexing_service.py",
-      "sha256": "0bf921d8aaeb5da894c04c94775cca977bad7de20d893ed64bf38c7d99fd756e",
-      "bytes": 13758
-    },
-    {
-      "path": "services/orion_premium/evidence_guard.py",
-      "sha256": "b8487511cf43153c02300765768c4efe576b6e6b97c8c8e8a3af7f30d0e35ead",
-      "bytes": 5609
-    },
-    {
-      "path": "services/orion_premium/evolution_hub.py",
-      "sha256": "33de5d1257fae4d4282fc45ef0d48890c0787b837358a340c0252414f1bcb289",
-      "bytes": 3438
-    },
-    {
-      "path": "services/orion_premium/vision_gateway.py",
-      "sha256": "d5ba3d50202163a7d533b350ae1b979e5bacce398ab3f326f7b70d77796a3169",
-      "bytes": 4905
-    },
-    {
-      "path": "tests/orion_premium/test_evolution_hub.py",
-      "sha256": "afd3b99f313a8e98323c4a256ae0a4d4dc48a25277a8e9796baf2714a7ce315f",
-      "bytes": 1368
-    },
-    {
-      "path": "tests/orion_premium/test_vision_gateway.py",
-      "sha256": "aa0e5a11ebb3c1878432571a3ba0922b48e9a6882ffea0bd7167183ea5e41531",
-      "bytes": 675
-    }
-  ]
+  "APPLY_RESTORE.sh": "dc71b431ddac1150967f24ebd4ea6b0798c5b4dd378f73b1f7dec422043001cb",
+  "README_RESTORE.md": "ca2b25a93d0be965cfad6cba711014860f2c38ac27c9591292382bac8daa7643",
+  "agent_evolution_map/README.md": "6f812c4c14ce5870cf92d6a5bcdf25e32b675c80ca0fabb1563dfc91fee049ed",
+  "agent_evolution_map/__init__.py": "fe3aab62073477caedac719a6fc3848f7c56102fc64aa3d3deb4fefe26a14b25",
+  "agent_evolution_map/adapters.py": "25dc64fc34480544b56b670e184af77942f964ca0ad8c140494de5822dd90898",
+  "agent_evolution_map/contracts.py": "abd00dd3c83b53e3047b2a146cf7f26696dc24b997fcabcd821549d33d902fac",
+  "agent_evolution_map/router.py": "3024cc65b9b6172c90fd70a18ae549b85fb6a7a33883f59e665b0d09991bfc5c",
+  "agent_evolution_map/service.py": "fc298f891099574fcd797f2d879cd54dcf7e3abefaf61ee19a81b19a1f180663"
 }
