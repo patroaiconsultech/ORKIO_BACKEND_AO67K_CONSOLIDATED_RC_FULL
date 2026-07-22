@@ -1,23 +1,36 @@
-# Instalação do Delta
+# ORKIO ORION PREMIUM 2 — instalação
 
-1. Criar branch:
-   `git checkout -b feature/orion-premium-phase1`
+## Arquivos
+Copie os arquivos deste pacote para os mesmos caminhos no backend implantado.
 
-2. Fazer backup do `main.py`.
+## Variáveis iniciais
+Use primeiro:
 
-3. Copiar o conteúdo deste pacote para a raiz do backend, preservando caminhos.
+```env
+ORKIO_VISION_PIPELINE_ENABLED=false
+OPENAI_VISION_MODEL=gpt-4o-mini
+OPENAI_VISION_TIMEOUT=45
+```
 
-4. Configurar inicialmente:
-   `ORION_PREMIUM_SHADOW_MODE=true`
+Com a visão desativada, imagens não entram mais no extrator textual e falham de forma segura.
 
-5. Validar sintaxe:
-   `python -m py_compile main.py services/orion_premium/*.py`
+Após validar a chave e o modelo multimodal em staging:
 
-6. Executar testes:
-   `pytest -q tests/orion_premium`
+```env
+ORKIO_VISION_PIPELINE_ENABLED=true
+```
 
-7. Executar a suíte existente relevante para chat, documentos e stream.
+O gateway usa `OPENAI_API_KEY` já existente no backend.
 
-8. Publicar apenas em staging.
+## Validação
+```bash
+python -m py_compile services/file_upload_indexing_service.py services/orion_premium/*.py
+pytest -q tests/orion_premium/test_vision_gateway.py tests/orion_premium/test_evolution_hub.py tests/orion_premium/test_evidence_guard.py
+```
 
-O arquivo `main.py` é o único arquivo existente substituído. Os demais são novos.
+## Teste funcional
+1. Envie JPG/PNG.
+2. Confirme nos logs `media_route=vision`.
+3. Com visão desativada: `extracted_chars=0`, `chunks_created=0`.
+4. Com visão ativada: `engine=vision:<modelo>` e evidência visual indexada.
+5. Pergunte pelo conteúdo da imagem e confirme que a resposta usa apenas evidência visual.

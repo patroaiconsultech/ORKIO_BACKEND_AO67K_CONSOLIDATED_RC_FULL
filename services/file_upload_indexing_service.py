@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from ..extractors import extract_text
 from ..models import File, FileText, FileChunk
+from .orion_premium.vision_gateway import analyze_image, is_supported_image
 
 logger = logging.getLogger(__name__)
 
@@ -221,6 +222,23 @@ def extract_text_with_fallback(filename: str, raw: bytes, mime_type: Optional[st
 
     text_content = ""
     extracted_chars = 0
+
+    # PREMIUM 2: images must never enter the generic text extractor. They are
+    # routed to a vision-capable processor and converted into auditable visual
+    # evidence before indexing.
+    if is_supported_image(filename, mime_type):
+        vision = analyze_image(filename=filename, raw=raw, mime_type=mime_type)
+        diagnostics.update({
+            "media_route": "vision",
+            "vision": vision.to_dict(),
+            "engine": f"vision:{vision.model}" if vision.model else None,
+        })
+        if vision.processed:
+            text_content = _clean_extracted_text(vision.description)
+            extracted_chars = len(text_content)
+        diagnostics["extracted_chars"] = int(extracted_chars or 0)
+        diagnostics["has_text"] = bool(text_content)
+        return text_content, int(extracted_chars or 0), diagnostics
 
     # Prefer current extractor first to preserve existing behavior for DOCX/TXT/PDF.
     try:

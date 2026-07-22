@@ -1,85 +1,50 @@
 {
-  "name": "ORION_PREMIUM_PHASE1_DELTA",
-  "generated_at": "2026-07-22T18:16:10.469610+00:00",
-  "base_archive": "ORKIO_BACKEND_AO67K_CONSOLIDATED_RC_FULL-main (53).zip",
+  "release": "ORION_PREMIUM_PHASE2",
   "files": [
     {
-      "path": "ORION_PREMIUM_PHASE1.patch",
-      "sha256": "8ff5de52e6d3fa809d9dfc92b09a8618c9a92c92411c2358c49c0d4244caea6d",
-      "size": 2074,
-      "type": "new"
+      "path": "INSTALL.md",
+      "sha256": "ed1deeab3acef48526e890f9877b9d2b9bb79c68bd1cf233ba899ec19011c573",
+      "bytes": 1109
     },
     {
-      "path": "docs/orion_premium/README.md",
-      "sha256": "fafa70ff606eb78e20e4b3bae45bc4af5eb659d247bd18267f262fd84cdabac5",
-      "size": 896,
-      "type": "new"
+      "path": "ORION_PREMIUM_PHASE2.patch",
+      "sha256": "85f118878bbce902feb59cbb070c6e00366f5964f907f4e2b7c3de1501a7d8c6",
+      "bytes": 13898
     },
     {
-      "path": "docs/orion_premium/ROLLBACK.md",
-      "sha256": "b6107c882f665d9579be5b5fbe10240f806c1cbbc36666e26b12ea676eddf251",
-      "size": 390,
-      "type": "new"
+      "path": "ROLLBACK.md",
+      "sha256": "2cacd8d1e63c90839a5a7c0ea549821545d0224b78551932b16a972357dbcacd",
+      "bytes": 401
     },
     {
-      "path": "docs/orion_premium/VALIDATION_CHECKLIST.md",
-      "sha256": "2e48b7dbc6317fdc78d068c14778b7d6a72ba4b9b31b10dcb0d0ef7042f7c359",
-      "size": 632,
-      "type": "new"
-    },
-    {
-      "path": "main.py",
-      "sha256": "997f93c0dba6b58db8dc6f33d50184692ad07e4ec88988fa2949cf8817340afd",
-      "size": 2646253,
-      "type": "modified"
-    },
-    {
-      "path": "services/orion_premium/__init__.py",
-      "sha256": "497c86d66bcfd561603a8fd6766922d6f0070b576e3848ba6ef9bd6cde9a4189",
-      "size": 620,
-      "type": "new"
+      "path": "services/file_upload_indexing_service.py",
+      "sha256": "0bf921d8aaeb5da894c04c94775cca977bad7de20d893ed64bf38c7d99fd756e",
+      "bytes": 13758
     },
     {
       "path": "services/orion_premium/evidence_guard.py",
-      "sha256": "a476a897341a40a57609f109aa8ba775408e522fcbe7bf605388049d48f5bf20",
-      "size": 4541,
-      "type": "new"
+      "sha256": "b8487511cf43153c02300765768c4efe576b6e6b97c8c8e8a3af7f30d0e35ead",
+      "bytes": 5609
     },
     {
-      "path": "services/orion_premium/execution_receipts.py",
-      "sha256": "8662c332684462c6913aa728289c67e8bb632911fbf4d9d385e2de9ca68a2f03",
-      "size": 2228,
-      "type": "new"
+      "path": "services/orion_premium/evolution_hub.py",
+      "sha256": "33de5d1257fae4d4282fc45ef0d48890c0787b837358a340c0252414f1bcb289",
+      "bytes": 3438
     },
     {
-      "path": "services/orion_premium/learning_proposals.py",
-      "sha256": "f8032b65c926532a7d374e95383d6b54a811668f365945296a26771a3afb7dd3",
-      "size": 2337,
-      "type": "new"
+      "path": "services/orion_premium/vision_gateway.py",
+      "sha256": "d5ba3d50202163a7d533b350ae1b979e5bacce398ab3f326f7b70d77796a3169",
+      "bytes": 4905
     },
     {
-      "path": "services/orion_premium/policies.py",
-      "sha256": "12d76a3f2d1f7e3bb4824d139df70bace2ad00ba91433ca78de3d40631daf04c",
-      "size": 715,
-      "type": "new"
+      "path": "tests/orion_premium/test_evolution_hub.py",
+      "sha256": "afd3b99f313a8e98323c4a256ae0a4d4dc48a25277a8e9796baf2714a7ce315f",
+      "bytes": 1368
     },
     {
-      "path": "tests/orion_premium/test_evidence_guard.py",
-      "sha256": "964236f7bdd4b62863c21ee22a2211947a73139a90914c1e13def7787fb45a30",
-      "size": 1572,
-      "type": "new"
-    },
-    {
-      "path": "tests/orion_premium/test_execution_receipts.py",
-      "sha256": "ad915f7ca240ae2102618dbf00c12d6613fc76d7dfcc946bcedfdf751007e6df",
-      "size": 789,
-      "type": "new"
-    },
-    {
-      "path": "tests/orion_premium/test_learning_proposals.py",
-      "sha256": "6baae04217ada57ff832c087e3306babc5b46fe924d57d48d56de25338dfebf2",
-      "size": 1349,
-      "type": "new"
+      "path": "tests/orion_premium/test_vision_gateway.py",
+      "sha256": "aa0e5a11ebb3c1878432571a3ba0922b48e9a6882ffea0bd7167183ea5e41531",
+      "bytes": 675
     }
   ]
 }

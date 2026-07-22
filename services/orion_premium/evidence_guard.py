@@ -1,17 +1,19 @@
-"""Fail-closed document grounding decision for Orion responses."""
-
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
-from typing import Any, Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any, Iterable, Mapping
 
-from .policies import DOCUMENT_EVIDENCE_GUARD_ENABLED, SHADOW_MODE
+
+DOCUMENT_EVIDENCE_FALLBACK_PT_BR = (
+    "Recebi o documento, mas não consegui confirmar que o conteúdo foi "
+    "extraído e disponibilizado para análise. Para evitar conclusões sem "
+    "evidência, não vou inferir o conteúdo apenas pelo nome do arquivo."
+)
 
 
 @dataclass(frozen=True)
 class DocumentGroundingDecision:
     allowed: bool
-    enforced: bool
     mode: str
     reason: str
     file_count: int
@@ -20,116 +22,140 @@ class DocumentGroundingDecision:
     files_used: tuple[str, ...]
     grounding_score: float
 
-    def as_dict(self) -> dict[str, Any]:
-        payload = asdict(self)
-        payload["files_used"] = list(self.files_used)
-        return payload
+    def as_runtime_hint(self) -> dict[str, Any]:
+        return {
+            "allowed": self.allowed,
+            "mode": self.mode,
+            "reason": self.reason,
+            "file_count": self.file_count,
+            "evidence_count": self.evidence_count,
+            "context_chars": self.context_chars,
+            "files_used": list(self.files_used),
+            "grounding_score": self.grounding_score,
+        }
 
 
-def _safe_int(value: Any) -> int:
+def _safe_non_negative_int(value: Any) -> int:
     try:
         return max(0, int(value or 0))
     except (TypeError, ValueError):
         return 0
 
 
-def _safe_str_tuple(values: Any) -> tuple[str, ...]:
-    if not isinstance(values, Sequence) or isinstance(values, (str, bytes)):
+def _normalize_files_used(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, Iterable) or isinstance(value, (str, bytes, Mapping)):
         return ()
-    return tuple(str(value).strip() for value in values if str(value).strip())
+    normalized: list[str] = []
+    for item in value:
+        if isinstance(item, Mapping):
+            candidate = (
+                item.get("filename")
+                or item.get("file_id")
+                or item.get("id")
+                or item.get("source_id")
+            )
+        else:
+            candidate = item
+        text = str(candidate or "").strip()
+        if text and text not in normalized:
+            normalized.append(text)
+    return tuple(normalized)
 
 
 def evaluate_document_grounding(
     document_context: Mapping[str, Any] | None,
-    *,
-    enabled: bool | None = None,
-    shadow_mode: bool | None = None,
 ) -> DocumentGroundingDecision:
-    """Return a deterministic decision using the existing document-context contract."""
+    """Evaluate existing ORKIO document-context output without changing retrieval.
+
+    Fail closed whenever a file exists but no extracted evidence/context is proven.
+    This function is deterministic and has no database, model or network side effects.
+    """
     context = dict(document_context or {})
-    enabled = DOCUMENT_EVIDENCE_GUARD_ENABLED if enabled is None else bool(enabled)
-    shadow_mode = SHADOW_MODE if shadow_mode is None else bool(shadow_mode)
+    file_ids = [
+        str(item).strip()
+        for item in list(context.get("file_ids") or [])
+        if str(item).strip()
+    ]
+    evidence_count = _safe_non_negative_int(context.get("file_evidence_count"))
+    context_chars = _safe_non_negative_int(context.get("file_context_chars"))
+    citations = list(context.get("citations") or [])
+    files_used = _normalize_files_used(context.get("files_used") or [])
 
-    file_ids = _safe_str_tuple(context.get("file_ids"))
-    files_used = _safe_str_tuple(context.get("files_used"))
-    citations = context.get("citations")
-    citation_count = len(citations) if isinstance(citations, list) else 0
-
-    file_count = len(file_ids)
-    evidence_count = max(
-        _safe_int(context.get("file_evidence_count")),
-        citation_count,
-    )
-    context_chars = _safe_int(context.get("file_context_chars"))
-    context_injected = bool(context.get("file_context_injected"))
-
-    extraction_proven = (
-        context_injected
-        and evidence_count > 0
-        and context_chars > 0
+    # Existing service may express proof through citations even if the aggregate
+    # counter is absent. Never infer proof from filename/file-id alone.
+    citation_count = len([item for item in citations if isinstance(item, Mapping)])
+    effective_evidence = max(evidence_count, citation_count)
+    injected = bool(context.get("file_context_injected"))
+    has_proven_context = bool(
+        injected and effective_evidence > 0 and context_chars > 0
     )
 
-    if extraction_proven:
-        score = min(
-            1.0,
-            0.50
-            + min(evidence_count, 8) * 0.04
-            + min(context_chars, 8000) / 8000 * 0.18,
-        )
+    if not file_ids:
         return DocumentGroundingDecision(
-            allowed=True,
-            enforced=enabled and not shadow_mode,
-            mode="document_evidence_based",
-            reason="thread_document_evidence_available",
-            file_count=file_count,
-            evidence_count=evidence_count,
-            context_chars=context_chars,
-            files_used=files_used,
-            grounding_score=round(score, 4),
+            allowed=False,
+            mode="no_document_attached",
+            reason="no_thread_scoped_file",
+            file_count=0,
+            evidence_count=0,
+            context_chars=0,
+            files_used=(),
+            grounding_score=0.0,
         )
 
-    if file_count > 0:
-        allowed = not enabled or shadow_mode
+    if not has_proven_context:
         return DocumentGroundingDecision(
-            allowed=allowed,
-            enforced=enabled and not shadow_mode,
+            allowed=False,
             mode="document_hypothesis_only",
-            reason="file_registered_without_extracted_evidence",
-            file_count=file_count,
-            evidence_count=evidence_count,
+            reason="document_extraction_not_proven",
+            file_count=len(file_ids),
+            evidence_count=effective_evidence,
             context_chars=context_chars,
             files_used=files_used,
             grounding_score=0.0,
         )
 
+    # Conservative score: evidence breadth and context volume both matter.
+    breadth = min(1.0, effective_evidence / 4.0)
+    volume = min(1.0, context_chars / 4000.0)
+    score = round((breadth * 0.6) + (volume * 0.4), 3)
+
     return DocumentGroundingDecision(
-        allowed=not enabled or shadow_mode,
-        enforced=enabled and not shadow_mode,
-        mode="no_document_attached",
-        reason="no_thread_scoped_file_found",
-        file_count=0,
-        evidence_count=0,
-        context_chars=0,
-        files_used=(),
-        grounding_score=0.0,
+        allowed=True,
+        mode="document_evidence_based",
+        reason="document_extraction_proven",
+        file_count=len(file_ids),
+        evidence_count=effective_evidence,
+        context_chars=context_chars,
+        files_used=files_used,
+        grounding_score=score,
     )
 
 
-def build_fail_closed_overlay(decision: DocumentGroundingDecision) -> str:
-    if decision.mode == "document_evidence_based":
-        return (
-            "ORION PREMIUM DOCUMENT GROUNDING: evidence is available. "
-            "Base factual claims on retrieved excerpts, distinguish evidence from inference, "
-            "and identify remaining uncertainty."
+def evaluate_media_grounding(*, mime_type: str, vision_evidence: dict | None = None) -> DocumentGroundingDecision:
+    """Fail closed for image attachments unless real visual evidence exists."""
+    mime = str(mime_type or "").strip().lower()
+    if not mime.startswith("image/"):
+        return DocumentGroundingDecision(
+            allowed=True,
+            mode="not_image",
+            reason="media_guard_not_applicable",
+            file_count=0,
+            evidence_count=0,
+            context_chars=0,
+            files_used=[],
+            grounding_score=1.0,
         )
-    if decision.mode == "document_hypothesis_only":
-        return (
-            "ORION PREMIUM DOCUMENT GROUNDING — FAIL CLOSED. "
-            "A file is registered, but no extracted evidence was validated. "
-            "Do not summarize, describe, critique or recommend based on the filename or expected topic. "
-            "State that document content is not yet available for grounded analysis."
-        )
-    return (
-        "ORION PREMIUM DOCUMENT GROUNDING — FAIL CLOSED. "
-        "No thread-scoped file was found. Do not claim document access or analysis."
+    evidence = dict(vision_evidence or {})
+    processed = bool(evidence.get("processed"))
+    description = str(evidence.get("description") or "").strip()
+    allowed = processed and bool(description)
+    return DocumentGroundingDecision(
+        allowed=allowed,
+        mode="image_vision_evidence" if allowed else "image_vision_unavailable",
+        reason="vision_processed" if allowed else "vision_evidence_missing",
+        file_count=1,
+        evidence_count=1 if allowed else 0,
+        context_chars=len(description),
+        files_used=[],
+        grounding_score=1.0 if allowed else 0.0,
     )

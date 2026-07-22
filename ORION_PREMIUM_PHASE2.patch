@@ -1,0 +1,387 @@
+--- a/services/file_upload_indexing_service.py
++++ b/services/file_upload_indexing_service.py
+@@ -17,6 +17,7 @@
+ 
+ from ..extractors import extract_text
+ from ..models import File, FileText, FileChunk
++from .orion_premium.vision_gateway import analyze_image, is_supported_image
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -221,6 +222,23 @@
+ 
+     text_content = ""
+     extracted_chars = 0
++
++    # PREMIUM 2: images must never enter the generic text extractor. They are
++    # routed to a vision-capable processor and converted into auditable visual
++    # evidence before indexing.
++    if is_supported_image(filename, mime_type):
++        vision = analyze_image(filename=filename, raw=raw, mime_type=mime_type)
++        diagnostics.update({
++            "media_route": "vision",
++            "vision": vision.to_dict(),
++            "engine": f"vision:{vision.model}" if vision.model else None,
++        })
++        if vision.processed:
++            text_content = _clean_extracted_text(vision.description)
++            extracted_chars = len(text_content)
++        diagnostics["extracted_chars"] = int(extracted_chars or 0)
++        diagnostics["has_text"] = bool(text_content)
++        return text_content, int(extracted_chars or 0), diagnostics
+ 
+     # Prefer current extractor first to preserve existing behavior for DOCX/TXT/PDF.
+     try:
+--- a/services/orion_premium/evidence_guard.py
++++ b/services/orion_premium/evidence_guard.py
+@@ -129,3 +129,33 @@
+         files_used=files_used,
+         grounding_score=score,
+     )
++
++
++def evaluate_media_grounding(*, mime_type: str, vision_evidence: dict | None = None) -> DocumentGroundingDecision:
++    """Fail closed for image attachments unless real visual evidence exists."""
++    mime = str(mime_type or "").strip().lower()
++    if not mime.startswith("image/"):
++        return DocumentGroundingDecision(
++            allowed=True,
++            mode="not_image",
++            reason="media_guard_not_applicable",
++            file_count=0,
++            evidence_count=0,
++            context_chars=0,
++            files_used=[],
++            grounding_score=1.0,
++        )
++    evidence = dict(vision_evidence or {})
++    processed = bool(evidence.get("processed"))
++    description = str(evidence.get("description") or "").strip()
++    allowed = processed and bool(description)
++    return DocumentGroundingDecision(
++        allowed=allowed,
++        mode="image_vision_evidence" if allowed else "image_vision_unavailable",
++        reason="vision_processed" if allowed else "vision_evidence_missing",
++        file_count=1,
++        evidence_count=1 if allowed else 0,
++        context_chars=len(description),
++        files_used=[],
++        grounding_score=1.0 if allowed else 0.0,
++    )
+--- a/services/orion_premium/vision_gateway.py
++++ b/services/orion_premium/vision_gateway.py
+@@ -0,0 +1,131 @@
++from __future__ import annotations
++
++import base64
++import json
++import logging
++import os
++from dataclasses import asdict, dataclass
++from typing import Any, Dict, Optional
++
++logger = logging.getLogger(__name__)
++
++SUPPORTED_IMAGE_MIME_TYPES = {
++    "image/jpeg",
++    "image/png",
++    "image/webp",
++    "image/gif",
++}
++
++
++@dataclass(frozen=True)
++class VisionEvidence:
++    processed: bool
++    mode: str
++    reason: str
++    mime_type: str
++    model: Optional[str] = None
++    description: str = ""
++    extracted_text: str = ""
++    confidence: float = 0.0
++
++    def to_dict(self) -> Dict[str, Any]:
++        return asdict(self)
++
++
++def is_supported_image(filename: str, mime_type: Optional[str]) -> bool:
++    mime = str(mime_type or "").strip().lower()
++    name = str(filename or "").strip().lower()
++    return mime in SUPPORTED_IMAGE_MIME_TYPES or name.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif"))
++
++
++def _enabled(name: str, default: bool) -> bool:
++    raw = str(os.getenv(name, "true" if default else "false") or "").strip().lower()
++    return raw in {"1", "true", "yes", "on"}
++
++
++def analyze_image(
++    *,
++    filename: str,
++    raw: bytes,
++    mime_type: Optional[str],
++    prompt: Optional[str] = None,
++) -> VisionEvidence:
++    mime = str(mime_type or "").strip().lower() or "application/octet-stream"
++    if not is_supported_image(filename, mime):
++        return VisionEvidence(False, "not_image", "unsupported_media_type", mime)
++
++    if not _enabled("ORKIO_VISION_PIPELINE_ENABLED", False):
++        return VisionEvidence(False, "image_vision_unavailable", "vision_pipeline_disabled", mime)
++
++    api_key = str(os.getenv("OPENAI_API_KEY", "") or "").strip()
++    if not api_key:
++        return VisionEvidence(False, "image_vision_unavailable", "openai_api_key_missing", mime)
++
++    try:
++        from openai import OpenAI
++    except Exception:
++        logger.exception("ORION_VISION_OPENAI_IMPORT_FAILED")
++        return VisionEvidence(False, "image_vision_unavailable", "openai_client_unavailable", mime)
++
++    model = str(os.getenv("OPENAI_VISION_MODEL", "") or os.getenv("OPENAI_MODEL", "") or "gpt-4o-mini").strip()
++    timeout_s = float(os.getenv("OPENAI_VISION_TIMEOUT", "45") or "45")
++    encoded = base64.b64encode(raw or b"").decode("ascii")
++    data_url = f"data:{mime};base64,{encoded}"
++    user_prompt = str(prompt or "").strip() or (
++        "Analise esta imagem como evidência. Descreva apenas o que é visualmente verificável, "
++        "transcreva texto legível, se houver, separe observação de inferência e não identifique "
++        "pessoas sem evidência contextual fornecida pelo usuário."
++    )
++
++    try:
++        client = OpenAI(api_key=api_key, timeout=timeout_s)
++        response = client.chat.completions.create(
++            model=model,
++            temperature=0,
++            messages=[
++                {
++                    "role": "system",
++                    "content": (
++                        "Você é o gateway visual da ORKIO. Produza JSON válido com as chaves "
++                        "description, extracted_text, confidence. Não invente detalhes."
++                    ),
++                },
++                {
++                    "role": "user",
++                    "content": [
++                        {"type": "text", "text": user_prompt},
++                        {"type": "image_url", "image_url": {"url": data_url}},
++                    ],
++                },
++            ],
++            response_format={"type": "json_object"},
++        )
++        content = ((response.choices or [])[0].message.content or "").strip()
++        payload = json.loads(content or "{}")
++        description = str(payload.get("description") or "").strip()
++        extracted_text = str(payload.get("extracted_text") or "").strip()
++        try:
++            confidence = max(0.0, min(float(payload.get("confidence") or 0.0), 1.0))
++        except Exception:
++            confidence = 0.0
++        evidence_text = "\n\n".join(part for part in (
++            f"[EVIDÊNCIA VISUAL: {filename}]",
++            f"Descrição verificável: {description}" if description else "",
++            f"Texto visível: {extracted_text}" if extracted_text else "",
++            f"Confiança declarada: {confidence:.2f}",
++        ) if part)
++        if not description and not extracted_text:
++            return VisionEvidence(False, "image_vision_empty", "vision_returned_no_evidence", mime, model=model)
++        return VisionEvidence(
++            True,
++            "image_vision_evidence",
++            "vision_processed",
++            mime,
++            model=model,
++            description=evidence_text,
++            extracted_text=extracted_text,
++            confidence=confidence,
++        )
++    except Exception as exc:
++        logger.exception("ORION_VISION_PROCESSING_FAILED filename=%s mime=%s", filename, mime)
++        return VisionEvidence(False, "image_vision_error", exc.__class__.__name__, mime, model=model)
+--- a/services/orion_premium/evolution_hub.py
++++ b/services/orion_premium/evolution_hub.py
+@@ -0,0 +1,114 @@
++from __future__ import annotations
++
++import hashlib
++import json
++import time
++import uuid
++from dataclasses import asdict, dataclass, field
++from typing import Any, Dict, Iterable, List, Optional
++
++
++@dataclass(frozen=True)
++class EvolutionTarget:
++    target_type: str
++    target_id: str
++    capability: str
++
++
++@dataclass
++class EvolutionProposal:
++    proposal_id: str
++    title: str
++    objective: str
++    evidence: List[Dict[str, Any]]
++    targets: List[EvolutionTarget]
++    proposed_changes: List[Dict[str, Any]]
++    risk: str
++    rollback: str
++    confidence: float
++    created_by: str = "orion"
++    status: str = "proposal_only"
++    human_approval_required: bool = True
++    created_at: int = field(default_factory=lambda: int(time.time()))
++    integrity_hash: str = ""
++
++    def seal(self) -> "EvolutionProposal":
++        body = self.to_dict(include_hash=False)
++        self.integrity_hash = hashlib.sha256(
++            json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
++        ).hexdigest()
++        return self
++
++    def to_dict(self, *, include_hash: bool = True) -> Dict[str, Any]:
++        payload = asdict(self)
++        if not include_hash:
++            payload.pop("integrity_hash", None)
++        return payload
++
++
++def build_evolution_proposal(
++    *,
++    title: str,
++    objective: str,
++    evidence: Iterable[Dict[str, Any]],
++    targets: Iterable[EvolutionTarget],
++    proposed_changes: Iterable[Dict[str, Any]],
++    risk: str,
++    rollback: str,
++    confidence: float,
++    created_by: str = "orion",
++) -> EvolutionProposal:
++    evidence_list = [dict(item) for item in evidence if isinstance(item, dict)]
++    target_list = list(targets)
++    change_list = [dict(item) for item in proposed_changes if isinstance(item, dict)]
++    if not evidence_list:
++        raise ValueError("evidence_required")
++    if not target_list:
++        raise ValueError("target_required")
++    if not change_list:
++        raise ValueError("proposed_change_required")
++    if not str(rollback or "").strip():
++        raise ValueError("rollback_required")
++    confidence_value = max(0.0, min(float(confidence), 1.0))
++    proposal = EvolutionProposal(
++        proposal_id=uuid.uuid4().hex,
++        title=str(title or "").strip(),
++        objective=str(objective or "").strip(),
++        evidence=evidence_list,
++        targets=target_list,
++        proposed_changes=change_list,
++        risk=str(risk or "unknown").strip(),
++        rollback=str(rollback).strip(),
++        confidence=confidence_value,
++        created_by=str(created_by or "orion").strip(),
++    )
++    return proposal.seal()
++
++
++def can_execute(proposal: EvolutionProposal, *, human_approved: bool) -> bool:
++    return bool(
++        proposal.status == "approved"
++        and human_approved
++        and proposal.integrity_hash
++        and proposal.rollback
++        and proposal.evidence
++    )
++
++
++def build_agent_dispatch_plan(proposal: EvolutionProposal) -> Dict[str, Any]:
++    return {
++        "proposal_id": proposal.proposal_id,
++        "mode": "proposal_only",
++        "speaker": "orion",
++        "targets": [
++            {
++                "target_type": item.target_type,
++                "target_id": item.target_id,
++                "capability": item.capability,
++                "action": "review_and_return_diff",
++            }
++            for item in proposal.targets
++        ],
++        "human_approval_required": True,
++        "execution_allowed": False,
++    }
+--- a/tests/orion_premium/test_vision_gateway.py
++++ b/tests/orion_premium/test_vision_gateway.py
+@@ -0,0 +1,17 @@
++import os
++
++from services.orion_premium.vision_gateway import analyze_image, is_supported_image
++
++
++def test_image_detection_by_mime_and_extension():
++    assert is_supported_image("photo.bin", "image/jpeg")
++    assert is_supported_image("photo.png", None)
++    assert not is_supported_image("report.pdf", "application/pdf")
++
++
++def test_vision_fails_closed_when_disabled(monkeypatch):
++    monkeypatch.setenv("ORKIO_VISION_PIPELINE_ENABLED", "false")
++    result = analyze_image(filename="photo.jpg", raw=b"fake", mime_type="image/jpeg")
++    assert result.processed is False
++    assert result.mode == "image_vision_unavailable"
++    assert result.reason == "vision_pipeline_disabled"
+--- a/tests/orion_premium/test_evolution_hub.py
++++ b/tests/orion_premium/test_evolution_hub.py
+@@ -0,0 +1,43 @@
++import pytest
++
++from services.orion_premium.evolution_hub import (
++    EvolutionTarget,
++    build_agent_dispatch_plan,
++    build_evolution_proposal,
++    can_execute,
++)
++
++
++def _proposal():
++    return build_evolution_proposal(
++        title="Improve document grounding",
++        objective="Prevent unsupported claims",
++        evidence=[{"kind": "runtime_log", "ref": "abc"}],
++        targets=[EvolutionTarget("agent", "orion", "document_analysis")],
++        proposed_changes=[{"file": "main.py", "operation": "review_diff"}],
++        risk="medium",
++        rollback="revert commit",
++        confidence=0.9,
++    )
++
++
++def test_proposal_is_sealed_and_proposal_only():
++    proposal = _proposal()
++    assert proposal.status == "proposal_only"
++    assert proposal.integrity_hash
++    assert can_execute(proposal, human_approved=True) is False
++
++
++def test_dispatch_never_allows_execution():
++    dispatch = build_agent_dispatch_plan(_proposal())
++    assert dispatch["execution_allowed"] is False
++    assert dispatch["mode"] == "proposal_only"
++
++
++def test_evidence_is_required():
++    with pytest.raises(ValueError, match="evidence_required"):
++        build_evolution_proposal(
++            title="x", objective="x", evidence=[],
++            targets=[EvolutionTarget("agent", "a", "b")],
++            proposed_changes=[{"x": 1}], risk="low", rollback="revert", confidence=0.5,
++        )
