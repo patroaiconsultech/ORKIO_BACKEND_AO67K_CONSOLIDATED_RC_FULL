@@ -1,0 +1,30 @@
+ARQUIVO ALVO:
+app/main.py ou o módulo real que implementa /api/chat/stream
+
+REGRA:
+Não inserir a lógica do OCIL dentro de app/main.py.
+Apenas importar e chamar o serviço.
+
+TRECHO CONCEITUAL:
+
+from app.services.ocil.foundation import build_shadow_decision
+
+# Depois de obter message_id/thread_id/anexos da mensagem atual
+# e antes de fixar o runtime/contexto definitivo:
+
+ocil_receipt = build_shadow_decision(
+    message_id=message_id,
+    thread_id=thread_id,
+    requested_agent=requested_agent,
+    current_attachment_ids=current_message_attachment_ids,
+    historical_attachment_ids=thread_attachment_ids,
+    explicit_historical_context_requested=explicit_history_requested,
+    user_intent=user_message,
+    trace_id=trace_id,
+)
+
+logger.info("OCIL_SHADOW_DECISION %s", ocil_receipt.to_json())
+
+# IMPORTANTE:
+# Não substituir o attachment/context/runtime do pipeline atual
+# enquanto enforcement=false.

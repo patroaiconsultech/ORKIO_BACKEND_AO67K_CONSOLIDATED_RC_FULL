@@ -1,26 +1,65 @@
-# ORKIO Engineering Specification
+# ORKIO Premium 3.0 Foundation
 
-Version: OES-RC-0001-R3
-Status: RELEASE CANDIDATE
-Generated: 2026-07-04
+Pacote inicial em `proposal_only` para introduzir:
 
-## Purpose
-Official engineering specification area for Orkio.
+- Architecture Contract
+- Attachment Resolution Contract
+- Execution Profile Contract
+- Decision Receipts
+- Agent Safety Boundary
+- Shadow Mode
 
-## Non-Destructive Rule
-All engineering artifacts must remain under `specification/`.
-No package may create repository-root files unless explicitly approved.
+## Estado padrão
 
-## Current Package
-`OES-RC-0001-R3` preserves the Engineering Foundation and corrects package preflight safety:
-- OES-001 Engineering Constitution
-- OES-002 Engineering Glossary
-- OES-003 Engineering Governance
-- OES-004 Engineering Delivery Standard
-- Pre-extraction ZIP entry validation for Zip Slip prevention
+```text
+shadow_mode=true
+enforcement=false
+proposal_only=true
+execution_allowed=false
+default_deny=true
+```
 
-## Repository Authority
-The backend repository is the initial source of truth for `specification/`.
+## Integração segura
 
-## Release Candidate R1 Notes
-This revision supersedes `OES-RC-0001` by correcting the preflight order, clarifying approval authority, declaring atomic baseline promotion, and adding auditable validation evidence fields.
+Não substituir `app/main.py`.
+
+Importar somente o bootstrap do OCIL no ponto em que a mensagem já foi recebida e antes da seleção definitiva de contexto/runtime.
+
+Exemplo conceitual:
+
+```python
+from app.services.ocil.foundation import build_shadow_decision
+
+decision = build_shadow_decision(
+    message_id=message_id,
+    thread_id=thread_id,
+    requested_agent=requested_agent,
+    current_attachment_ids=current_attachment_ids,
+    historical_attachment_ids=historical_attachment_ids,
+    explicit_historical_context_requested=explicit_historical_context_requested,
+    user_intent=user_message,
+)
+
+logger.info("OCIL_SHADOW_DECISION %s", decision.to_json())
+```
+
+O retorno do OCIL não deve alterar o pipeline atual enquanto:
+
+```text
+OCIL_ATTACHMENT_ENFORCEMENT_ENABLED=false
+OCIL_EXECUTION_ENFORCEMENT_ENABLED=false
+```
+
+## Promoção para enforcement
+
+Promover somente quando:
+
+1. o anexo correto for resolvido em todos os cenários de validação;
+2. divergências forem explicáveis;
+3. nenhum agente receber capacidades implícitas;
+4. receipts forem persistidos ou exportados de modo auditável;
+5. rollback por feature flag estiver testado.
+
+## Observação
+
+Este pacote não conhece o ORM, o modelo de mensagem nem o registry real do repositório ORKIO. Os adapters de banco e runtime devem ser conectados no projeto real sem mover a lógica para `app/main.py`.
