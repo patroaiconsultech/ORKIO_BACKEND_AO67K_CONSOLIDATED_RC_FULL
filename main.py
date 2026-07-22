@@ -775,6 +775,10 @@ from .routes.evolution_intelligence import (
     EvolutionIntelligenceRouterDeps,
     build_evolution_intelligence_router,
 )
+from .agent_evolution_map.router import (
+    AgentEvolutionMapRouterDeps,
+    build_agent_evolution_map_router,
+)
 from .evolution.intelligence.governance import (
     load_evolution_governance_config,
     validate_evolution_governance_config,
@@ -6962,6 +6966,15 @@ app.include_router(
             now_ts=now_ts,
             actor_reference=actor_reference,
             logger=logger,
+        )
+    )
+)
+app.include_router(
+    build_agent_evolution_map_router(
+        AgentEvolutionMapRouterDeps(
+            require_admin_access=require_admin_access,
+            get_request_org=get_request_org,
+            now_ts=now_ts,
         )
     )
 )
