@@ -1,0 +1,51 @@
+--- a/main.py
++++ b/main.py
+@@ -822,6 +822,10 @@
+     rag_fallback_recent_chunks as svc_rag_fallback_recent_chunks,
+ )
+ from .services.file_upload_indexing_service import index_uploaded_file_text
++from .services.orion_premium.evidence_guard import (
++    build_fail_closed_overlay as orion_build_fail_closed_overlay,
++    evaluate_document_grounding as orion_evaluate_document_grounding,
++)
+ from .core.orkio_constitution import load_constitution
+ from .core.orkio_permissions import load_permissions
+ from .runtime.agent_registry import (
+@@ -16499,9 +16503,10 @@
+     document_context: Optional[Dict[str, Any]] = None,
+ ) -> Dict[str, Any]:
+     document_context = dict(document_context or {})
+-    evidence_count = int(document_context.get("file_evidence_count") or 0)
+-    file_count = len(list(document_context.get("file_ids") or []))
+-    context_available = bool(document_context.get("file_context_injected"))
++    grounding = orion_evaluate_document_grounding(document_context)
++    evidence_count = grounding.evidence_count
++    file_count = grounding.file_count
++    context_available = grounding.mode == "document_evidence_based"
+ 
+     if context_available:
+         overlay = (
+@@ -16527,6 +16532,9 @@
+             "No thread-scoped uploaded file was found. Do not invent document content. "
+             "Ask the user to upload the file into this conversation."
+         )
++
++    if grounding.enforced and not grounding.allowed:
++        overlay = overlay + "\n\n" + orion_build_fail_closed_overlay(grounding)
+ 
+     return {
+         "intent_package": {
+@@ -16557,6 +16565,13 @@
+         "memory_snapshot": {},
+         "trial_hints": {},
+         "trial_analytics": {},
++        "runtime_hints": {
++            "orion_premium": {
++                "document_grounding": grounding.as_dict(),
++                "thread_id": thread_id,
++                "evidence_count": evidence_count,
++            }
++        },
+         "system_overlay": _append_orkio_lord_grace_overlay(overlay),
+         "runtime_hints": {
+             "intent": "thread_document_analysis",
