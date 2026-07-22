@@ -1,10 +1,6 @@
 {
-  "AO01_PREMIUM_RUNTIME.patch": "8971118a986096c9bea3541bf6d61086bf2bea632dfb230834cb11bb59f30693",
-  "README.md": "53e677d73bac86da0b74b2d5d1cec3708cd08693df13147adb18fafa9acd59d5",
-  "main.py": "32f2a93e039ce8329029329b9c92c57bbca8cd9426766c125616b6b49efb8115",
-  "runtime/__init__.py": "98402e4c557c80c21e068ef7103d516a103a79500647dfa72662495894b8ce80",
-  "runtime/access_mode.py": "6c649e09a2d96861227789b415c7877fed2cc829b5e6cafc6dd18d1edd0d850a",
-  "runtime/ocil_config.py": "d6277935e626c3cb3d9c900655e19ad7f9e3f3512c45c3c96e06dda877a2fb77",
-  "runtime/release_identity.py": "cee56ed7a3587a8b5a91f4cc6b25bff0eb5761185ad9e28e34ba8e6626f28b9c",
-  "tests/test_runtime_config.py": "bb27ab9ce70b93fc018257194acf192acd9a342e4cdbed23a91210849aa140c1"
+  "AO01_RUNTIME_INIT_RESTORE.patch": "2b91860bd06edcd114adbf6aa72b6833586cf3982e5522a38d6f8a766eb89ebf",
+  "README.md": "70a8cafb3fadc00aba0b87f199e1aa38f83e4411f972ecf366aed16073834869",
+  "__init__.py": "96f399649a09f4805656aa4135033a7224f7f7b48de474007d80f9b372045d4c",
+  "smoke_runtime_facade.py": "4a8423f512c47b9a5f4674ce1bd11cc9ed050feb741e544c5204e62814a8d580"
 }

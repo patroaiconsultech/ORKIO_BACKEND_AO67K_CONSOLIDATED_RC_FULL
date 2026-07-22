@@ -1,71 +1,48 @@
-# ORKIO AO-01 Premium Runtime Patch — PROPOSAL_ONLY
+# AO-01 Runtime Facade Restore
 
-## Scope
-- preserves the prior `agent_evolution_map` fail-open boot guard
-- centralizes OCIL environment parsing and validation
-- introduces explicit `ACCESS_MODE`
-- logs release identity and SHA-256 of the running `main.py`
-- adds unit tests for safe and contradictory flag combinations
+## Finding
+The two `capability_registry.py` files are byte-for-byte identical.
 
-## Recommended environment
+SHA-256:
 
 ```text
-ACCESS_MODE=open
-OCIL_ENABLED=false
-OCIL_SHADOW_MODE=true
-OCIL_ATTACHMENT_ENFORCEMENT=false
-OCIL_EXECUTION_ENFORCEMENT=false
+0b2ace9400b270af918ba3789415eb3c32e5c6bbc37a9d9ed1d3597de135c96b
 ```
 
-Do not include literal quote characters in the platform value fields.
+The regression is exclusively in `app/runtime/__init__.py`:
 
-## Files
-Copy into the same application package that contains `main.py`:
+- historical file: exports the runtime facade expected by `app.main`
+- current file: contains only a package docstring
+
+## Apply
+
+Replace:
 
 ```text
-main.py
-runtime/__init__.py
-runtime/ocil_config.py
-runtime/access_mode.py
-runtime/release_identity.py
-tests/test_runtime_config.py
+app/runtime/__init__.py
 ```
 
-## Pre-deploy validation
+with the included file.
+
+Do not replace `capability_registry.py`; both supplied versions are identical.
+
+## Validate
 
 ```bash
-python -m py_compile main.py
-python -m py_compile runtime/ocil_config.py
-python -m py_compile runtime/access_mode.py
-python -m py_compile runtime/release_identity.py
-python -m unittest tests/test_runtime_config.py
-python -c "import main; print('ORKIO_MAIN_IMPORT_OK')"
+python -m py_compile app/runtime/__init__.py
+PYTHONPATH=/ python -c "from app.runtime import get_capability_registry; print('RUNTIME_IMPORT_OK', len(get_capability_registry()))"
+PYTHONPATH=/ python smoke_runtime_facade.py
+PYTHONPATH=/ python -c "import app.main; print('ORKIO_MAIN_IMPORT_OK')"
 ```
 
-## Expected boot evidence
+## Expected
 
 ```text
-ORKIO_BOOT_IDENTITY ...
-ORKIO_OCIL_CONFIG enabled=False shadow_mode=True ...
-ORKIO_ACCESS_CONFIG mode=open ...
-ORKIO_ACCESS_MODE_OPEN ...
-AGENT_EVOLUTION_MAP_ROUTER_DISABLED ...
+RUNTIME_IMPORT_OK ...
+ORKIO_RUNTIME_FACADE_OK ...
+ORKIO_MAIN_IMPORT_OK
 ```
-
-## GO gate
-- no restart loop
-- healthcheck 200
-- no fatal `ModuleNotFoundError`
-- exact `main_sha256` matches `MANIFEST.json`
-- registration succeeds without special code only when `ACCESS_MODE=open`
 
 ## Rollback
-Restore the previous files and set:
 
-```text
-ACCESS_MODE=invite_only
-OCIL_ENABLED=false
-OCIL_SHADOW_MODE=true
-OCIL_ATTACHMENT_ENFORCEMENT=false
-OCIL_EXECUTION_ENFORCEMENT=false
-```
+Restore the previous `app/runtime/__init__.py`.
