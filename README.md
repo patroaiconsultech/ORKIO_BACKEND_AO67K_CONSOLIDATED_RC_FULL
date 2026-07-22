@@ -1,65 +1,45 @@
-# ORKIO Premium 3.0 Foundation
+# ORKIO AO-01 Emergency Boot Hotfix
 
-Pacote inicial em `proposal_only` para introduzir:
+## Objective
+Prevent `app.agent_evolution_map` from crashing the entire backend during import.
 
-- Architecture Contract
-- Attachment Resolution Contract
-- Execution Profile Contract
-- Decision Receipts
-- Agent Safety Boundary
-- Shadow Mode
+## Exact changes
+1. Wraps the import of `.agent_evolution_map.router` in a fail-open guard.
+2. Registers the router only when the module loaded successfully.
+3. Emits one of:
+   - `AGENT_EVOLUTION_MAP_ROUTER_BOOT_OK`
+   - `AGENT_EVOLUTION_MAP_ROUTER_DISABLED`
 
-## Estado padrão
+## Apply
+Replace the deployed `main.py` with the included `main.py`.
 
+## Mandatory validation
+```bash
+python -m py_compile main.py
+python -c "import main; print('ORKIO_MAIN_IMPORT_OK')"
+```
+
+Expected when the optional package is absent:
 ```text
-shadow_mode=true
-enforcement=false
-proposal_only=true
-execution_allowed=false
-default_deny=true
+AGENT_EVOLUTION_MAP_ROUTER_DISABLED ...
+ORKIO_MAIN_IMPORT_OK
 ```
 
-## Integração segura
-
-Não substituir `app/main.py`.
-
-Importar somente o bootstrap do OCIL no ponto em que a mensagem já foi recebida e antes da seleção definitiva de contexto/runtime.
-
-Exemplo conceitual:
-
-```python
-from app.services.ocil.foundation import build_shadow_decision
-
-decision = build_shadow_decision(
-    message_id=message_id,
-    thread_id=thread_id,
-    requested_agent=requested_agent,
-    current_attachment_ids=current_attachment_ids,
-    historical_attachment_ids=historical_attachment_ids,
-    explicit_historical_context_requested=explicit_historical_context_requested,
-    user_intent=user_message,
-)
-
-logger.info("OCIL_SHADOW_DECISION %s", decision.to_json())
-```
-
-O retorno do OCIL não deve alterar o pipeline atual enquanto:
-
+Expected when the package is present:
 ```text
-OCIL_ATTACHMENT_ENFORCEMENT_ENABLED=false
-OCIL_EXECUTION_ENFORCEMENT_ENABLED=false
+AGENT_EVOLUTION_MAP_ROUTER_BOOT_OK
+ORKIO_MAIN_IMPORT_OK
 ```
 
-## Promoção para enforcement
+## Scope
+No changes to:
+- database
+- Alembic
+- SSE
+- upload
+- OCIL
+- frontend
+- authentication
 
-Promover somente quando:
-
-1. o anexo correto for resolvido em todos os cenários de validação;
-2. divergências forem explicáveis;
-3. nenhum agente receber capacidades implícitas;
-4. receipts forem persistidos ou exportados de modo auditável;
-5. rollback por feature flag estiver testado.
-
-## Observação
-
-Este pacote não conhece o ORM, o modelo de mensagem nem o registry real do repositório ORKIO. Os adapters de banco e runtime devem ser conectados no projeto real sem mover a lógica para `app/main.py`.
+## Rollback
+Restore the previous `main.py` or rollback the deployment.

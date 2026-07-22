@@ -775,10 +775,20 @@ from .routes.evolution_intelligence import (
     EvolutionIntelligenceRouterDeps,
     build_evolution_intelligence_router,
 )
-from .agent_evolution_map.router import (
-    AgentEvolutionMapRouterDeps,
-    build_agent_evolution_map_router,
-)
+# AO-01 EMERGENCY BOOT HOTFIX — agent_evolution_map must never crash the whole backend.
+# Fail-open preserves the baseline when a partial deploy omits this optional package.
+_AGENT_EVOLUTION_MAP_AVAILABLE = False
+_AGENT_EVOLUTION_MAP_IMPORT_ERROR = None
+try:
+    from .agent_evolution_map.router import (
+        AgentEvolutionMapRouterDeps,
+        build_agent_evolution_map_router,
+    )
+    _AGENT_EVOLUTION_MAP_AVAILABLE = True
+except Exception as _agent_evolution_map_import_exc:  # pragma: no cover - production partial-deploy guard
+    _AGENT_EVOLUTION_MAP_IMPORT_ERROR = _agent_evolution_map_import_exc
+    AgentEvolutionMapRouterDeps = None  # type: ignore[assignment]
+    build_agent_evolution_map_router = None  # type: ignore[assignment]
 from .evolution.intelligence.governance import (
     load_evolution_governance_config,
     validate_evolution_governance_config,
@@ -6973,15 +6983,25 @@ app.include_router(
         )
     )
 )
-app.include_router(
-    build_agent_evolution_map_router(
-        AgentEvolutionMapRouterDeps(
-            require_admin_access=require_admin_access,
-            get_request_org=get_request_org,
-            now_ts=now_ts,
+if _AGENT_EVOLUTION_MAP_AVAILABLE:
+    app.include_router(
+        build_agent_evolution_map_router(
+            AgentEvolutionMapRouterDeps(
+                require_admin_access=require_admin_access,
+                get_request_org=get_request_org,
+                now_ts=now_ts,
+            )
         )
     )
-)
+    logger.info("AGENT_EVOLUTION_MAP_ROUTER_BOOT_OK")
+else:
+    logger.error(
+        "AGENT_EVOLUTION_MAP_ROUTER_DISABLED reason=%s detail=%s",
+        _AGENT_EVOLUTION_MAP_IMPORT_ERROR.__class__.__name__
+        if _AGENT_EVOLUTION_MAP_IMPORT_ERROR is not None
+        else "unknown",
+        str(_AGENT_EVOLUTION_MAP_IMPORT_ERROR or "module_unavailable"),
+    )
 try:
     _evolution_signals_module = sys.modules.get(build_evolution_signals_router.__module__)
     logger.info(
