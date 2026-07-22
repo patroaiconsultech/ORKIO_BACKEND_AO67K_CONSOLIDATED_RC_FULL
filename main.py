@@ -733,6 +733,16 @@ except Exception:  # pragma: no cover - partial deploy protection
             return fallback_message or glip_aria_build_direct_answer("")
         return raw.replace("Orkio", "Aria").replace("PatroAI", "GLIP").replace("Patroai", "GLIP")
 
+from .runtime.glip_aria_document_bridge import (
+    GlipAriaDocumentArtifactGenerateIn,
+    build_glip_aria_document_system_prompt,
+    build_glip_aria_terminal_events,
+    execute_glip_aria_document_stream,
+    glip_aria_document_citations,
+    load_glip_aria_document_context,
+    merge_glip_aria_document_runtime_hints,
+)
+
 from .runtime.realtime_support import (
     RealtimeClientSecretReq,
     RealtimeStartReq,
@@ -42837,6 +42847,18 @@ async def chat_stream(
                 if content2:
                     history2.append({"role": role2, "content": content2})
 
+            document_context2 = load_glip_aria_document_context(
+                db2,
+                org=org2,
+                thread_id=tid2,
+                query=message,
+                top_k=8,
+            )
+            aria_citations2 = glip_aria_document_citations(document_context2)
+            aria_system_prompt2 = build_glip_aria_document_system_prompt(
+                glip_aria_build_system_prompt(),
+                document_context2,
+            )
             fallback = glip_aria_build_direct_answer(message)
 
             try:
@@ -42851,9 +42873,9 @@ async def chat_stream(
 
             ans_obj = _openai_answer(
                 message,
-                [],
+                aria_citations2,
                 history=history2,
-                system_prompt=glip_aria_build_system_prompt(),
+                system_prompt=aria_system_prompt2,
                 model_override=None,
                 temperature=0.35,
             )
@@ -42884,14 +42906,17 @@ async def chat_stream(
                 "message": final_text,
                 "final_text": final_text,
                 "content": final_text,
-                "citations": [],
+                "citations": aria_citations2,
                 "agent_id": "aria",
                 "agent_name": "Aria",
                 "voice_id": "marin",
                 "avatar_url": None,
                 "assistant_persisted": True,
                 "assistant_message_id": getattr(m_ass2, "id", None),
-                "runtime_hints": glip_aria_runtime_hints(),
+                "runtime_hints": merge_glip_aria_document_runtime_hints(
+                    glip_aria_runtime_hints(),
+                    document_context2,
+                ),
             }
 
         except Exception:
@@ -42992,11 +43017,16 @@ async def chat_stream(
             )
 
             owner_slug = str(
-                getattr(ao01_agent_turn_context, "turn_owner", None)
-                or docio_decision.get("agent_slug")
-                or "orkio"
+                "aria"
+                if glip_aria_mode
+                else (
+                    getattr(ao01_agent_turn_context, "turn_owner", None)
+                    or docio_decision.get("agent_slug")
+                    or "orkio"
+                )
             ).strip().lower()
             display_hint = {
+                "aria": "Aria",
                 "orion": "Orion",
                 "orkio": "Orkio",
             }.get(owner_slug, "Orkio")
@@ -43094,7 +43124,11 @@ async def chat_stream(
                         }
                     },
                 }
-            input_model = DocumentArtifactGenerateIn.model_validate(input_payload)
+            input_model = (
+                GlipAriaDocumentArtifactGenerateIn.model_validate(input_payload)
+                if owner_slug == "aria"
+                else DocumentArtifactGenerateIn.model_validate(input_payload)
+            )
 
             command_result = execute_document_artifact_command(
                 db2,
@@ -43195,6 +43229,23 @@ async def chat_stream(
         }
 
         if glip_aria_mode:
+            glip_document_events = await execute_glip_aria_document_stream(
+                message=message,
+                base=base,
+                runner=_docio_run_chat_artifact_in_isolated_session,
+                safe_payload=_safe_payload,
+                sanitize_visible_text=_sanitize_visible_stream_text,
+                clean_answer=glip_aria_clean_answer,
+                fallback_message="Aria concluiu a criação do arquivo solicitado.",
+                logger=logger,
+                trace_id=trace_id,
+                thread_id=tid_seed,
+            )
+            if glip_document_events is not None:
+                for event_name, event_payload in glip_document_events:
+                    yield _metatron_sse(event_name, event_payload)
+                return
+
             try:
                 logger.info(
                     "AO_GLIP03B_ARIA_RUNTIME_LOCK_ENTER trace_id=%s thread_id=%s visible_agent=%s target_agent_slug=%s source=%s product=%s",
@@ -43210,7 +43261,7 @@ async def chat_stream(
 
             yield _metatron_sse("status", {
                 **base,
-                "status": "Aria está organizando o fluxo arquitetônico.",
+                "status": "Aria está analisando a conversa e os documentos vinculados.",
                 "phase": "glip_aria_runtime_lock",
             })
 
@@ -43220,54 +43271,30 @@ async def chat_stream(
             except Exception:
                 payload = {}
 
-            final_text = str(
-                payload.get("answer")
-                or payload.get("message")
-                or payload.get("final_text")
-                or payload.get("content")
-                or ""
-            ).strip()
             final_text = glip_aria_clean_answer(
-                _sanitize_visible_stream_text(final_text),
+                _sanitize_visible_stream_text(
+                    str(
+                        payload.get("answer")
+                        or payload.get("message")
+                        or payload.get("final_text")
+                        or payload.get("content")
+                        or ""
+                    ).strip()
+                ),
                 fallback_message=glip_aria_build_direct_answer(message),
             )
-
-            final_thread_id = str(payload.get("thread_id") or tid_seed or "").strip() or tid_seed
-            final_base = {
-                **base,
-                "thread_id": final_thread_id,
-                "agent_id": "aria",
-                "agent_name": "Aria",
-                "final_speaker": "Aria",
-            }
-            runtime_hints = payload.get("runtime_hints") if isinstance(payload.get("runtime_hints"), dict) else glip_aria_runtime_hints()
-
-            yield _metatron_sse("status", {
-                **final_base,
-                "status": "Resposta preparada.",
-                "phase": "answer_ready",
-            })
-            yield _metatron_sse("chunk", {
-                **final_base,
-                "delta": final_text,
-                "content": final_text,
-            })
-            yield _metatron_sse("agent_done", {
-                **final_base,
-                "done": True,
-                "message": "Resposta concluída.",
-            })
-            yield _metatron_sse("done", {
-                **final_base,
-                "done": True,
-                "assistant_persisted": bool(payload.get("assistant_persisted", True)),
-                "assistant_message_id": payload.get("assistant_message_id"),
-                "final_text": final_text,
-                "citations": payload.get("citations") or [],
-                "voice_id": payload.get("voice_id") or "marin",
-                "avatar_url": payload.get("avatar_url"),
-                "runtime_hints": runtime_hints,
-            })
+            runtime_hints = (
+                payload.get("runtime_hints")
+                if isinstance(payload.get("runtime_hints"), dict)
+                else glip_aria_runtime_hints()
+            )
+            for event_name, event_payload in build_glip_aria_terminal_events(
+                base,
+                payload,
+                final_text=final_text,
+                runtime_hints=runtime_hints,
+            ):
+                yield _metatron_sse(event_name, event_payload)
             return
 
         try:
