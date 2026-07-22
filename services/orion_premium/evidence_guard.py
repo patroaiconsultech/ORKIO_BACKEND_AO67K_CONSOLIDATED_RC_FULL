@@ -45,6 +45,7 @@ def _safe_non_negative_int(value: Any) -> int:
 def _normalize_files_used(value: Any) -> tuple[str, ...]:
     if not isinstance(value, Iterable) or isinstance(value, (str, bytes, Mapping)):
         return ()
+
     normalized: list[str] = []
     for item in value:
         if isinstance(item, Mapping):
@@ -56,9 +57,11 @@ def _normalize_files_used(value: Any) -> tuple[str, ...]:
             )
         else:
             candidate = item
+
         text = str(candidate or "").strip()
         if text and text not in normalized:
             normalized.append(text)
+
     return tuple(normalized)
 
 
@@ -83,7 +86,9 @@ def evaluate_document_grounding(
 
     # Existing service may express proof through citations even if the aggregate
     # counter is absent. Never infer proof from filename/file-id alone.
-    citation_count = len([item for item in citations if isinstance(item, Mapping)])
+    citation_count = len(
+        [item for item in citations if isinstance(item, Mapping)]
+    )
     effective_evidence = max(evidence_count, citation_count)
     injected = bool(context.get("file_context_injected"))
     has_proven_context = bool(
@@ -131,9 +136,42 @@ def evaluate_document_grounding(
     )
 
 
-def evaluate_media_grounding(*, mime_type: str, vision_evidence: dict | None = None) -> DocumentGroundingDecision:
+def build_fail_closed_overlay(
+    decision: DocumentGroundingDecision,
+) -> str:
+    """Build a deterministic fail-closed overlay for document requests.
+
+    No overlay is added when no document is attached or when extraction evidence
+    has already been proven. When a document exists without proven extraction,
+    the returned text instructs the runtime not to infer document content.
+    """
+    if decision.mode == "no_document_attached":
+        return ""
+
+    if decision.allowed:
+        return ""
+
+    return (
+        "[ORION EVIDENCE GUARD — FAIL CLOSED]\n"
+        "Existe documento associado à conversa, mas o conteúdo extraído "
+        "não foi comprovado pelo contexto disponível.\n"
+        "Não afirme, resuma, compare, classifique ou conclua nada sobre o "
+        "conteúdo do documento com base apenas no nome do arquivo, metadados "
+        "ou suposições.\n"
+        f"Motivo técnico: {decision.reason}.\n"
+        f"Orientação obrigatória ao usuário: "
+        f"{DOCUMENT_EVIDENCE_FALLBACK_PT_BR}"
+    )
+
+
+def evaluate_media_grounding(
+    *,
+    mime_type: str,
+    vision_evidence: dict | None = None,
+) -> DocumentGroundingDecision:
     """Fail closed for image attachments unless real visual evidence exists."""
     mime = str(mime_type or "").strip().lower()
+
     if not mime.startswith("image/"):
         return DocumentGroundingDecision(
             allowed=True,
@@ -142,13 +180,15 @@ def evaluate_media_grounding(*, mime_type: str, vision_evidence: dict | None = N
             file_count=0,
             evidence_count=0,
             context_chars=0,
-            files_used=[],
+            files_used=(),
             grounding_score=1.0,
         )
+
     evidence = dict(vision_evidence or {})
     processed = bool(evidence.get("processed"))
     description = str(evidence.get("description") or "").strip()
     allowed = processed and bool(description)
+
     return DocumentGroundingDecision(
         allowed=allowed,
         mode="image_vision_evidence" if allowed else "image_vision_unavailable",
@@ -156,6 +196,6 @@ def evaluate_media_grounding(*, mime_type: str, vision_evidence: dict | None = N
         file_count=1,
         evidence_count=1 if allowed else 0,
         context_chars=len(description),
-        files_used=[],
+        files_used=(),
         grounding_score=1.0 if allowed else 0.0,
     )
