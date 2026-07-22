@@ -1,45 +1,71 @@
-# ORKIO AO-01 Emergency Boot Hotfix
+# ORKIO AO-01 Premium Runtime Patch — PROPOSAL_ONLY
 
-## Objective
-Prevent `app.agent_evolution_map` from crashing the entire backend during import.
+## Scope
+- preserves the prior `agent_evolution_map` fail-open boot guard
+- centralizes OCIL environment parsing and validation
+- introduces explicit `ACCESS_MODE`
+- logs release identity and SHA-256 of the running `main.py`
+- adds unit tests for safe and contradictory flag combinations
 
-## Exact changes
-1. Wraps the import of `.agent_evolution_map.router` in a fail-open guard.
-2. Registers the router only when the module loaded successfully.
-3. Emits one of:
-   - `AGENT_EVOLUTION_MAP_ROUTER_BOOT_OK`
-   - `AGENT_EVOLUTION_MAP_ROUTER_DISABLED`
+## Recommended environment
 
-## Apply
-Replace the deployed `main.py` with the included `main.py`.
+```text
+ACCESS_MODE=open
+OCIL_ENABLED=false
+OCIL_SHADOW_MODE=true
+OCIL_ATTACHMENT_ENFORCEMENT=false
+OCIL_EXECUTION_ENFORCEMENT=false
+```
 
-## Mandatory validation
+Do not include literal quote characters in the platform value fields.
+
+## Files
+Copy into the same application package that contains `main.py`:
+
+```text
+main.py
+runtime/__init__.py
+runtime/ocil_config.py
+runtime/access_mode.py
+runtime/release_identity.py
+tests/test_runtime_config.py
+```
+
+## Pre-deploy validation
+
 ```bash
 python -m py_compile main.py
+python -m py_compile runtime/ocil_config.py
+python -m py_compile runtime/access_mode.py
+python -m py_compile runtime/release_identity.py
+python -m unittest tests/test_runtime_config.py
 python -c "import main; print('ORKIO_MAIN_IMPORT_OK')"
 ```
 
-Expected when the optional package is absent:
+## Expected boot evidence
+
 ```text
+ORKIO_BOOT_IDENTITY ...
+ORKIO_OCIL_CONFIG enabled=False shadow_mode=True ...
+ORKIO_ACCESS_CONFIG mode=open ...
+ORKIO_ACCESS_MODE_OPEN ...
 AGENT_EVOLUTION_MAP_ROUTER_DISABLED ...
-ORKIO_MAIN_IMPORT_OK
 ```
 
-Expected when the package is present:
-```text
-AGENT_EVOLUTION_MAP_ROUTER_BOOT_OK
-ORKIO_MAIN_IMPORT_OK
-```
-
-## Scope
-No changes to:
-- database
-- Alembic
-- SSE
-- upload
-- OCIL
-- frontend
-- authentication
+## GO gate
+- no restart loop
+- healthcheck 200
+- no fatal `ModuleNotFoundError`
+- exact `main_sha256` matches `MANIFEST.json`
+- registration succeeds without special code only when `ACCESS_MODE=open`
 
 ## Rollback
-Restore the previous `main.py` or rollback the deployment.
+Restore the previous files and set:
+
+```text
+ACCESS_MODE=invite_only
+OCIL_ENABLED=false
+OCIL_SHADOW_MODE=true
+OCIL_ATTACHMENT_ENFORCEMENT=false
+OCIL_EXECUTION_ENFORCEMENT=false
+```

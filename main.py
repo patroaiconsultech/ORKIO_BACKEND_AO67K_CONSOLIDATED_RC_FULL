@@ -801,6 +801,26 @@ from .services.access_grant_service import (
     load_access_grant_config,
     require_request_access_grant,
 )
+from .runtime.access_mode import load_access_runtime_config
+from .runtime.ocil_config import load_ocil_runtime_config
+from .runtime.release_identity import build_release_identity
+
+_ACCESS_RUNTIME_CONFIG = load_access_runtime_config()
+_OCIL_RUNTIME_CONFIG = load_ocil_runtime_config()
+
+# AO-01 PREMIUM ACCESS POLICY
+# ACCESS_MODE=open          -> registration without special code; normal password login.
+# ACCESS_MODE=invite_only   -> registration requires invitation; approved users log in normally.
+# ACCESS_MODE=private       -> registration remains restricted.
+if _ACCESS_RUNTIME_CONFIG.is_open:
+    def access_gate_auth_required() -> bool:
+        return False
+
+    def access_gate_register_required() -> bool:
+        return False
+
+    def access_gate_login_required() -> bool:
+        return False
 from .schemas.document_artifacts import DocumentArtifactGenerateIn
 from .runtime.document_artifact_intent import (
     DOCIO0018_BRIDGE_GOVERNANCE_GUARD_VERSION,
@@ -2187,7 +2207,11 @@ _REALTIME_MAX_PER_MINUTE = int(os.getenv("REALTIME_MAX_PER_MINUTE", "30"))
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "20"))
 
 # Summit config
-SUMMIT_MODE = os.getenv("SUMMIT_MODE", "false").strip().lower() in ("1", "true")
+SUMMIT_MODE = (
+    False
+    if _ACCESS_RUNTIME_CONFIG.is_open
+    else os.getenv("SUMMIT_MODE", "false").strip().lower() in ("1", "true")
+)
 SUMMIT_AGENT_ID = os.getenv("SUMMIT_AGENT_ID", "").strip()
 SUMMIT_EXPIRES_AT = int(os.getenv("SUMMIT_EXPIRES_AT", "1775087999"))  # 2026-04-01 23:59:59 UTC
 # Summit access window enforcement (standard users only)
@@ -7251,8 +7275,40 @@ def validate_runtime_env() -> None:
             raise RuntimeError("CORS_ORIGINS must be an allowlist in production (refuse to start)")
 
 @app.on_event("startup")
+def _startup_runtime_identity():
+    identity = build_release_identity(__file__)
+    logger.info(
+        "ORKIO_BOOT_IDENTITY release_id=%s commit_sha=%s deployment_id=%s main_sha256=%s",
+        identity.release_id,
+        identity.commit_sha,
+        identity.deployment_id,
+        identity.main_sha256,
+    )
+    logger.info(
+        "ORKIO_OCIL_CONFIG enabled=%s shadow_mode=%s attachment_enforcement=%s "
+        "execution_enforcement=%s enforcement_active=%s",
+        _OCIL_RUNTIME_CONFIG.enabled,
+        _OCIL_RUNTIME_CONFIG.shadow_mode,
+        _OCIL_RUNTIME_CONFIG.attachment_enforcement,
+        _OCIL_RUNTIME_CONFIG.execution_enforcement,
+        _OCIL_RUNTIME_CONFIG.enforcement_active,
+    )
+    logger.info(
+        "ORKIO_ACCESS_CONFIG mode=%s register_requires_code=%s login_requires_grant=%s",
+        _ACCESS_RUNTIME_CONFIG.mode,
+        _ACCESS_RUNTIME_CONFIG.register_requires_code,
+        _ACCESS_RUNTIME_CONFIG.login_requires_grant,
+    )
+
+
+@app.on_event("startup")
 def _startup_access_gate_guard():
-    """Fail closed when the server-side access gate is enabled but incomplete."""
+    """Validate access-gate configuration according to ACCESS_MODE."""
+    if _ACCESS_RUNTIME_CONFIG.is_open:
+        logger.warning(
+            "ORKIO_ACCESS_MODE_OPEN register_requires_code=false login_requires_grant=false"
+        )
+        return
     load_access_grant_config(require_signing_key=access_gate_auth_required())
 
 
@@ -8097,7 +8153,16 @@ def register(inp: RegisterIn, request: Request = None, x_org_slug: Optional[str]
         usage_tier = usage_tier or "summit_investor"
         product_scope = "full"
 
-    approved_at_value = now_ts() if (is_admin_email or (SUMMIT_MODE and not is_admin_email) or tester_billing_bypass_access) else None
+    approved_at_value = (
+        now_ts()
+        if (
+            is_admin_email
+            or _ACCESS_RUNTIME_CONFIG.is_open
+            or (SUMMIT_MODE and not is_admin_email)
+            or tester_billing_bypass_access
+        )
+        else None
+    )
 
     salt = new_salt()
     pw_hash = pbkdf2_hash(inp.password, salt)

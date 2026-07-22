@@ -1,0 +1,319 @@
+--- a/main.py
++++ b/main.py
+@@ -801,16 +801,18 @@
+     load_access_grant_config,
+     require_request_access_grant,
+ )
+-
+-# AO-01 EMERGENCY ACCESS HOTFIX — reversible bypass for the closed-beta/special-code gate.
+-# Enable with AO01_DISABLE_SPECIAL_CODE_GATE=true.
+-# Scope: registration/login gate only. Password authentication remains mandatory.
+-_AO01_DISABLE_SPECIAL_CODE_GATE = (
+-    os.getenv("AO01_DISABLE_SPECIAL_CODE_GATE", "true").strip().lower()
+-    in {"1", "true", "yes", "on"}
+-)
+-
+-if _AO01_DISABLE_SPECIAL_CODE_GATE:
++from .runtime.access_mode import load_access_runtime_config
++from .runtime.ocil_config import load_ocil_runtime_config
++from .runtime.release_identity import build_release_identity
++
++_ACCESS_RUNTIME_CONFIG = load_access_runtime_config()
++_OCIL_RUNTIME_CONFIG = load_ocil_runtime_config()
++
++# AO-01 PREMIUM ACCESS POLICY
++# ACCESS_MODE=open          -> registration without special code; normal password login.
++# ACCESS_MODE=invite_only   -> registration requires invitation; approved users log in normally.
++# ACCESS_MODE=private       -> registration remains restricted.
++if _ACCESS_RUNTIME_CONFIG.is_open:
+     def access_gate_auth_required() -> bool:
+         return False
+ 
+@@ -2207,7 +2209,7 @@
+ # Summit config
+ SUMMIT_MODE = (
+     False
+-    if globals().get("_AO01_DISABLE_SPECIAL_CODE_GATE", False)
++    if _ACCESS_RUNTIME_CONFIG.is_open
+     else os.getenv("SUMMIT_MODE", "false").strip().lower() in ("1", "true")
+ )
+ SUMMIT_AGENT_ID = os.getenv("SUMMIT_AGENT_ID", "").strip()
+@@ -7273,11 +7275,38 @@
+             raise RuntimeError("CORS_ORIGINS must be an allowlist in production (refuse to start)")
+ 
+ @app.on_event("startup")
++def _startup_runtime_identity():
++    identity = build_release_identity(__file__)
++    logger.info(
++        "ORKIO_BOOT_IDENTITY release_id=%s commit_sha=%s deployment_id=%s main_sha256=%s",
++        identity.release_id,
++        identity.commit_sha,
++        identity.deployment_id,
++        identity.main_sha256,
++    )
++    logger.info(
++        "ORKIO_OCIL_CONFIG enabled=%s shadow_mode=%s attachment_enforcement=%s "
++        "execution_enforcement=%s enforcement_active=%s",
++        _OCIL_RUNTIME_CONFIG.enabled,
++        _OCIL_RUNTIME_CONFIG.shadow_mode,
++        _OCIL_RUNTIME_CONFIG.attachment_enforcement,
++        _OCIL_RUNTIME_CONFIG.execution_enforcement,
++        _OCIL_RUNTIME_CONFIG.enforcement_active,
++    )
++    logger.info(
++        "ORKIO_ACCESS_CONFIG mode=%s register_requires_code=%s login_requires_grant=%s",
++        _ACCESS_RUNTIME_CONFIG.mode,
++        _ACCESS_RUNTIME_CONFIG.register_requires_code,
++        _ACCESS_RUNTIME_CONFIG.login_requires_grant,
++    )
++
++
++@app.on_event("startup")
+ def _startup_access_gate_guard():
+-    """Validate access-gate configuration unless AO-01 emergency bypass is active."""
+-    if _AO01_DISABLE_SPECIAL_CODE_GATE:
++    """Validate access-gate configuration according to ACCESS_MODE."""
++    if _ACCESS_RUNTIME_CONFIG.is_open:
+         logger.warning(
+-            "AO01_SPECIAL_CODE_GATE_DISABLED register=false login=false auth=false"
++            "ORKIO_ACCESS_MODE_OPEN register_requires_code=false login_requires_grant=false"
+         )
+         return
+     load_access_grant_config(require_signing_key=access_gate_auth_required())
+@@ -8128,7 +8157,7 @@
+         now_ts()
+         if (
+             is_admin_email
+-            or _AO01_DISABLE_SPECIAL_CODE_GATE
++            or _ACCESS_RUNTIME_CONFIG.is_open
+             or (SUMMIT_MODE and not is_admin_email)
+             or tester_billing_bypass_access
+         )
+
+--- /dev/null
++++ b/runtime/__init__.py
+@@ -0,0 +1 @@
++"""AO-01 premium runtime configuration package."""
+
+--- /dev/null
++++ b/runtime/access_mode.py
+@@ -0,0 +1,34 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++import os
++
++
++_ALLOWED_MODES = {"open", "invite_only", "private"}
++
++
++@dataclass(frozen=True)
++class AccessRuntimeConfig:
++    mode: str
++
++    @property
++    def is_open(self) -> bool:
++        return self.mode == "open"
++
++    @property
++    def register_requires_code(self) -> bool:
++        return self.mode != "open"
++
++    @property
++    def login_requires_grant(self) -> bool:
++        return self.mode == "private"
++
++
++def load_access_runtime_config() -> AccessRuntimeConfig:
++    mode = os.getenv("ACCESS_MODE", "invite_only").strip().lower()
++    if mode not in _ALLOWED_MODES:
++        raise ValueError(
++            "invalid_access_mode:"
++            f"{mode};expected_one_of={','.join(sorted(_ALLOWED_MODES))}"
++        )
++    return AccessRuntimeConfig(mode=mode)
+
+--- /dev/null
++++ b/runtime/ocil_config.py
+@@ -0,0 +1,72 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++import os
++
++
++_TRUE_VALUES = {"1", "true", "yes", "on"}
++_FALSE_VALUES = {"0", "false", "no", "off"}
++
++
++def env_bool(name: str, default: bool = False) -> bool:
++    raw = os.getenv(name)
++    if raw is None:
++        return default
++
++    normalized = str(raw).strip().strip('"').strip("'").lower()
++    if normalized in _TRUE_VALUES:
++        return True
++    if normalized in _FALSE_VALUES:
++        return False
++
++    raise ValueError(f"invalid_boolean_env:{name}")
++
++
++@dataclass(frozen=True)
++class OCILRuntimeConfig:
++    enabled: bool
++    shadow_mode: bool
++    attachment_enforcement: bool
++    execution_enforcement: bool
++
++    @property
++    def enforcement_active(self) -> bool:
++        return (
++            self.enabled
++            and not self.shadow_mode
++            and (
++                self.attachment_enforcement
++                or self.execution_enforcement
++            )
++        )
++
++
++def validate_ocil_runtime_config(config: OCILRuntimeConfig) -> None:
++    if not config.enabled and (
++        config.attachment_enforcement
++        or config.execution_enforcement
++    ):
++        raise ValueError("ocil_enforcement_requires_ocil_enabled")
++
++    if config.shadow_mode and (
++        config.attachment_enforcement
++        or config.execution_enforcement
++    ):
++        raise ValueError("ocil_shadow_mode_cannot_enforce")
++
++
++def load_ocil_runtime_config() -> OCILRuntimeConfig:
++    config = OCILRuntimeConfig(
++        enabled=env_bool("OCIL_ENABLED", False),
++        shadow_mode=env_bool("OCIL_SHADOW_MODE", True),
++        attachment_enforcement=env_bool(
++            "OCIL_ATTACHMENT_ENFORCEMENT",
++            False,
++        ),
++        execution_enforcement=env_bool(
++            "OCIL_EXECUTION_ENFORCEMENT",
++            False,
++        ),
++    )
++    validate_ocil_runtime_config(config)
++    return config
+
+--- /dev/null
++++ b/runtime/release_identity.py
+@@ -0,0 +1,44 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++import hashlib
++import os
++from pathlib import Path
++
++
++@dataclass(frozen=True)
++class ReleaseIdentity:
++    release_id: str
++    commit_sha: str
++    deployment_id: str
++    main_sha256: str
++
++
++def _first_env(*names: str, default: str = "unknown") -> str:
++    for name in names:
++        value = os.getenv(name, "").strip()
++        if value:
++            return value
++    return default
++
++
++def build_release_identity(main_file: str) -> ReleaseIdentity:
++    path = Path(main_file)
++    digest = hashlib.sha256(path.read_bytes()).hexdigest()
++    return ReleaseIdentity(
++        release_id=_first_env(
++            "RELEASE_ID",
++            "RAILWAY_DEPLOYMENT_ID",
++            "DEPLOYMENT_ID",
++        ),
++        commit_sha=_first_env(
++            "RAILWAY_GIT_COMMIT_SHA",
++            "GIT_COMMIT_SHA",
++            "COMMIT_SHA",
++        ),
++        deployment_id=_first_env(
++            "RAILWAY_DEPLOYMENT_ID",
++            "DEPLOYMENT_ID",
++        ),
++        main_sha256=digest,
++    )
+
+--- /dev/null
++++ b/tests/test_runtime_config.py
+@@ -0,0 +1,57 @@
++import os
++import unittest
++from unittest.mock import patch
++
++from runtime.access_mode import load_access_runtime_config
++from runtime.ocil_config import load_ocil_runtime_config
++
++
++class RuntimeConfigTests(unittest.TestCase):
++    def test_safe_ocil_disabled_shadow(self):
++        env = {
++            "OCIL_ENABLED": "false",
++            "OCIL_SHADOW_MODE": "true",
++            "OCIL_ATTACHMENT_ENFORCEMENT": "false",
++            "OCIL_EXECUTION_ENFORCEMENT": "false",
++        }
++        with patch.dict(os.environ, env, clear=False):
++            cfg = load_ocil_runtime_config()
++        self.assertFalse(cfg.enabled)
++        self.assertTrue(cfg.shadow_mode)
++        self.assertFalse(cfg.enforcement_active)
++
++    def test_reject_enforcement_while_disabled(self):
++        env = {
++            "OCIL_ENABLED": "false",
++            "OCIL_SHADOW_MODE": "false",
++            "OCIL_EXECUTION_ENFORCEMENT": "true",
++        }
++        with patch.dict(os.environ, env, clear=False):
++            with self.assertRaisesRegex(
++                ValueError,
++                "ocil_enforcement_requires_ocil_enabled",
++            ):
++                load_ocil_runtime_config()
++
++    def test_reject_shadow_enforcement(self):
++        env = {
++            "OCIL_ENABLED": "true",
++            "OCIL_SHADOW_MODE": "true",
++            "OCIL_ATTACHMENT_ENFORCEMENT": "true",
++        }
++        with patch.dict(os.environ, env, clear=False):
++            with self.assertRaisesRegex(
++                ValueError,
++                "ocil_shadow_mode_cannot_enforce",
++            ):
++                load_ocil_runtime_config()
++
++    def test_access_open(self):
++        with patch.dict(os.environ, {"ACCESS_MODE": "open"}, clear=False):
++            cfg = load_access_runtime_config()
++        self.assertTrue(cfg.is_open)
++        self.assertFalse(cfg.register_requires_code)
++
++
++if __name__ == "__main__":
++    unittest.main()
