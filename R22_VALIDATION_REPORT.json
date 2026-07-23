@@ -1,0 +1,48 @@
+{
+  "package": "ORKIO_BACKEND_R22_PATCH_ONLY_ROOT_READY",
+  "generated_at": "2026-07-23",
+  "target_repository": "ORKIO_BACKEND_AO67K_CONSOLIDATED_RC_FULL",
+  "target_branch_reviewed": "main",
+  "write_executed_on_repository": false,
+  "commit_executed": false,
+  "merge_executed": false,
+  "deploy_executed": false,
+  "migration_included": false,
+  "frontend_changed": false,
+  "main_py_changed": false,
+  "root_init_changed": false,
+  "runtime_init_changed": false,
+  "team_runtime_enabled": false,
+  "focused_tests": {
+    "returncode": 0,
+    "stdout": "\u001b[32m.\u001b[0m\u001b[32m.\u001b[0m\u001b[32m.\u001b[0m\u001b[32m.\u001b[0m\u001b[32m.\u001b[0m\u001b[32m.\u001b[0m\u001b[32m.\u001b[0m\u001b[32m.\u001b[0m\u001b[32m.\u001b[0m\u001b[32m                                                                [100%]\u001b[0m\n\u001b[32m\u001b[32m\u001b[1m9 passed\u001b[0m\u001b[32m in 0.04s\u001b[0m\u001b[0m",
+    "stderr_note": "The execution environment emitted an unrelated artifact_tool spreadsheet warmup warning on stderr. Pytest completed successfully and returned 0."
+  },
+  "files": [
+    {
+      "path": "runtime/agent_turn_context.py",
+      "sha256": "80a146ab6b95ae28bd8f317d40819fd22cac87eddaab0f1df9558f53f319f106",
+      "bytes": 3579
+    },
+    {
+      "path": "schemas/document_artifacts.py",
+      "sha256": "60d5b5dfafa03a6cfad1e7790eefd0c028f06fe2e0c928919bfebce4949f825c",
+      "bytes": 2275
+    },
+    {
+      "path": "tests/test_explicit_agent_ownership_r22.py",
+      "sha256": "fc22d0a315aaff88a1f2005d2963eba1f0388ffe42928d54bcb1fd981c7b2953",
+      "bytes": 1700
+    },
+    {
+      "path": "tests/test_document_artifact_schema_r22.py",
+      "sha256": "c895d83419c29fd38fbd9fc551f46badf9c0c162c714b80c56915d22cf9c9b1a",
+      "bytes": 1801
+    },
+    {
+      "path": "R22_README_FIRST.md",
+      "sha256": "8f934b7743aed5a7ec83522abf024afbe756e20f6f5ffca86cd2a0d9fcd00267",
+      "bytes": 1985
+    }
+  ]
+}

@@ -4,6 +4,9 @@ from dataclasses import asdict, dataclass
 from typing import Any, Dict, Optional
 
 
+EXPLICIT_TURN_OWNER_SLUGS = frozenset({"orkio", "orion", "chris", "laura"})
+
+
 @dataclass(frozen=True)
 class AgentTurnContext:
     requested_agent: str
@@ -36,17 +39,21 @@ def resolve_agent_turn_context(
     orchestrator_agent: str = "orkio",
     technical_lead: str = "orion",
 ) -> AgentTurnContext:
-    requested = str(requested_agent or "").strip().lower()
+    requested = str(requested_agent or "").strip().lower().lstrip("@")
     orchestrator = str(orchestrator_agent or "orkio").strip().lower()
     technical = str(technical_lead or "orion").strip().lower()
 
-    if requested == "orion":
+    # R22: an explicit, registered destination owns the whole turn.
+    # The same canonical identity must be used by routing, SSE, persistence
+    # and frontend presentation. Team remains outside this lock until its
+    # execution contract is proven end-to-end.
+    if requested in EXPLICIT_TURN_OWNER_SLUGS:
         return AgentTurnContext(
-            requested_agent="orion",
+            requested_agent=requested,
             orchestrator_agent=orchestrator,
-            turn_owner="orion",
-            display_agent="orion",
-            technical_lead="orion",
+            turn_owner=requested,
+            display_agent=requested,
+            technical_lead="orion" if requested == "orion" else technical,
             route_family=route_family,
             ownership_locked=True,
         )
@@ -63,18 +70,21 @@ def resolve_agent_turn_context(
 
 
 def explicit_turn_owner_candidate(*values: Any) -> Optional[str]:
-    """Return the explicit agent owner when request metadata already resolved one."""
+    """Return the explicit registered owner already present in request metadata."""
     for value in values:
         if value is None:
             continue
+
         if isinstance(value, (list, tuple, set)):
             nested = explicit_turn_owner_candidate(*list(value))
             if nested:
                 return nested
             continue
+
         raw = str(value or "").strip().lower().lstrip("@")
-        if raw in {"orion", "chris", "orkio"}:
+        if raw in EXPLICIT_TURN_OWNER_SLUGS:
             return raw
+
     return None
 
 
