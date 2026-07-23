@@ -1,0 +1,14 @@
+ORKIO ORION R26-R27 PREMIUM PATCH ONLY
+Release: R26 Artifact Engine + Premium Specialist Orchestration
+Release: R27 Operational Memory
+
+Safety:
+- proposal_only preserved
+- human approval required
+- no production approval
+- no deploy/push/merge
+- append-only artifact and learning stores
+- specialist execution must create auditable task/result artifacts
+- synthesis must cite the actual executed agent
+
+Files are relative to repository root.
