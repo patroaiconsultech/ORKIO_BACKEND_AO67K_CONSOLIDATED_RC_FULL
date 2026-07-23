@@ -7276,13 +7276,23 @@ def validate_runtime_env() -> None:
 
 @app.on_event("startup")
 def _startup_runtime_identity():
-    identity = build_release_identity(__file__)
+    """Build and persist the canonical runtime release identity at startup."""
+    identity = build_release_identity(
+        app,
+        app_version=APP_VERSION,
+        repo_root=Path(__file__).resolve().parent,
+        runtime_main_path=Path(__file__).resolve(),
+    )
+    app.state.runtime_identity = identity
+    app.state.runtime_identity_validated = True
+    app.state.runtime_identity_status = "ok"
+
     logger.info(
         "ORKIO_BOOT_IDENTITY release_id=%s commit_sha=%s deployment_id=%s main_sha256=%s",
-        identity.release_id,
-        identity.commit_sha,
-        identity.deployment_id,
-        identity.main_sha256,
+        identity.get("release_id", "unknown"),
+        identity.get("commit_sha", "unknown"),
+        identity.get("deployment_id", "unknown"),
+        identity.get("runtime_main_sha256", "unknown"),
     )
     logger.info(
         "ORKIO_OCIL_CONFIG enabled=%s shadow_mode=%s attachment_enforcement=%s "
