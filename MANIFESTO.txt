@@ -1,0 +1,23 @@
+ORKIO AO-01 PREMIUM PATCH
+Escopo: ownership explícito + DOCIO schema + Team real + fail-soft
+
+STATUS:
+- proposal_only: true
+- write_executed: false
+- migration_required: false
+- deploy_automatico: false
+
+ARQUIVOS:
+- orkio_patches/document_payload_guard.py
+- orkio_patches/agent_ownership.py
+- orkio_patches/document_agent_resolver.py
+- orkio_patches/team_execution.py
+- orkio_patches/fail_soft_document_bridge.py
+- patches/app_main.integration.patch
+- patches/team_runtime.integration.patch
+- tests/*
+- docs/AO01_PREMIUM_AGENT_DOC_TEAM_PATCH.md
+
+VEREDITO:
+GO para integração controlada.
+NO-GO para produção sem homologação dos testes @Chris, @Team e geração .md.

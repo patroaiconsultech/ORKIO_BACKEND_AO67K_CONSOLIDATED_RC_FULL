@@ -1,0 +1,20 @@
+from orkio_patches.agent_ownership import AgentTurnContext, enforce_explicit_agent_ownership
+
+
+def test_explicit_chris_mention_locks_chris():
+    context = AgentTurnContext(
+        requested_agent="chris",
+        orchestrator_agent="orkio",
+        turn_owner="orkio",
+        display_agent="orkio",
+        technical_lead="orion",
+        route_family="governed_evolution_pipeline",
+        ownership_locked=False,
+    )
+    result = enforce_explicit_agent_ownership(
+        context,
+        available_agents={"orkio", "orion", "chris", "laura"},
+    )
+    assert result.turn_owner == "chris"
+    assert result.display_agent == "chris"
+    assert result.ownership_locked is True

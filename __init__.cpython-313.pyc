@@ -1,0 +1,21 @@
+from __future__ import annotations
+
+from typing import Any, Callable
+
+
+def run_document_bridge_fail_soft(
+    *,
+    generate_artifact: Callable[[], dict[str, Any]],
+    fallback_chat_answer: Callable[[Exception], dict[str, Any]],
+) -> dict[str, Any]:
+    """A document-generation failure must not kill the chat turn."""
+    try:
+        return generate_artifact()
+    except Exception as exc:
+        fallback = dict(fallback_chat_answer(exc))
+        fallback.setdefault("ok", True)
+        fallback.setdefault("artifact_created", False)
+        fallback.setdefault("write_executed", False)
+        fallback.setdefault("warning", "document_artifact_generation_failed")
+        fallback.setdefault("error_type", type(exc).__name__)
+        return fallback

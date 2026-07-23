@@ -1,0 +1,38 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Iterable
+
+
+@dataclass(frozen=True)
+class AgentTurnContext:
+    requested_agent: str
+    orchestrator_agent: str
+    turn_owner: str
+    display_agent: str
+    technical_lead: str
+    route_family: str
+    ownership_locked: bool
+
+
+def enforce_explicit_agent_ownership(
+    context: AgentTurnContext,
+    *,
+    available_agents: Iterable[str],
+) -> AgentTurnContext:
+    """Explicit @agent mention wins over generic routing families."""
+    available = {str(item).strip().lower() for item in available_agents}
+    requested = str(context.requested_agent or "").strip().lower()
+
+    if requested and requested in available and requested != "team":
+        return AgentTurnContext(
+            requested_agent=requested,
+            orchestrator_agent=context.orchestrator_agent,
+            turn_owner=requested,
+            display_agent=requested,
+            technical_lead=context.technical_lead,
+            route_family=context.route_family,
+            ownership_locked=True,
+        )
+
+    return context

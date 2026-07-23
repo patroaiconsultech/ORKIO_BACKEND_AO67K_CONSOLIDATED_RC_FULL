@@ -1,0 +1,42 @@
+from dataclasses import dataclass
+from orkio_patches.team_execution import execute_team_individually
+
+
+@dataclass
+class Agent:
+    id: str
+    specialty: str
+
+
+def test_every_team_agent_executes_once_and_returns_artifact():
+    agents = [
+        Agent("orkio", "orchestration"),
+        Agent("orion", "strategy"),
+        Agent("chris", "finance"),
+        Agent("laura", "legal"),
+    ]
+    calls = []
+
+    def execute(agent, task):
+        calls.append(agent.id)
+        return {
+            "summary": f"{agent.id} summary",
+            "artifact_id": f"artifact_{agent.id}",
+            "confidence": 0.9,
+        }
+
+    results = execute_team_individually(
+        agents=agents,
+        objective="analisar documento",
+        execute_agent=execute,
+    )
+
+    assert calls == ["orkio", "orion", "chris", "laura"]
+    assert len(results) == 4
+    assert all(result.executed for result in results)
+    assert {r.result_artifact_id for r in results} == {
+        "artifact_orkio",
+        "artifact_orion",
+        "artifact_chris",
+        "artifact_laura",
+    }

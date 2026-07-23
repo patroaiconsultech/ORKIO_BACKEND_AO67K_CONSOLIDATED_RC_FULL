@@ -1,0 +1,22 @@
+from pydantic import BaseModel, ConfigDict
+from orkio_patches.document_payload_guard import validate_document_payload
+
+
+class DocumentArtifactGenerateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str
+    output_format: str
+
+
+def test_source_plan_is_removed_without_disabling_strict_validation():
+    result = validate_document_payload(
+        DocumentArtifactGenerateIn,
+        {
+            "title": "Escopo",
+            "output_format": "md",
+            "source_plan": None,
+        },
+    )
+    assert result.title == "Escopo"
+    assert result.output_format == "md"
+    assert not hasattr(result, "source_plan")
